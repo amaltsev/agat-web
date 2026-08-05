@@ -29,7 +29,7 @@ const ctx = loadModules(), AGAT = ctx.AGAT;
   H.forEach((b, i) => m.write(0x0300 + i, b));
 
   m.write(0x82, TABLE[0]); m.write(0x81, TABLE[1]); m.write(0x85, TABLE[1]);
-  m.write(0x84, UNIT); m.write(0x83, UNIT || 1);
+  m.write(0x84, UNIT); m.write(0x83, UNIT);
 
   const MAIN = [0x8d,0x40,0xc0, 0x58, 0x4c,0x04,0x02];   // STA $C040 / CLI / spin
   MAIN.forEach((b, i) => m.write(0x0200 + i, b));

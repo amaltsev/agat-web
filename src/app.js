@@ -84,6 +84,17 @@
   // sound that comes out wrong can be looked at rather than described.
   //   agat.recordSound(3)   ->  then agat.soundReport()
   App.prototype.recordSound = function (seconds) {
+    var self = this;
+    // Sample at the interrupt's own cadence, not once per animation frame: a
+    // value the handler reloads every few interrupts is invisible at 60 Hz.
+    this.machine.onSubInt = function () {
+      var L = self.soundLog;
+      if (!L) return;
+      for (var a in App.PLAY500_ZP) {
+        var v = self.machine.read(Number(a));
+        (L.zp[a] || (L.zp[a] = {}))[v] = (L.zp[a][v] || 0) + 1;
+      }
+    };
     this.soundLog = {
       edges: [],
       zp: {},                                  // PLAY500's state, values seen
@@ -116,8 +127,17 @@
         if (i < e.length) i++;
       }
     }
+    // Report each byte's values with how many interrupts saw them, commonest
+    // first — a value the handler only holds briefly still shows up.
     var zp = {};
-    for (var k in L.zp) zp[App.PLAY500_ZP[k]] = Object.keys(L.zp[k]).map(Number);
+    for (var k in L.zp) {
+      var counts = L.zp[k];
+      zp[App.PLAY500_ZP[k]] = Object.keys(counts)
+        .sort(function (p, q) { return counts[q] - counts[p]; })
+        .slice(0, 8)
+        .map(function (v) { return Number(v) + 'x' + counts[v]; })
+        .join(' ');
+    }
     return {
       interruptHz: Math.round(AGAT.CPU_HZ / this.machine.subPeriod),
       play500: zp,
@@ -240,15 +260,12 @@
       for (var si = 0; si < m.speakerEdges.length; si++) {
         this.soundLog.edges.push(m.speakerEdges[si]);
       }
-      for (var za in App.PLAY500_ZP) {
-        var zv = m.read(Number(za));
-        (this.soundLog.zp[za] || (this.soundLog.zp[za] = {}))[zv] = 1;
-      }
       if (cpu.cycles > this.soundLog.until) {
         this.onStatus('sound recorded: ' + this.soundLog.edges.length +
                       ' flips — call agat.soundReport()');
         this.soundLog.until = Infinity;
         this.soundLog.done = true;
+        m.onSubInt = null;
       }
       if (this.soundLog.done) this.soundLog.until = -1;
     }
