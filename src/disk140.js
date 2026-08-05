@@ -18,6 +18,10 @@
   'use strict';
 
   var CYCLES_PER_BYTE = 32;
+  // A byte handed to the CPU within the last 50 ms keeps the lamp bright: long
+  // enough to bridge the gaps between sectors, short enough that the end of a
+  // load is visible at once.
+  var LAMP_BUSY = AGAT.CPU_HZ / 20;
   var MAX_TRACK = 34;              // 35 tracks, 0..34
   var MAX_PHASE = 110;
 
@@ -38,6 +42,7 @@
     this.writeMode = false;
     this.time = 0;
     this.last = 0xff;
+    this.lastByteAt = -Infinity;   // cpu cycle the CPU last took a media byte
     this.seed = 0x2545f491;        // deterministic, so headless runs reproduce
   }
 
@@ -116,7 +121,7 @@
     }
   };
 
-  Disk140.prototype.readData = function () {
+  Disk140.prototype.readData = function (now) {
     var h = this.heads[this.drv];
     if (!this.media) return this.last = this.rand() | 0x80;
     if (!this.motor) {
@@ -128,13 +133,14 @@
     }
     if (!h.rotated) return this.rand() & 0x7f;      // not ready: bit 7 clear
     h.rotated = 0;
+    this.lastByteAt = now;
     return this.last = this.media.bytes[this.media.trackBase(h.track) + h.index];
   };
 
   Disk140.prototype.read = function (reg, now) {
     this.access(reg, now);
     switch (reg) {
-      case 0xc: return this.readData();
+      case 0xc: return this.readData(now);
       case 0xe: return this.media && this.media.writeProtect ? 0xff : 0x7f;
       case 0xa: case 0xb: return this.rand();
       default: return 0;
@@ -146,6 +152,16 @@
     // Writing is not implemented; the write-protect bit above tells software so.
   };
 
+  // The drive lamp: 0 dark, 1 spinning, 2 transferring. The LED is on the motor
+  // line, and the boot loop polls $C0EC about four times for every byte the
+  // disk has actually turned far enough to give, so only a delivered byte —
+  // never a poll — counts as a transfer.
+  Disk140.prototype.lamp = function (now) {
+    if (!this.media || !this.motor) return 0;
+    return now - this.lastByteAt < LAMP_BUSY ? 2 : 1;
+  };
+
   Disk140.CYCLES_PER_BYTE = CYCLES_PER_BYTE;
+  Disk140.LAMP_BUSY = LAMP_BUSY;
   AGAT.Disk140 = Disk140;
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

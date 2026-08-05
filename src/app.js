@@ -190,6 +190,26 @@
     return kind === 'nib140' ? slots.fdd140 : slots.fdd840;
   };
 
+  // What the drive lamps show: every drive the model has, empty or not, so the
+  // bar does not reflow the moment a disk is dropped into one of them.
+  App.prototype.driveLamps = function () {
+    var slots = AGAT.Machine.SLOTS[this.model];
+    var now = this.machine.cpu.cycles, out = [], i;
+    var want = [[slots.fdd840, '840K'], [slots.fdd140, '140K']];
+    for (i = 0; i < want.length; i++) {
+      var slot = want[i][0], card = this.machine.cards[slot];
+      if (!card || !card.lamp) continue;
+      out.push({
+        slot: slot,
+        label: want[i][1],
+        name: this.drives[slot] ? this.drives[slot].name : '',
+        track: card.track,
+        lamp: card.lamp(now),
+      });
+    }
+    return out;
+  };
+
   App.prototype.insert = function (media) {
     var slot = this.slotFor(media.kind);
     var card = this.machine.cards[slot];

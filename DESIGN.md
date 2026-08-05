@@ -87,6 +87,11 @@ Cards are registered by slot and may expose:
 - `read(reg, now)` / `write(reg, v, now)` — the `$C08n` register file
 - `insert(media)` / `media` — anything that takes a disk
 - `reset()` — the bus reset line, if the card latches anything
+- `lamp(now)` — `0` dark, `1` spinning, `2` transferring, for the drive lamps
+
+`lamp()` belongs to the card because only the card knows which of its registers
+is the motor line — port C bit 7 on the 840K, `$C0E9` on the 140K — and which
+read hands a byte to the CPU rather than merely being polled.
 
 `Machine.SLOTS` is the per-model slot table, so nothing else has to know where a
 controller lives.

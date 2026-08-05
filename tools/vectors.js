@@ -134,6 +134,52 @@ function eq(what, got, want) {
   }
 }
 
+// --- the drive lamps --------------------------------------------------------
+// 0 dark, 1 spinning, 2 transferring. The distinction that matters is the last
+// one: the boot loops poll the data register several times for every byte the
+// disk has actually turned far enough to give, so a poll must not light it.
+{
+  const blank = (kind, stride, tracks) => new A.Media({
+    kind, stride, tracks,
+    bytes: new ctx.Uint8Array(stride * tracks),
+    attrs: new ctx.Uint8Array(stride * tracks),
+  });
+
+  {
+    const W = Math.ceil(A.Disk840.LAMP_BUSY);
+    const c = new A.Disk840({});
+    eq('840 lamp dark with no disk', c.lamp(0), 0);
+    c.insert(blank('aim840', 6464, 160));
+    eq('840 lamp dark with the motor off', c.lamp(0), 0);
+    c.control(0x0f);                          // 8255 bit set/reset: port C7 = 1
+    eq('840 lamp spins with the motor on', c.lamp(0), 1);
+    const T = 100000;
+    c.read(4, T);                             // the register that hands a byte over
+    eq('840 lamp over a transfer',
+       [c.lamp(T), c.lamp(T + W - 1), c.lamp(T + W)], [2, 2, 1]);
+    c.control(0x0e);
+    eq('840 lamp dark again when the motor drops', c.lamp(T), 0);
+  }
+
+  {
+    const W = Math.ceil(A.Disk140.LAMP_BUSY);
+    const c = new A.Disk140({});
+    eq('140 lamp dark with no disk', c.lamp(0), 0);
+    c.insert(blank('nib140', 6656, 35));
+    eq('140 lamp dark with the motor off', c.lamp(0), 0);
+    c.access(0x9, 0);                         // $C0E9, motor on
+    eq('140 lamp spins with the motor on', c.lamp(0), 1);
+    const T = 100000;
+    c.read(0xc, T);                           // the disk has not turned yet
+    eq('140 lamp is not lit by a poll', c.lamp(T), 1);
+    c.read(0xc, T + 64);                      // two byte-times on, a byte lands
+    eq('140 lamp over a transfer',
+       [c.lamp(T + 64), c.lamp(T + 64 + W - 1), c.lamp(T + 64 + W)], [2, 2, 1]);
+    c.read(0xc, T + 64);                      // same instant: nothing new to give
+    eq('140 lamp is not held up by a poll', c.lamp(T + 64 + W), 1);
+  }
+}
+
 // --- .fil -------------------------------------------------------------------
 {
   const fil = path.join(H.ROOT, 'examples', 'snake.fil');

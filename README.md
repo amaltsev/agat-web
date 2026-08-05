@@ -44,6 +44,10 @@ register's page field. The default is an Agat-7 with 64K. A filename containing
 Drives: 840K in slot 5 on both machines, 140K in slot 6 on the Agat-9 and slot 3
 on the Agat-7. A dropped image goes to whichever drive can read it.
 
+Each drive has a **lamp** in the bar: dim while its motor line is up, bright
+while bytes are reaching the CPU. Disks of this era take their time — a boot can
+be ten seconds of reading — and the lamp is what tells that apart from a hang.
+
 The two remaining selectors are for the **video interrupt**. The default,
 `raster`, is the hardware as measured off real boards — a level whose edges are
 raster lines, which sets its own rate and so greys the rate selector out. The

@@ -54,6 +54,19 @@
   input[type=file] { display: none; }
   label.dim { color: var(--dim); font-size: 12.5px; cursor: default; }
   input[type=range] { width: 84px; vertical-align: middle; }
+  /* The drive lamps. Red, as the drives' own LEDs are, and as nothing else on
+     the page is: an accent-blue dot among these controls reads as a button. */
+  .lamps { display: flex; gap: 12px; align-items: center; }
+  .lamp {
+    display: flex; gap: 5px; align-items: center;
+    color: var(--dim); font-size: 12.5px; cursor: default;
+  }
+  .lamp i {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--edge); transition: background .12s, box-shadow .12s;
+  }
+  .lamp.on i { background: #6a2a24; }
+  .lamp.busy i { background: #ff5f52; box-shadow: 0 0 7px #ff5f5299; }
   #status {
     color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
     margin-left: auto; text-align: right; max-width: 46ch;
@@ -108,6 +121,7 @@
     <option value="pulse">one per tick</option>
   </select>
   <label class="dim">vol <input id="vol" type="range" min="0" max="100" value="25"></label>
+  <span class="lamps" id="lamps"></span>
   <span id="status">loading…</span>
 </div>
 
@@ -130,7 +144,9 @@
     </td></tr>
     <tr><td><b>Drives</b></td><td>
       840K in slot 5 on both machines; 140K in slot 6 on the Agat-9 and slot 3
-      on the Agat-7. A dropped image goes to whichever drive can read it.
+      on the Agat-7. A dropped image goes to whichever drive can read it. Each
+      drive's lamp is dim while its motor is running and bright while bytes are
+      reaching the CPU — a boot of ten seconds is normal, and looks like one.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
       The Agat-9 is 128K in 8K banks. The Agat-7 is 32/64/128K in 16K banks and
@@ -386,6 +402,39 @@
     ex.appendChild(a);
   });
 
+  // ---- the drive lamps -------------------------------------------------------
+  //
+  // One per drive the machine has, dark when it is empty or stopped, dim while
+  // the motor line is up and bright while bytes are reaching the CPU. A disk
+  // that takes ten seconds to load otherwise looks exactly like a hang.
+
+  var lampsEl = document.getElementById('lamps');
+  var lampEls = [];
+
+  function syncLamps() {
+    var list = app.driveLamps(), i;
+    for (i = lampEls.length; i < list.length; i++) {
+      var el = document.createElement('span');
+      var dot = document.createElement('i');
+      el.className = 'lamp';
+      el.appendChild(dot);
+      el.appendChild(document.createTextNode(list[i].label));
+      lampsEl.appendChild(el);
+      lampEls.push(el);
+    }
+    for (i = 0; i < list.length; i++) {
+      var d = list[i];
+      // A stopped machine is not a spinning drive: cpu.cycles has stopped
+      // advancing, so the lamp would sit frozen wherever the machine left it.
+      var state = app.running ? d.lamp : 0;
+      var cls = 'lamp' + (state === 2 ? ' busy' : state === 1 ? ' on' : '');
+      var title = 'slot ' + d.slot + ' — ' +
+                  (d.name ? d.name + ', track ' + d.track : 'empty');
+      if (lampEls[i].className !== cls) lampEls[i].className = cls;
+      if (lampEls[i].title !== title) lampEls[i].title = title;
+    }
+  }
+
   // A handle for the browser console: agat.machine, agat.video, agat.drives.
   window.agat = app;
 
@@ -396,6 +445,10 @@
   app.init().then(function () {
     say('ready — drop a file, or press Reset for the monitor');
     setInterval(function () { if (app.running) say(app.describe()); }, 500);
+    // The lamps run five times faster than the status line: at 500 ms a drive
+    // that reads a couple of tracks flickers or is missed altogether.
+    syncLamps();
+    setInterval(syncLamps, 100);
   }).catch(function (e) { say('init failed: ' + e.message, true); });
 })();
 </script>

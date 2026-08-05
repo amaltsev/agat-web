@@ -47,6 +47,11 @@
   // 250 kbit/s MFM is one byte every 32 µs; the Agat's 6502 runs at 1.02 MHz.
   var CYCLES_PER_BYTE = 1020484 / 31250;
 
+  // A byte handed to the CPU within the last 50 ms keeps the lamp bright: long
+  // enough to bridge the gaps between sectors, short enough that the end of a
+  // load is visible at once.
+  var LAMP_BUSY = AGAT.CPU_HZ / 20;
+
   function Disk840(opts) {
     opts = opts || {};
     this.rom = opts.rom || null;        // the card's $Cn00 boot ROM
@@ -59,6 +64,7 @@
     this.ready = false;
     this.data = 0;
     this.nextByteAt = 0;                // cpu cycle when the next byte arrives
+    this.lastByteAt = -Infinity;        // cpu cycle the CPU last took a byte
     this.portC = 0;                     // 8255 #1 port C: the drive control lines
     this.trace = null;                  // set to a fn(reg, val, now) to log writes
 
@@ -154,6 +160,7 @@
         return this.cyl === 0 ? 0x00 : 0x40;
       case 4:
         this.ready = false;
+        this.lastByteAt = now;
         return this.data;
       case 5:
         return this.media && this.media.writeProtect ? 0x80 : 0x00;
@@ -175,8 +182,18 @@
     }
   };
 
+  // The drive lamp: 0 dark, 1 spinning, 2 transferring. The real drive's LED
+  // hangs off the motor line, which the $C500 ROM raises before it does
+  // anything else and never lowers; the bright state is what separates a drive
+  // that is reading from one that is merely turning.
+  Disk840.prototype.lamp = function (now) {
+    if (!this.media || !((this.portC >> PC_MOTOR) & 1)) return 0;
+    return now - this.lastByteAt < LAMP_BUSY ? 2 : 1;
+  };
+
   Disk840.TRACK_WORDS = TRACK_WORDS;
   Disk840.TRACKS = TRACKS;
   Disk840.CYCLES_PER_BYTE = CYCLES_PER_BYTE;
+  Disk840.LAMP_BUSY = LAMP_BUSY;
   AGAT.Disk840 = Disk840;
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));
