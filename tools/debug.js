@@ -1,13 +1,24 @@
 // Interactive-ish poking at a booting disk.
 //
-//   node tools/debug.js dump  <disk> <untilPC> <addr> <len>   run, then hexdump
-//   node tools/debug.js pcs   <disk> <untilPC> <n>            log n PCs from there
-//   node tools/debug.js until <disk> <pc> [cycles]            run to a PC, report
-//   node tools/debug.js ring  <disk> <cycles> [n]             last n PCs before the end
-const { loadModules, loadAssets, makeMachine } = require('./harness');
+//   node tools/debug.js dump  <image> <untilPC> <addr> <len>  run, then hexdump
+//   node tools/debug.js pcs   <image> <untilPC> <n>           log n PCs from there
+//   node tools/debug.js until <image> <pc> [cycles]           run to a PC, report
+//   node tools/debug.js ring  <image> <cycles> [n]            last n PCs before the end
+//   node tools/debug.js crash <image> [cycles] [n]            how it got somewhere bad
+//   node tools/debug.js flow  <image> [cycles] [n] [fromPC]   taken branches, loops folded
+//
+// AGAT_MODEL=7|9 overrides the model the image implies, AGAT_BOOT=cold skips
+// the boot and cold-starts into the monitor, AGAT_SP=xx overrides the stack
+// pointer bootSlot would have set.
+const H = require('./harness');
+const { loadModules, loadRoms, makeMachine } = H;
 
 const cmd = process.argv[2];
-const diskName = process.argv[3] || 'MS_11';
+const image = process.argv[3];
+if (!cmd || !image) {
+  console.log('usage: node tools/debug.js dump|pcs|until|ring|crash|flow <image> ...');
+  process.exit(2);
+}
 const ctx = loadModules();
 
 const hex = (n, w) => (n >>> 0).toString(16).toUpperCase().padStart(w || 4, '0');
@@ -38,9 +49,20 @@ function runTo(m, targetPC, maxCycles) {
   return false;
 }
 
-loadAssets(ctx, diskName).then(({ roms, disk }) => {
-  const m = makeMachine(ctx, roms, disk, { model: Number(process.env.AGAT_MODEL) || 9 });
-  if (process.env.AGAT_BOOT === "reset") m.reset(); else m.bootDisk(process.env.AGAT_SP ? parseInt(process.env.AGAT_SP,16) : undefined);
+loadRoms(ctx).then((roms) => {
+  // Same boot path as tools/check.js: insert the media, enter the controller's
+  // ROM in whichever slot took it.
+  const sniffed = H.sniffFile(ctx, image);
+  const model = Number(process.env.AGAT_MODEL) || sniffed.hintModel || 9;
+  const m = makeMachine(ctx, roms, { model: model });
+  let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
+  if (sniffed.kind && sniffed.kind !== 'fil') {
+    slot = H.insert(m, ctx.AGAT.mount(sniffed));
+  }
+
+  m.reset();
+  if (process.env.AGAT_BOOT !== 'cold') m.bootSlot(slot);
+  if (process.env.AGAT_SP) m.cpu.s = parseInt(process.env.AGAT_SP, 16) & 0xff;
   const cpu = m.cpu;
 
   if (cmd === 'dump') {
@@ -127,6 +149,6 @@ loadAssets(ctx, diskName).then(({ roms, disk }) => {
     console.log(out.map((o) => o.line + (o.n > 1 ? `   x${o.n}` : '')).join('\n'));
     console.log('--- stopped at $%s after %d cycles', hex(cpu.pc), cpu.cycles);
   } else {
-    console.log('usage: dump|pcs|until|ring|flow');
+    console.log('usage: dump|pcs|until|ring|crash|flow');
   }
 }).catch((e) => { console.error(e); process.exit(1); });

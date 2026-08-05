@@ -66,7 +66,7 @@ def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument('--data', default=os.environ.get('AGAT_DATA'),
                     help='agat-emulator data dir containing roms/ fnts/ palette/')
-    ap.add_argument('--agatf', default='/home/am/src/agat/AgatF-emulator',
+    ap.add_argument('--agatf', default=os.environ.get('AGAT_F'),
                     help='AgatF distribution dir (fallback source)')
     ap.add_argument('--check', action='store_true',
                     help='only report what would be used, with hashes')

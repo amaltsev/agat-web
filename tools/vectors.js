@@ -79,10 +79,11 @@ function eq(what, got, want) {
 
 // --- 840K checksum ----------------------------------------------------------
 // Self-validating: pull real sectors out of an .aim and check that the stored
-// checksum is what our routine computes.
+// checksum is what our routine computes. No .aim ships with the repo, so point
+// AGAT_AIM at one to run this; without it the block just skips.
 {
-  const aim = path.join(H.ROOT, '..', 'master-serge', 'disks', 'MS_11.aim');
-  if (fs.existsSync(aim)) {
+  const aim = process.env.AGAT_AIM;
+  if (aim && fs.existsSync(aim)) {
     const raw = fs.readFileSync(aim);
     const TW = 6464;
     let checked = 0, bad = 0;
@@ -98,7 +99,7 @@ function eq(what, got, want) {
     }
     eq('aim840 checksum over ' + checked + ' real sectors', bad, 0);
   } else {
-    console.log('skip: aim840 checksum (no local .aim)');
+    console.log('skip: aim840 checksum (set AGAT_AIM to an .aim to run it)');
   }
 }
 
