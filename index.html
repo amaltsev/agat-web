@@ -150,8 +150,6 @@
 <script src="src/fil.js"></script>
 <script src="src/app.js"></script>
 <script>
-window.__errs = [];
-window.addEventListener('error', function (e) { window.__errs.push(String(e.message) + ' @' + e.filename + ':' + e.lineno); });
 (function () {
   var screen = document.getElementById('screen');
   var statusEl = document.getElementById('status');
@@ -247,7 +245,13 @@ window.addEventListener('error', function (e) { window.__errs.push(String(e.mess
     ex.appendChild(a);
   });
 
-  window.__app = app;
+  // A handle for the browser console: agat.machine, agat.video, agat.drives.
+  window.agat = app;
+
+  window.addEventListener('error', function (e) {
+    say(e.message + ' @' + String(e.filename).split('/').pop() + ':' + e.lineno, true);
+  });
+
   app.init().then(function () {
     say('ready — drop a file, or press Reset for the monitor');
     setInterval(function () { if (app.running) say(app.describe()); }, 500);
