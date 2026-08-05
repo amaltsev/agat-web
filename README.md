@@ -83,6 +83,12 @@ byte of the address. The native raster is 512 × 256.
 | 512×256×1 | Agat-9 | same interleave |
 | Apple text / lores / hires | Agat-9 only | 280×192, mono |
 
+Video interrupts follow the 50 Hz raster: the start of a frame raises NMI and a
+fixed number of sub-frame ticks per frame raise IRQ (20 on the Agat-7, 40 on the
+Agat-9). Software arms them at `$C04x` and disarms at `$C05x` on the Agat-7 or
+`$C02x` on the Agat-9 — different addresses on the two machines. `$C019` reads
+the vertical-blank flag in bit 7.
+
 Two things worth knowing if you read the code. The video controller scans
 **physical** RAM and does not go through the CPU's bank windows — a page number
 reaches `$1E000`, well past the 64K the CPU can see at once. And the glyph bit
@@ -94,8 +100,7 @@ window belongs to the font: Agat-7 characters live in bits 7..1, Agat-9 in bits
 Disk **writing** — images are read-only and the write-protect bit says so.
 Several Agat-9 system disks print «СИСТЕМА ИСПОРЧЕНА» as a result.
 Also absent: the Agat-7 ДопОЗУ extra-RAM card, NTSC artefact colour for the
-Apple modes, video interrupts, 80-column and Apple //e modes, mouse, printer
-and tape.
+Apple modes, 80-column and Apple //e modes, mouse, printer and tape.
 
 ---
 

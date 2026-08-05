@@ -67,7 +67,19 @@
     this.mixed = false;
     this.page2 = false;
     this.hires = false;
+    // Video interrupts. The Agat raster runs at 50 Hz: the start of a frame
+    // raises NMI, and a fixed number of sub-frame ticks per frame raise IRQ
+    // (20 on the Agat-7, 40 on the Agat-9). Software arms them at $C04x and
+    // disarms at $C05x on the Agat-7 or $C02x on the Agat-9 — note that those
+    // are different addresses on the two machines, and swapping them hangs
+    // software that otherwise runs.
     this.videoInts = false;
+    this.subPerFrame = this.model === 7 ? 20 : 40;
+    this.framePeriod = 1020484 / 50;
+    this.subPeriod = this.framePeriod / this.subPerFrame;
+    this.nextSub = 0;
+    this.subCount = 0;
+    this.inVblank = false;
     this.speaker = 0;           // toggles; the audio layer samples the edges
     this.speakerEdges = [];
     this.kbdLatch = 0;
@@ -97,7 +109,26 @@
 
   // Cold start through the monitor: its reset code scans the slots, finds the
   // 840K card's signature bytes and enters it with JMP ($0000).
+  // Called before every instruction; cheap when interrupts are disarmed.
+  Machine.prototype.pollInterrupts = function (now) {
+    if (!this.videoInts) { this.nextSub = now + this.subPeriod; return; }
+    while (now >= this.nextSub) {
+      this.nextSub += this.subPeriod;
+      if (++this.subCount >= this.subPerFrame) {
+        this.subCount = 0;
+        this.inVblank = true;
+        this.cpu.nmi();                     // start of frame
+      } else {
+        this.inVblank = false;
+        this.cpu.irq();                     // sub-frame raster tick
+      }
+    }
+  };
+
   Machine.prototype.reset = function () {
+    this.videoInts = false;
+    this.subCount = 0;
+    this.nextSub = this.cpu ? this.cpu.cycles + this.subPeriod : 0;
     this.mode = this.prevMode = 0;
     this.appleVideo = false;
     this.palette.reset();
@@ -257,10 +288,12 @@
       this.note(a, 0xff, false);
       return 0xff;
     }
+    if (lo === 0x19) { v = this.inVblank ? 0x80 : 0x00; this.note(a, v, false); return v; }
     switch (lo & 0xf0) {
       case 0x00: v = this.kbdLatch; break;                 // $C000 keyboard
       case 0x10: this.kbdLatch &= 0x7f; v = this.kbdLatch; break;
-      case 0x20: v = 0; break;                             // cassette
+      case 0x20: if (this.model === 9) this.setVideoInts(false); v = 0; break;
+      case 0x40: this.setVideoInts(true); v = 0; break;
       case 0x30: this.toggleSpeaker(); v = 0; break;
       case 0x50: this.videoSwitch(lo & 0x0f); v = 0; break;
       case 0x60: v = this.readAnalog(lo & 0x0f); break;
@@ -285,6 +318,8 @@
     if (lo >= 0xf0 && this.model === 7) { this.mem7.setState(lo & 0x0f); return; }
     switch (lo & 0xf0) {
       case 0x10: this.kbdLatch &= 0x7f; break;
+      case 0x20: if (this.model === 9) this.setVideoInts(false); break;
+      case 0x40: this.setVideoInts(true); break;
       case 0x30: this.toggleSpeaker(); break;
       case 0x50: this.videoSwitch(lo & 0x0f); break;
       default: break;
@@ -315,8 +350,16 @@
   // $C050-$C05F. On the Agat-7 this whole page disables video interrupts and
   // touches nothing else. On the Agat-9 the low half is the Apple video
   // switches and the high half is the palette register.
+  Machine.prototype.setVideoInts = function (on) {
+    if (on && !this.videoInts) {
+      this.subCount = 0;
+      this.nextSub = this.cpu.cycles + this.subPeriod;
+    }
+    this.videoInts = on;
+  };
+
   Machine.prototype.videoSwitch = function (n) {
-    if (this.model === 7) { this.videoInts = false; return; }
+    if (this.model === 7) { this.setVideoInts(false); return; }
     if (n & 8) { this.palette.select(n & 7); return; }
     this.appleVideo = true;
     switch (n) {

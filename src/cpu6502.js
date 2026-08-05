@@ -17,7 +17,8 @@
     this.pc = 0;
     this.cycles = 0;
     this.halted = false;      // set by a JAM/KIL opcode
-    this.irqLine = false;
+    this.irqLine = false;     // level-triggered
+    this.irqPending = false;  // one-shot, for sources with no line to hold
     this.nmiEdge = false;
   }
 
@@ -29,6 +30,7 @@
   };
 
   CPU.prototype.nmi = function () { this.nmiEdge = true; };
+  CPU.prototype.irq = function () { this.irqPending = true; };
 
   // ---- helpers ------------------------------------------------------------
 
@@ -63,12 +65,16 @@
   CPU.prototype.step = function () {
     var start = this.cycles;
 
+    // Timed interrupt sources get a chance before every instruction.
+    if (this.bus.pollInterrupts) this.bus.pollInterrupts(this.cycles);
+
     if (this.nmiEdge) {
       this.nmiEdge = false;
       this.interrupt(0xfffa, false);
       return this.cycles - start;
     }
-    if (this.irqLine && !(this.p & I)) {
+    if ((this.irqLine || this.irqPending) && !(this.p & I)) {
+      this.irqPending = false;
       this.interrupt(0xfffe, false);
       return this.cycles - start;
     }
