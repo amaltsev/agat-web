@@ -9,6 +9,9 @@
     color-scheme: dark;
     --bg: #14161a; --panel: #1d2026; --edge: #2c313a;
     --ink: #d7dbe2; --dim: #8b93a1; --accent: #79c0ff;
+    /* 768 of canvas — three 256-pixel columns — plus the panel's padding and
+       border, so the picture lands on a whole multiple of its own raster. */
+    --page: 790px;
   }
   * { box-sizing: border-box; }
   body {
@@ -17,11 +20,10 @@
     display: flex; flex-direction: column; align-items: center;
     min-height: 100vh; padding: 18px 12px 32px;
   }
-  h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
-  .sub { color: var(--dim); font-size: 12.5px; margin-bottom: 16px; text-align: center; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 16px; }
   .screen {
     background: #000; border: 1px solid var(--edge); border-radius: 6px;
-    padding: 10px; width: min(94vw, 780px); position: relative;
+    padding: 10px; width: min(94vw, var(--page)); position: relative;
   }
   .screen.drag { border-color: var(--accent); }
   canvas {
@@ -36,7 +38,7 @@
   .screen.drag .drophint, .screen.empty .drophint { opacity: 1; }
   .bar {
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-    width: min(94vw, 780px); margin-top: 10px;
+    width: min(94vw, var(--page)); margin-top: 10px;
   }
   select, button, label.file {
     font: inherit; color: var(--ink); background: var(--panel);
@@ -46,6 +48,9 @@
   button:hover, select:hover, label.file:hover { border-color: var(--accent); }
   button:active { transform: translateY(1px); }
   select:disabled { opacity: .45; cursor: default; }
+  /* ЛАТ and РУС are not the same width, and the bar must not shuffle
+     under the pointer when the layout is switched. */
+  #layout { min-width: 8ch; text-align: center; }
   input[type=file] { display: none; }
   label.dim { color: var(--dim); font-size: 12.5px; cursor: default; }
   input[type=range] { width: 84px; vertical-align: middle; }
@@ -55,7 +60,7 @@
   }
   #status.err { color: #ff9c8a; }
   .help {
-    width: min(94vw, 780px); margin-top: 16px; color: var(--dim);
+    width: min(94vw, var(--page)); margin-top: 16px; color: var(--dim);
     font-size: 12.5px; border-top: 1px solid var(--edge); padding-top: 12px;
   }
   .help b { color: var(--ink); font-weight: 600; }
@@ -72,7 +77,6 @@
 <body>
 
 <h1>Agat-7 / Agat-9</h1>
-<div class="sub">A Soviet Apple-II-adjacent micro, in the browser. Drop a disk or a program on the screen.</div>
 
 <div class="screen empty" id="screen">
   <canvas id="canvas" width="512" height="256"></canvas>
@@ -118,8 +122,8 @@
     the machine's own monitor, which is where you land with no disk in.
   </p>
   <table>
-    <tr><td><b>What it takes</b></td><td>
-      <code>.aim</code> flux images, <code>.dsk</code> sector images and
+    <tr><td><b>Takes</b></td><td>
+      <code>.aim</code> tagged track images, <code>.dsk</code> sector images and
       <code>.nib</code> nibble images — 140K and 840K of each — plus
       <code>.fil</code> program files. Format is detected by size, not by
       extension, because Agat images in the wild are routinely misnamed.
@@ -134,8 +138,15 @@
       containing <code>7a</code> or <code>9a</code> picks the machine for you
       until you choose one yourself.
     </td></tr>
+    <tr><td><b>Bookmarks</b></td><td>
+      The machine, its RAM size and both interrupt settings ride in the address,
+      so a configuration that runs a program properly can be kept or passed on.
+    </td></tr>
   </table>
   <p id="examples"></p>
+  <p>
+    Source: <a href="https://github.com/amaltsev/agat-web">github.com/amaltsev/agat-web</a>.
+  </p>
   <p>
     ROMs, character generators and the palette come from
     <a href="https://sourceforge.net/projects/agatemulator/">Agat Emulator</a>
@@ -167,10 +178,87 @@
 (function () {
   var screen = document.getElementById('screen');
   var statusEl = document.getElementById('status');
+  var modelSel = document.getElementById('model');
+  var ramSel = document.getElementById('ram');
+  var rateSel = document.getElementById('irq');
+  var holdSel = document.getElementById('hold');
+
+  // ---- the settings, in the URL ---------------------------------------------
+  //
+  // Which machine a program wants — Agat-7 at 64K, an interrupt model, and the
+  // rate the two free-running models run at — is part of knowing how to run it,
+  // so it lives in the address and a working configuration is a bookmark. The
+  // fragment rather than a query string, and location.replace() rather than
+  // history.replaceState(): a page opened straight off the disk has a null
+  // origin, and replaceState() refuses to be handed a file:// URL there.
+  //
+  // The file itself is not in the URL. Something that can carry it is the .agc
+  // container in TODO.md.
+
+  function readUrl() {
+    var out = {};
+    location.hash.replace(/^#/, '').split('&').forEach(function (kv) {
+      if (!kv) return;
+      var eq = kv.indexOf('=');
+      out[decodeURIComponent(eq < 0 ? kv : kv.slice(0, eq))] =
+        eq < 0 ? '' : decodeURIComponent(kv.slice(eq + 1));
+    });
+    return out;
+  }
+
+  // Only values the control itself offers are accepted; anything else — a typo,
+  // a rate no option carries — leaves the control on its default rather than
+  // blanking it, which is what assigning an unknown value to a <select> does.
+  function pick(sel, value) {
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === String(value)) { sel.value = sel.options[i].value; return true; }
+    }
+    return false;
+  }
+
+  function saveUrl() {
+    var q = ['model=' + modelSel.value];
+    if (modelSel.value === '7') q.push('ram=' + (Number(ramSel.value) >> 10));
+    q.push('irq=' + holdSel.value);
+    // The rate belongs to the free-running models; under `raster` it comes off
+    // the line counter, and 0 is "whatever the machine does" either way.
+    if (holdSel.value !== 'raster' && rateSel.value !== '0') q.push('rate=' + rateSel.value);
+    location.replace('#' + q.join('&'));
+  }
+
+  var url = readUrl();
+  var pinned = pick(modelSel, url.model);
+  pick(ramSel, Number(url.ram) * 1024);
+  pick(holdSel, url.irq);
+  pick(rateSel, url.rate);
+  ramSel.disabled = modelSel.value === '9';
+  rateSel.disabled = holdSel.value === 'raster';
+
   var app = new AGAT.App({
     canvas: document.getElementById('canvas'),
     onStatus: say,
+    model: Number(modelSel.value),
+    ramSize: Number(ramSel.value),
+    irqModel: holdSel.value,
+    subFrameHz: rateSel.disabled ? 0 : Number(rateSel.value),
   });
+  // A machine named in the URL was chosen as deliberately as one picked from
+  // the menu, so a dropped file's 7a/9a hint does not overrule it either.
+  app.modelPinned = pinned;
+
+  // The machine the App settled on, back into the controls and the tab. Worth
+  // doing after a load as well as after a menu choice: an unpinned machine
+  // follows the 7a/9a in a filename, and the title is what tells one tab from
+  // another when an Agat-7 and an Agat-9 are open side by side.
+  function syncMachineUI() {
+    modelSel.value = String(app.model);
+    // The Agat-9's 128K is not a choice, and writing it into the menu would
+    // still be sitting there when the machine went back to being an Agat-7.
+    if (app.model === 7) ramSel.value = String(app.ramSize);
+    ramSel.disabled = app.model === 9;
+    document.title = 'Agat-' + app.model + ' ' + (app.ramSize >> 10) + 'K — emulator';
+  }
+  syncMachineUI();
 
   // Browsers will not let an AudioContext start without a user gesture, so take
   // the first one of any kind. Wiring this only to the canvas and the keyboard
@@ -195,6 +283,7 @@
       chain = chain.then(function () {
         return app.readFile(f).then(function () {
           screen.classList.remove('empty');
+          syncMachineUI();
         });
       }).catch(function (e) { say(e.message, true); });
     });
@@ -220,36 +309,35 @@
     if (e.dataTransfer && e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
   });
 
-  var modelSel = document.getElementById('model');
-  var ramSel = document.getElementById('ram');
   function applyModel() {
     app.modelPinned = true;
-    ramSel.disabled = modelSel.value === '9';
     app.setModel(Number(modelSel.value), Number(ramSel.value));
+    syncMachineUI();
+    saveUrl();
   }
   modelSel.addEventListener('change', applyModel);
   ramSel.addEventListener('change', applyModel);
-  ramSel.disabled = modelSel.value === '9';
 
   var layoutBtn = document.getElementById('layout');
   layoutBtn.addEventListener('click', function () {
     layoutBtn.textContent = app.toggleLayout() ? 'РУС' : 'ЛАТ';
   });
 
-  document.getElementById('irq').addEventListener('change', function (e) {
+  rateSel.addEventListener('change', function (e) {
     var hz = Number(e.target.value);
     say(hz ? 'sub-frame interrupt now ' + Math.round(app.setSubFrameHz(hz)) + ' Hz'
            : 'sub-frame interrupt back to the machine default');
     if (!hz) { app.subFrameHz = 0; app.build(); }
+    saveUrl();
   });
 
   // The rate selector belongs to the two free-running models; under `raster`
   // the rate comes off the line counter and there is nothing to choose.
-  var rateSel = document.getElementById('irq');
-  document.getElementById('hold').addEventListener('change', function (e) {
+  holdSel.addEventListener('change', function (e) {
     var name = e.target.value;
     rateSel.disabled = name === 'raster';
     app.setIrqModel(name);
+    saveUrl();
     say(name === 'raster'
         ? 'interrupt off the line counter — ' +
           Math.round(AGAT.CPU_HZ / app.machine.irqPeriod()) + ' Hz'
@@ -288,6 +376,7 @@
           }
           app.load(new Uint8Array(b), e[0].split('/').pop());
           screen.classList.remove('empty');
+          syncMachineUI();
         })
         .catch(function () {
           say('examples need a served page — on file:// use Open…', true);

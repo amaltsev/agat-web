@@ -24,7 +24,7 @@ an `.aim`.
 
 | | |
 |---|---|
-| `.aim` | flux-level 840K images, 160 × 6464 16-bit words |
+| `.aim` | tagged track images, 840K, 160 × 6464 16-bit words — data byte plus attribute |
 | `.dsk` | sector images, 140K and 840K, with or without the "Agathe" header |
 | `.nib` | nibble images, 140K (35 × 6656) and 840K (160 × 21 × 282) |
 | `.fil` | a single program with its DOS 3.3 catalogue entry, poked straight into memory |
@@ -51,6 +51,19 @@ other two are agat-emulator's readings of it, kept for comparison. See
 [HARDWARE.md](HARDWARE.md#the-delivery-model). They only matter for software
 that sequences sound on the interrupt count, where they set both the pitch and
 the tempo — an octave apart between `held` and `raster`.
+
+Every one of those settings rides in the address, so a machine that runs a
+program properly is a bookmark:
+
+    index.html#model=7&ram=64&irq=raster
+    index.html#model=7&ram=128&irq=held&rate=500
+
+`model` is 7 or 9, `ram` is 32, 64 or 128 (Agat-7 only — the Agat-9 is always
+128K), `irq` is `raster`, `held` or `pulse`, and `rate` is the sub-frame
+interrupt in Hz, which only the last two obey. A machine named in the URL is
+treated as chosen, so a `7a`/`9a` filename does not override it. The file
+itself is not in the address; carrying that is what the `.agc` container in
+[TODO.md](TODO.md) is for.
 
 ### Examples
 

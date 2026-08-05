@@ -17,8 +17,9 @@
     this.speaker = new AGAT.Speaker();
     this.image = null;
     this.running = false;
-    this.model = 7;                       // the commoner machine, and the one
-    this.ramSize = 0x10000;               // most native software expects
+    this.model = opts.model === 9 ? 9 : 7;     // the commoner machine, and the
+    this.ramSize = this.model === 9            // one most native software
+      ? 0x20000 : (opts.ramSize || 0x10000);   // expects
 
     this.modelPinned = false;
     this.drives = {};                     // slot -> {name, kind}
