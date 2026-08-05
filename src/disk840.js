@@ -1,0 +1,172 @@
+// Agat 840K floppy controller (контроллер НГМД 840К), the card whose boot ROM
+// is agatF-fd800.bin at $C500.
+//
+// The card is two КР580ВВ55 (8255) parports wired to a drive; software sees 16
+// registers at $C080 + slot*16. What the ROM at $C500 and the on-disk drivers
+// actually use:
+//
+//   +3 write   8255 #1 control: mode words, and PC bit set/reset ($0x)
+//   +7 write   8255 #2 control: same
+//   +9 write   strobe — step pulse / drive command latch
+//   +A write   strobe — clear the "sync seen" latch
+//   +1 read    drive status: bit7 busy, bit6 index/error
+//   +4 read    data byte from the head, clears "ready"
+//   +6 read    bit7 = a byte is waiting, bit6 = no sync mark seen since the strobe
+//
+// The .aim image is exactly this byte stream: one byte per 16-bit word, low byte
+// the data, high byte an attribute. That is why no GCR/MFM decoding appears
+// anywhere — the card's separator already did it, and the image is taken from
+// the separator's output. Attribute values, per the HxC thread on the format
+// (hxc2001.com/floppy/forum/viewtopic.php?t=1385):
+//
+//   0x01, 0x80   desync mark          0x02   end of track
+//   0x03         index mark start     0x13   index mark end
+//
+// The +A strobe does not seek to the next sync mark; it only clears a flip-flop.
+// The head keeps streaming byte after byte either way, and bit6 goes low once a
+// flagged byte has gone past. Read the ROM at $C55C against $C574 and it can
+// only be that: the first strobe is followed by a wait on bit6 (find the
+// address mark), the second by a wait on bit7 alone (just take the next byte).
+// A model that re-searched on every strobe would skip from $95 to the next mark
+// and never match the $6A behind it.
+//
+// Media: MFM, 300 rpm, 250 kbit/s — one byte every 32 µs, which at the Agat's
+// 1.02 MHz is 32.66 cycles. 80 cylinders x 2 sides x 21 sectors x 256 bytes =
+// 860,160 bytes, and the two sides interleave: logical track = cylinder*2 + side.
+(function (AGAT) {
+  'use strict';
+
+  var TRACKS = 160;
+  var TRACK_WORDS = 6464;
+
+  var A_DESYNC = 0x81;      // 0x01 and 0x80 both mark a desync
+  var A_END = 0x02;
+  var A_INDEX_START = 0x03;
+  var A_INDEX_END = 0x13;
+
+  // 250 kbit/s MFM is one byte every 32 µs; the Agat's 6502 runs at 1.02 MHz.
+  var CYCLES_PER_BYTE = 1020484 / 31250;
+
+  function Disk840(opts) {
+    opts = opts || {};
+    this.rom = opts.rom || null;        // the card's $Cn00 boot ROM
+    this.media = null;
+    this.cyl = 0;                       // head cylinder, 0..79
+    this.side = 0;                      // 0 or 1
+    this.pos = 0;                       // byte index within the track
+    this.syncSeen = false;              // a desync mark has passed since the strobe
+    this.atIndex = false;               // head is inside an index mark
+    this.ready = false;
+    this.data = 0;
+    this.nextByteAt = 0;                // cpu cycle when the next byte arrives
+    this.portC = 0;                     // 8255 #1 port C: the drive control lines
+    this.trace = null;                  // set to a fn(reg, val, now) to log writes
+
+    this.stepOutward = opts.stepOutward === undefined ? 1 : opts.stepOutward;
+    if (opts.media) this.insert(opts.media);
+  }
+
+  Disk840.prototype.insert = function (media) {
+    this.media = media;
+    this.pos = 0;
+    this.ready = false;
+    this.syncSeen = false;
+  };
+
+  Disk840.prototype.eject = function () { this.media = null; };
+
+  // Which of the 160 stored tracks is under the head: cylinder 0 side 0 is
+  // track 0, cylinder 0 side 1 is track 1, cylinder 1 side 0 is track 2, and so
+  // on — which is what lets a 140K disk be read as sectors 0-16 of the evens.
+  Object.defineProperty(Disk840.prototype, 'track', {
+    get: function () { return this.cyl * 2 + this.side; },
+  });
+
+  Disk840.prototype.hasDisk = function () { return !!this.media; };
+
+  var PC_DIR = 2;      // port C bit 2: step direction
+  var PC_DRIVE = 3;    // port C bit 3: drive select
+  var PC_SIDE = 4;     // port C bit 4: head/side select
+  var PC_MOTOR = 7;    // port C bit 7: motor
+
+  // One step pulse. Clamping at the end stops is what makes the boot ROM's
+  // four-pulse recalibrate land on cylinder 0 no matter where it started.
+  Disk840.prototype.step = function () {
+    var out = ((this.portC >> PC_DIR) & 1) === this.stepOutward;
+    this.cyl += out ? 1 : -1;
+    if (this.cyl < 0) this.cyl = 0;
+    if (this.cyl > 79) this.cyl = 79;
+    this.ready = false;
+  };
+
+  // 8255 control port. Values with bit 7 clear are the chip's bit set/reset
+  // command for port C: bits 3-1 pick the bit, bit 0 is the value. Values with
+  // bit 7 set are mode words, which say nothing about the drive lines.
+  Disk840.prototype.control = function (v) {
+    if (v & 0x80) return;
+    var bit = (v >> 1) & 7;
+    if (v & 1) this.portC |= 1 << bit;
+    else this.portC &= ~(1 << bit);
+    if (bit === PC_SIDE) this.side = (this.portC >> PC_SIDE) & 1;
+  };
+
+  // Spin the disk forward to `now`. Bytes the CPU was too slow to collect are
+  // lost, exactly as they would be on the real drive.
+  Disk840.prototype.tick = function (now) {
+    var m = this.media;
+    if (!m || now < this.nextByteAt) return;
+    var track = this.track;
+    if (track >= m.tracks) return;
+    var len = m.trackLen[track] || m.stride;
+    var steps = 1 + Math.floor((now - this.nextByteAt) / CYCLES_PER_BYTE);
+    if (steps > len) steps = len;
+    var base = m.trackBase(track);
+    for (var i = 0; i < steps; i++) {
+      this.pos = this.pos + 1 >= len ? 0 : this.pos + 1;
+      var a = m.attrs[base + this.pos];
+      if (a & A_DESYNC) this.syncSeen = true;
+      else if (a === A_INDEX_START) this.atIndex = true;
+      else if (a === A_INDEX_END) this.atIndex = false;
+    }
+    this.data = m.bytes[base + this.pos];
+    this.ready = true;
+    this.nextByteAt = now + CYCLES_PER_BYTE;
+  };
+
+  Disk840.prototype.read = function (reg, now) {
+    this.tick(now);
+    switch (reg) {
+      case 1:
+        // Drive status: bit7 busy, bit6 the track-0 sensor. The boot ROM steps
+        // four times, spins until bit7 clears, then reverses if bit6 is still
+        // set. Answering "ready, and bit6 clear once we are home" makes that
+        // recalibrate terminate on cylinder 0.
+        return this.cyl === 0 ? 0x00 : 0x40;
+      case 4:
+        this.ready = false;
+        return this.data;
+      case 5:
+        return this.media && this.media.writeProtect ? 0x80 : 0x00;
+      case 6:
+        return (this.ready ? 0x80 : 0) | (this.syncSeen ? 0 : 0x40);
+      default:
+        return 0;
+    }
+  };
+
+  Disk840.prototype.write = function (reg, val, now) {
+    this.tick(now);
+    if (this.trace) this.trace(reg, val, now);
+    switch (reg) {
+      case 0x03: this.control(val); break;      // 8255 #1 — the drive lines
+      case 0x09: this.step(); break;            // step pulse
+      case 0x0a: this.syncSeen = false; break;  // clear the sync latch
+      default: break;                           // 8255 #2 mode words, data port
+    }
+  };
+
+  Disk840.TRACK_WORDS = TRACK_WORDS;
+  Disk840.TRACKS = TRACKS;
+  Disk840.CYCLES_PER_BYTE = CYCLES_PER_BYTE;
+  AGAT.Disk840 = Disk840;
+})(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));
