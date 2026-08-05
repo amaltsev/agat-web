@@ -133,58 +133,120 @@ mask real decode bugs, so the Agat-7 path must not have one.
 
 ## Interrupts
 
-Two **independent** timers, both derived from the 50 Hz raster:
+Both interrupts come off the video controller's line counter, and on the real
+boards there is only one of those. A frame is **312 lines of 672 clocks** of the
+10.5 MHz video crystal: a 15625 Hz line rate and a 50.08 Hz frame, with 256
+lines displayed and 56 blanked. That structure is measured, not inferred —
+[agatcomp's clock-frequency page][clocks] reports 19.97093 ms between frame
+interrupts, averaged over six boards with a calibrated Ч3-63 counter, and
+312 × 672 / 10.4984 MHz predicts 19.9710 ms.
 
-- **frame → NMI**, every 20000 µs
-- **sub-frame → IRQ**, that divided by 20 on the Agat-7 or 40 on the Agat-9
+Software arms both at `$C04x` and disarms them at `$C05x` on the Agat-7 or
+`$C02x` on the Agat-9 — **different addresses on the two machines**, and
+swapping them hangs software that otherwise runs. `$C019` reads the blanking
+state in bit 7.
 
-They are not one counter. Every sub-frame tick raises IRQ, *including* the one
-that coincides with a frame, which also raises NMI. Folding them into a single
-counter drops one IRQ in twenty, and that is audible in software that sequences
-sound on the interrupt count.
+### Where each signal comes from
 
-Software arms them at `$C04x` and disarms at `$C05x` on the Agat-7 or `$C02x` on
-the Agat-9 — **different addresses on the two machines**, and swapping them hangs
-software that otherwise runs. `$C019` reads the vertical-blank flag in bit 7.
+On the **Agat-7** the line counter is a pair of К555ИЕ7 (74193) at D51/D52
+counting `~СР`, one step per line. Its load inputs are grounded and
+`NAND(~КР, СЧY3, СЧY4, СЧY5)` reloads it at Y=56, while the carry out of Y=255
+toggles the `КР` flip-flop — so the count runs **0…255 displayed, then 0…55
+blanked**, 312 lines. The IRQ line is `СЧY4`, bit 4 of that counter, taken
+straight to the bus; NMI is `КР`. Both reach the bus through one К155ЛП8 (74125
+quad tri-state buffer) at D94, whose enables come from a К155ТМ2 at D83 that
+`~C04X` presets and `~C05X` clears. That is the whole circuit: the arming latch
+does not gate a pulse, it connects a free-running counter to the bus.
 
-`N_RB_7 = 16` is the *repaint* block count and is unrelated: `N_RBINT_7 = 20` is
-a separate interrupt divisor, and 20 × 50 = 1000 Hz looks chosen to be a round
-number as much as anything.
+On the **Agat-9** there is no counter at all. Two К573РФ2 PROMs at D62/D63 plus
+К555ТМ9 registers form a state machine: the current line state addresses the
+PROMs, which return the next state along with `КГИ`, `КСИ` and `VIRQ`. Running
+[the replica project's ROM images][repl] through it gives a cycle of exactly
+**312 states**, `VIRQ` low on 39 of them — every line ≡ 7 (mod 8), the last line
+of each character row — and `КГИ` low for 256 lines and high for 56, the
+opposite sense to the Agat-7's `КР`. `VIRQ` is bit 7 of D63, and D19 is another
+К155ЛП8 buffering it to the 6502 with a 3K3 pull-up.
 
-### The delivery model, which is not settled
+D63's address carries three mode bits (`VCA`, `VCB` and one more) above the line
+number, so the Agat-9's interrupt pattern is per video mode: the block matching
+the measured board is the one-in-eight modelled here, two other blocks give two
+lines in eight confined to lines 70…197, and four never assert at all. Only the
+first is emulated, and the mode register does not reach the pattern.
 
-agat-emulator raises the sub-frame interrupt as a **level** and drops it only
-`N_RBINT_DELAY` cycles later — 600 on the Agat-7, 70 on the Agat-9
-(`videosel.c:110` passes the delay to `SYS_COMMAND_IRQ`; `cpu.c` stores it in
-`int_ticks[0]`, and `decrement_int` issues `CPU_INTR_NOIRQ` when it runs out).
+### What that produces
 
-A 6502 whose IRQ line is still asserted re-enters the handler as soon as `RTI`
-restores `I`. So a short handler runs **many times per tick** — roughly 600
-divided by its own length. `examples/irqtest.dsk` measures 10.3 entries per tick
-here.
+| | Agat-7 | Agat-9 |
+|---|---|---|
+| sub-frame IRQ | bit 4 of the line counter | one line in eight, from the PROM |
+| period | 32 lines, **488.2 Hz** | 8 lines, **1952.8 Hz** |
+| asserted | 16 lines ≈ 1045 cycles | 1 line ≈ 65 cycles |
+| per frame | 10, one release cut to 8 lines | 39 |
+| NMI edge | blanking starts | blanking ends |
 
-That is reproduced, because it is what the reference emulator does and what
-software sounds right under. But it should be treated as unconfirmed, for two
-reasons. Re-entrancy makes a handler run a number of times determined by its own
-length, which is not something anyone writes music against. And a genuinely
-level-triggered source normally requires the handler to acknowledge it — RISE
-OUT's `PLAY500` never touches `$C04x`/`$C05x`, and agat-emulator instead drops
-the line after a fixed 600 cycles, which is a plausible emulator shortcut rather
-than a circuit.
+The two independently measured numbers on that page both land: 1952.80 Hz
+against 1952.83 predicted, and frame ÷ IRQ = 38.9993 against 39.
 
-The alternative reading fits the evidence equally well. Twenty assertions per
-frame is a 1 kHz square wave at roughly 60% duty; a machine that takes one
-interrupt per *cycle* of that wave, rather than continuously through each high
-phase, gives 10 per frame — **500 Hz**, which is what RISE OUT's author
-remembers and a literal reading of `PLAY500`'s name.
+The Agat-7's **476 Hz** is the one figure there that is wrong. It comes from a
+1.05 ms cursor reading on an uncalibrated scope, doubled. The author's own
+description of the waveform — "of ten pulses nine last 1.05 ms, the tenth is
+twice shorter; the pauses are identical" — is the Agat-7 counter's reload at
+line 312 cutting the last release in half, and it pins the half-period to
+frame ÷ 19.5 = 1.0242 ms using only the 7-digit frame measurement. Hence
+488.2 Hz, and hence the ratio to the Agat-9 being exactly 4.
 
-Both the rate and the delivery model are therefore controls on the page, not
-constants in the source. The default is **held**, and that is not only because
-it is what the reference emulator does: RISE OUT's author, listening to sounds
-he wrote, judges the chirps closer to right on held than on one-per-tick. That
-is the best evidence available, and it is what the argument above cannot
-supply — but it is a judgement about which of two models sounds nearer, not a
-verdict that the model is correct, and the sound is not yet right.
+### The delivery model
+
+The sub-frame interrupt is a **level**, not an edge, and on the Agat-7 the line
+is low half the time. A 6502 whose IRQ line is still asserted re-enters the
+handler as soon as `RTI` restores `I` — one foreground instruction gets to run
+between entries — so while armed, an Agat-7 spends about half its cycles inside
+a short handler, in 1 ms slices ten times a frame. Nothing shortens that pulse: on the
+Agat-7 the processor cell wires bus A22 to the 6502's pin 4 with one 3K3
+pull-up and no capacitor, on the Agat-9 the buffer output reaches pin 4 the same
+way, and in both cases the driver is tri-state rather than open collector, so
+nothing on another card can shape it either.
+
+That the Agat-9 replaced a counter bit with a one-line pulse, from a PROM that
+could have emitted any pattern at all, is the clearest evidence available that
+the Agat-7's duty cycle was understood at the time to be a wart.
+
+`raster` is the default. The other two are kept selectable for comparison, and
+are expected to go once enough software has been heard under `raster`:
+
+| model | what it is |
+|---|---|
+| `raster` | **the default** — the above: one 312-line counter, level, phase locked to the frame |
+| `held` | agat-emulator's — two free timers at 50 Hz and 1000/2000 Hz, line held `N_RBINT_DELAY` cycles per tick (600 Agat-7, 70 Agat-9: `videosel.c:110`, `cpu.c`'s `CPU_INTR_IRQ`/`NOIRQ` pair) |
+| `pulse` | the same two timers, one handler entry per tick |
+
+In agat-emulator's source `N_RB_7 = 16` is the *repaint* block count and has
+nothing to do with any of this; `N_RBINT_7 = 20` is the separate interrupt
+divisor, and 20 × 50 = 1000 Hz looks chosen to be a round number as much as
+anything.
+
+`held` and `pulse` keep their timers deliberately independent of each other:
+every tick raises IRQ, *including* the one that coincides with a frame, and
+folding them into one counter drops one IRQ in twenty. Under `raster` the
+question does not arise, because there genuinely is one counter.
+
+The bundled RISE OUT carries its **original 1989 sound data**, and under
+`raster` it sounds right to its author. The copy that shipped here before had
+been hand-retuned in 2026 to compensate for the single-tick model, which is the
+sort of thing a wrong timebase makes people do — and the fact that undoing that
+compensation and switching to `raster` agree is the best confirmation the model
+has.
+
+`held`'s 600 cycles of 1020 is a 59% duty cycle where the hardware's is 50%, so
+it is much closer than it looks in total handler entries — but it bunches them
+at twice the rate. Measured on `PLAY500`'s handler through `tools/tone.js`,
+switching `held` → `raster` costs 14% of the entries and stretches a fixed-length
+note by 16%, while halving the rate at which the bursts repeat. Since the ear
+takes the repetition rate for the pitch, **`raster` sounds an octave below
+`held`** — which is what `PLAY500`'s name says it should be, and what RISE OUT's
+author remembers.
+
+[clocks]: https://agatcomp.ru/agat/Hardware/useful/clock.shtml
+[repl]: https://agat-hardware.sourceforge.io/
 
 ### Why this matters: sound
 
@@ -217,6 +279,12 @@ period byte:
 Two flips make one cycle, so the tone is `entries / (2n)` and the note lasts
 `$82 × $84` entries. The interrupt is therefore both the pitch and the tempo,
 which is what makes this the sharpest available probe of the delivery model.
+
+The common path through that handler is 29 cycles including the interrupt
+sequence, 38 when it flips — far shorter than either machine's assertion, so it
+re-enters throughout. That makes `entries / (2n)` the frequency of the flips
+*within* a burst; the waveform as a whole repeats at the assertion rate, and
+that is the pitch you hear.
 
 `$84` is worth watching: `PLAY500` never initialises it, so if it is 0 when a
 sound starts, `DEC $83` wraps and every unit becomes 256 entries instead of 4.

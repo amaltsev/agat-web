@@ -10,9 +10,13 @@ const H = require('./harness');
 const ctx = H.loadModules();
 const A = ctx.AGAT;
 
-// Taken when gcr140 was verified byte-for-byte against a compiled dsk2nib.
+// gcr140's output over the bundled example, whose chain of trust runs back to
+// the encoder being verified byte-for-byte against a compiled dsk2nib. The
+// digest is over an input file, so replacing that example replaces this: the
+// way to re-pin it honestly is to check that the unchanged encoder still
+// reproduces the previous digest from the previous disk, then take a new one.
 const GCR_GOLDEN =
-  'c2d38e63a123c5e56c4f4220f35edf144a7201acee833b200a86d2d1389c0554';
+  '722e4b46646bb16bfc5c64ae06000f5399563411d38b73ddea2b3f6480c1a3ef';
 let pass = 0, fail = 0;
 function eq(what, got, want) {
   const g = JSON.stringify(got), w = JSON.stringify(want);
@@ -185,6 +189,46 @@ function eq(what, got, want) {
     eq('reset drops the 840K drive lines', m.cards[5].portC, 0);
     eq('reset stops the 140K motor', m.cards[3].motor, 0);
     eq('reset restores the video mode', [m.mode, m.videoInts], [0, false]);
+
+    // --- the raster interrupt model -----------------------------------------
+    // Run the line counter through one whole frame and describe the IRQ line's
+    // shape, which is what the oscilloscope traces on agatcomp measure: the
+    // Agat-7's ten assertions with one release cut in half, and the Agat-9's
+    // single line in eight.
+    const shape = (model) => {
+      const mm = H.makeMachine(ctx, roms, { model: model });
+      mm.reset();
+      mm.setIrqModel('raster');
+      mm.setVideoInts(true);
+      const level = new Array(312), nmi = [], runs = [];
+      mm.cpu.nmi = () => nmi.push(mm.rasterLine);
+      for (let i = 0; i < 312; i++) {
+        mm.pollRaster(mm.nextLine);
+        level[mm.rasterLine] = mm.cpu.irqLine;
+      }
+      for (let line = 0; line < 312; line++) {
+        if (line && level[line] === level[line - 1]) runs[runs.length - 1][1]++;
+        else runs.push([level[line], 1]);
+      }
+      return { runs: runs, nmi: nmi };
+    };
+
+    const s7 = shape(7);
+    eq('Agat-7 raster IRQ asserts ten times a frame',
+       s7.runs.filter((r) => r[0]).length, 10);
+    eq('Agat-7 raster IRQ is 16 lines on, 16 off',
+       s7.runs.slice(0, 4), [[true, 16], [false, 16], [true, 16], [false, 16]]);
+    eq('Agat-7 raster IRQ has one half-length release',
+       s7.runs.filter((r) => !r[0] && r[1] === 8).length, 1);
+    eq('Agat-7 takes NMI where blanking starts', s7.nmi, [256]);
+
+    const s9 = shape(9);
+    eq('Agat-9 raster IRQ asserts 39 times a frame',
+       s9.runs.filter((r) => r[0]).length, 39);
+    eq('Agat-9 raster IRQ is one line in eight',
+       s9.runs.slice(0, 4), [[false, 7], [true, 1], [false, 7], [true, 1]]);
+    eq('Agat-9 takes NMI where blanking ends', s9.nmi, [0]);
+
     done();
   }).catch((e) => { console.error(e); process.exit(1); });
 }

@@ -93,14 +93,15 @@
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
-  <select id="irq" title="Sub-frame interrupt rate. Software that sequences sound on the interrupt count hears this as pitch and tempo.">
+  <select id="irq" disabled title="Sub-frame interrupt rate. Software that sequences sound on the interrupt count hears this as pitch and tempo.">
     <option value="0">IRQ 1000 Hz</option>
     <option value="500">IRQ 500 Hz</option>
     <option value="2000">IRQ 2000 Hz</option>
   </select>
-  <select id="hold" title="Is the interrupt a level held for a while, so a short handler re-enters many times per tick, or a single pulse? Not settled.">
-    <option value="-1">held (agat-emulator)</option>
-    <option value="0">one per tick</option>
+  <select id="hold" title="How the sub-frame interrupt reaches the CPU. 'raster' is the hardware as measured — a level whose edges are raster lines, and it sets its own rate. The other two are agat-emulator's.">
+    <option value="raster">raster (hardware)</option>
+    <option value="held">held (agat-emulator)</option>
+    <option value="pulse">one per tick</option>
   </select>
   <label class="dim">vol <input id="vol" type="range" min="0" max="100" value="25"></label>
   <span id="status">loading…</span>
@@ -242,10 +243,18 @@
     if (!hz) { app.subFrameHz = 0; app.build(); }
   });
 
+  // The rate selector belongs to the two free-running models; under `raster`
+  // the rate comes off the line counter and there is nothing to choose.
+  var rateSel = document.getElementById('irq');
   document.getElementById('hold').addEventListener('change', function (e) {
-    var v = Number(e.target.value);
-    if (v < 0) { app.irqHold = null; app.build(); say('interrupt held, as agat-emulator does it'); }
-    else { app.setIrqHold(0); say('interrupt pulsed — one handler entry per tick'); }
+    var name = e.target.value;
+    rateSel.disabled = name === 'raster';
+    app.setIrqModel(name);
+    say(name === 'raster'
+        ? 'interrupt off the line counter — ' +
+          Math.round(AGAT.CPU_HZ / app.machine.irqPeriod()) + ' Hz'
+        : name === 'pulse' ? 'interrupt pulsed — one handler entry per tick'
+                           : 'interrupt held, as agat-emulator does it');
   });
 
   document.getElementById('boot').addEventListener('click', function () { app.boot(); });

@@ -8,7 +8,8 @@
 //   node tools/check.js modules                  index.html vs tools/modules.js
 //
 // --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
-// --cold skips the boot and cold-starts into the monitor instead.
+// --cold skips the boot and cold-starts into the monitor instead,
+// --irq=raster|held|pulse picks the sub-frame interrupt's delivery model.
 const fs = require('fs');
 const path = require('path');
 const H = require('./harness');
@@ -70,6 +71,7 @@ H.loadRoms(ctx).then((roms) => {
   const sniffed = H.sniffFile(ctx, target);
   const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
   const m = H.makeMachine(ctx, roms, { model: model });
+  if (flags.irq) m.setIrqModel(flags.irq);
   let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
   if (sniffed.kind && sniffed.kind !== 'fil') {
     slot = H.insert(m, ctx.AGAT.mount(sniffed));
@@ -102,7 +104,8 @@ H.loadRoms(ctx).then((roms) => {
   }
 
   console.log('image      ' + path.basename(target) + '  (' + sniffed.kind + ')');
-  console.log('machine    Agat-' + model + (flags.cold ? ', cold start' : ', boot slot ' + slot));
+  console.log('machine    Agat-' + model + (flags.cold ? ', cold start' : ', boot slot ' + slot) +
+              (flags.irq ? ', irq ' + flags.irq : ''));
   console.log('cycles     ' + cpu.cycles + ' (' + (cpu.cycles / 1.02e6).toFixed(2) + ' s)');
   console.log('pc         ' + hex(cpu.pc) + '   a=' + hex(cpu.a, 2) + ' x=' + hex(cpu.x, 2) +
               ' y=' + hex(cpu.y, 2) + ' s=' + hex(cpu.s, 2) + ' p=' + hex(cpu.p, 2));

@@ -44,11 +44,13 @@ register's page field. The default is an Agat-7 with 64K. A filename containing
 Drives: 840K in slot 5 on both machines, 140K in slot 6 on the Agat-9 and slot 3
 on the Agat-7. A dropped image goes to whichever drive can read it.
 
-The two remaining selectors are for the **video interrupt**, whose rate and
-delivery model are not settled — see
-[HARDWARE.md](HARDWARE.md#the-delivery-model-which-is-not-settled). They only
-matter for software that sequences sound on the interrupt count, where they set
-both the pitch and the tempo.
+The two remaining selectors are for the **video interrupt**. The default,
+`raster`, is the hardware as measured off real boards — a level whose edges are
+raster lines, which sets its own rate and so greys the rate selector out. The
+other two are agat-emulator's readings of it, kept for comparison. See
+[HARDWARE.md](HARDWARE.md#the-delivery-model). They only matter for software
+that sequences sound on the interrupt count, where they set both the pitch and
+the tempo — an octave apart between `held` and `raster`.
 
 ### Examples
 
@@ -66,8 +68,11 @@ no particular slot configuration. It flips the speaker every *n* interrupts for
 exactly 1000 interrupts, then is silent for 500, for *n* = 1, 2, 4, round and
 round. Both pitch and duration derive from the interrupt alone, so it reports
 the rate *and* whether the counting matches. Here it gives three brief tones near
-7400, 3950 and 2050 Hz cycling every 450 ms or so; three leisurely one-second
-tones instead would mean the IRQ is being treated as an edge.
+7400, 3950 and 2050 Hz — the carrier is the handler's own length, so those hold
+under any level model — with the whole round taking about 0.7 s under `raster`
+and a sixth less under `held`. Three leisurely one-second tones at 500, 250 and
+125 Hz instead mean the IRQ is being treated as an edge, which is exactly what
+the `pulse` model gives.
 
 ---
 

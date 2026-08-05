@@ -1,6 +1,7 @@
 // PLAY500's interrupt handler, hand-assembled and run on a bare machine, so the
 // emulator's interrupt timing and speaker path are measured with no game state
-// in the way.   node tone.js "<dur,per,dur,per,...,0>" <$84 unit> <irqHz>
+// in the way.
+//   node tone.js "<dur,per,dur,per,...,0>" <$84 unit> <irqHz> <raster|held|pulse>
 const { loadModules, loadRoms, makeMachine } =
   require('./harness');
 const ctx = loadModules(), AGAT = ctx.AGAT;
@@ -10,9 +11,11 @@ const ctx = loadModules(), AGAT = ctx.AGAT;
   const TABLE = (process.argv[2] || '3,12,4,8,2,16,0').split(',').map(Number);
   const UNIT = Number(process.argv[3] === undefined ? 16 : process.argv[3]);
   const IRQHZ = Number(process.argv[4] || 0);
+  const MODEL = process.argv[5] || 'raster';
 
   const m = makeMachine(ctx, roms, { model: 7, ramSize: 0x10000 });
   m.reset();
+  m.setIrqModel(MODEL);
   if (IRQHZ) m.setSubFrameHz(IRQHZ);
 
   // The handler, verbatim from RISE OUT's library at $30E3, relocated to $0300.
@@ -51,9 +54,9 @@ const ctx = loadModules(), AGAT = ctx.AGAT;
   const t0 = cpu.cycles, end = t0 + 3 * AGAT.CPU_HZ;
   while (cpu.cycles < end && !cpu.halted && cpu.pc !== 0x0321) cpu.step();
 
-  const e = m.speakerEdges, hz = AGAT.CPU_HZ / m.subPeriod;
-  const ints = n => (n / m.subPeriod);
-  console.log(`IRQ ${Math.round(hz)} Hz   $84 = ${UNIT}   table ${TABLE.join(',')}`);
+  const e = m.speakerEdges, period = m.irqPeriod(), hz = AGAT.CPU_HZ / period;
+  const ints = n => (n / period);
+  console.log(`IRQ ${Math.round(hz)} Hz (${MODEL})   $84 = ${UNIT}   table ${TABLE.join(',')}`);
   console.log(`flips ${e.length}   span ${e.length > 1 ? ((e[e.length-1]-e[0])/AGAT.CPU_HZ*1000).toFixed(1) : 0} ms` +
               `   ran ${((cpu.cycles-t0)/AGAT.CPU_HZ*1000).toFixed(1)} ms` +
               `   ${cpu.halted ? 'JAMMED' : (cpu.pc === 0x0321 ? 'note ended' : 'still going')}`);

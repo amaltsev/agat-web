@@ -43,19 +43,27 @@ Settled, with evidence, and expensive to relearn:
 
 - The video controller scans **physical** RAM, never the CPU's bank windows.
 - The glyph bit window belongs to the font: Agat-7 is `m0 = $80`, Agat-9 `$40`.
-- Frame NMI and sub-frame IRQ are **two independent timers**, not one counter.
+- The raster is **312 lines of 672 clocks** of the 10.5 MHz crystal — 15625 Hz
+  line, 50.08 Hz frame, 256 displayed and 56 blanked. Both interrupts come off
+  that one line counter, and the measured rates follow from it.
+- In the `held` and `pulse` interrupt models the frame NMI and sub-frame IRQ are
+  **two independent timers**, not one counter; folding them drops one IRQ in
+  twenty. `raster` has one counter because the hardware does.
 - Image formats are identified **by size, not extension**.
 - The Agat-7 has **no** Apple video modes; do not add a fallback to them.
 - Every sound in RISE OUT proper goes through `PLAY500` on the interrupt, never
   the busy-wait `PLAY`.
 
-**Not settled:** how the sub-frame IRQ is delivered. agat-emulator holds the
-line for 600 cycles (Agat-7), so a short handler re-enters ~10 times per tick;
-the alternative is one interrupt per tick at half the rate. Held is the default
-and the author judges it the closer of the two by ear, but RISE OUT's sound is
-still not right, so treat this as open. Both the rate and the hold are runtime
-controls and the source should not quietly commit to either. See
-[HARDWARE.md](HARDWARE.md#the-delivery-model-which-is-not-settled).
+**Not settled:** whether `held` and `pulse` can be deleted. `raster` — the
+hardware as measured and traced, a level whose edges are raster lines, 488 Hz on
+the Agat-7 with half the frame asserted and 1953 Hz on the Agat-9 with one line
+in eight — is now the default, and the other two are kept only for comparison
+until more software has been heard under it. The evidence so far is that RISE
+OUT's **original 1989 sound data** — restored to `examples/`, replacing a copy
+retuned in 2026 for the single-tick model — sounds right to its author under
+`raster`. Changing models moves its pitch by an octave, so the test is a
+listening test. See
+[HARDWARE.md](HARDWARE.md#the-delivery-model).
 
 ## Provenance
 

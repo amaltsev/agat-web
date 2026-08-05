@@ -26,6 +26,22 @@
   var BANK_SIZE = 1 << BANK_SHIFT;
   var STARTUP_MAP = [0, 1, 2, 3, 4, 5, 6, 7];
 
+  // The raster, as measured on real boards and traced through both schematics.
+  // A frame is 312 lines of 672 clocks of the 10.5 MHz video crystal: 15625 Hz
+  // line rate, 50.08 Hz frame, 256 lines displayed and 56 blanked. Used by the
+  // `raster` interrupt model; see HARDWARE.md.
+  var LINES = 312;
+  var DISPLAYED = 256;
+
+  // Is the sub-frame interrupt asserted on this line?
+  // Agat-7: bit 4 of the counter, low for 16 lines out of 32. Because the count
+  // runs 0..255 and then 0..55, the release that begins at line 304 is half
+  // length — the one-of-ten short pulse the scope traces show.
+  // Agat-9: the timing PROM's one line in eight, the last of each character row.
+  function irqAtLine(model, line) {
+    return model === 7 ? (line & 16) === 0 : (line & 7) === 7;
+  }
+
   function Machine(opts) {
     opts = opts || {};
     this.rom = opts.sysmon || new Uint8Array(0x800);
@@ -67,33 +83,35 @@
     this.mixed = false;
     this.page2 = false;
     this.hires = false;
-    // Video interrupts. The Agat raster runs at 50 Hz: the start of a frame
-    // raises NMI, and a fixed number of sub-frame ticks per frame raise IRQ
-    // (20 on the Agat-7, 40 on the Agat-9). Software arms them at $C04x and
-    // disarms at $C05x on the Agat-7 or $C02x on the Agat-9 — note that those
-    // are different addresses on the two machines, and swapping them hangs
-    // software that otherwise runs.
-    // Two independent timers, exactly as agat-emulator sets them up:
-    // 1000000/50 us between frames, and that divided by 20 (Agat-7) or 40
-    // (Agat-9) between sub-frame ticks. They are not one counter — every
-    // sub-frame tick raises IRQ, *including* the one that coincides with a
-    // frame, which also raises NMI. Folding them into one counter drops one
-    // IRQ in twenty, and RISE OUT's PLAY500 sequences its music on the IRQ
-    // count, so a missing tick is audible.
-    // agat-emulator sets delay = 1000000/50 CPU cycles for the frame timer and
-    // that / 20 (Agat-7) or / 40 (Agat-9) for the sub-frame, giving 50 Hz and
-    // 1 kHz. The rate is adjustable because software that sequences music on
-    // the interrupt count hears a change in it as a change of octave.
+    // Video interrupts. Software arms both at $C04x and disarms them at $C05x
+    // on the Agat-7 or $C02x on the Agat-9 — different addresses on the two
+    // machines, and swapping them hangs software that otherwise runs.
     //
-    // The sub-frame interrupt is a LEVEL, not an edge, and this matters more
-    // than the rate does. agat-emulator asserts it and only drops it
-    // N_RBINT_DELAY cycles later — 600 on the Agat-7, 70 on the Agat-9
-    // (videosel.c:110, cpu.c's CPU_INTR_IRQ/NOIRQ pair). A 6502 with the line
-    // still low re-enters the handler as soon as RTI restores I, so a short
-    // handler runs many times per tick: roughly 600 / its own length. Treating
-    // it as a one-shot gives exactly one entry per tick instead, which is why
-    // RISE OUT's sound effects ran some twenty times too long here while being
-    // right under agat-emulator.
+    // Three delivery models, chosen with setIrqModel(). `raster` is the
+    // hardware as measured and traced through both schematics, and the default;
+    // the other two are agat-emulator's, kept for comparison:
+    //
+    //   raster — one 312-line counter drives everything, as on the boards. The
+    //     Agat-7 buffers bit 4 of it onto the IRQ line, so the line is asserted
+    //     for 16 lines and released for 16 — 488 Hz, ten assertions a frame,
+    //     with the last release cut to 8 lines by the counter's reload. The
+    //     Agat-9's timing PROM pulses the line low for one line in every eight:
+    //     1953 Hz, 39 a frame. NMI is the same counter's blanking edge, which
+    //     the two machines buffer in opposite senses.
+    //   held   — two free-running timers, 50 Hz and that times 20 (Agat-7) or
+    //     40 (Agat-9), the line held N_RBINT_DELAY cycles per tick: 600 and 70
+    //     (videosel.c:110, cpu.c's CPU_INTR_IRQ/NOIRQ pair).
+    //   pulse  — the same two timers, one handler entry per tick.
+    //
+    // The sub-frame interrupt is a LEVEL in `raster` and `held`, and that
+    // matters more than the rate does: a 6502 whose IRQ line is still low
+    // re-enters the handler as soon as RTI restores I, so a short handler runs
+    // many times per assertion — roughly the assertion's length over its own.
+    //
+    // `held` and `pulse` keep their two timers deliberately independent. Every
+    // sub-frame tick raises IRQ, *including* the one that coincides with a
+    // frame, and folding them into one counter drops one IRQ in twenty, which
+    // is audible in software that sequences sound on the interrupt count.
     this.videoInts = false;
     var us = AGAT.CPU_HZ / 1000000;
     this.subDivisor = opts.subDivisor || (this.model === 7 ? 20 : 40);
@@ -104,6 +122,13 @@
     this.nextFrame = 0;
     this.nextSub = 0;
     this.inVblank = false;
+    // `raster` state: the free-running line counter and the level it produces,
+    // which the arming latch gates but does not stop.
+    this.irqRaster = opts.irqRaster === undefined ? true : !!opts.irqRaster;
+    this.linePeriod = this.framePeriod / LINES;
+    this.rasterLine = 0;
+    this.nextLine = 0;
+    this.irqRaw = false;
     this.speaker = 0;           // toggles; the audio layer samples the edges
     this.speakerEdges = [];
     this.kbdLatch = 0;
@@ -133,6 +158,7 @@
 
   // Called before every instruction; cheap when interrupts are disarmed.
   Machine.prototype.pollInterrupts = function (now) {
+    if (this.irqRaster) { this.pollRaster(now); return; }
     if (!this.videoInts) {
       this.nextSub = now + this.subPeriod;
       this.nextFrame = now + this.framePeriod;
@@ -157,6 +183,33 @@
     }
   };
 
+  // The `raster` model. One line counter, running whether or not software has
+  // armed anything: on the boards the counter is always counting and $C04x only
+  // enables the buffer that puts it on the bus, so $C019 answers from the live
+  // raster and arming mid-frame picks the line counter up where it is.
+  Machine.prototype.pollRaster = function (now) {
+    while (now >= this.nextLine) {
+      this.nextLine += this.linePeriod;
+      if (++this.rasterLine >= LINES) this.rasterLine = 0;
+      var line = this.rasterLine;
+      this.inVblank = line >= DISPLAYED;
+      // The Agat-7 takes NMI where blanking starts and the Agat-9 where it
+      // ends: one signal, buffered in opposite senses on the two machines.
+      if (line === (this.model === 7 ? DISPLAYED : 0) && this.videoInts) this.cpu.nmi();
+      var on = irqAtLine(this.model, line);
+      if (on && !this.irqRaw && this.onSubInt) this.onSubInt();
+      this.irqRaw = on;
+    }
+    this.cpu.irqLine = this.videoInts && this.irqRaw;
+  };
+
+  // Lines between assertions of the sub-frame interrupt, whichever model is in
+  // force — what the status line and the sound tools report a rate from.
+  Machine.prototype.irqPeriod = function () {
+    if (!this.irqRaster) return this.subPeriod;
+    return this.linePeriod * (this.model === 7 ? 32 : 8);
+  };
+
   // Every register the CPU can read has to be back at its power-on value before
   // cpu.reset() fetches the vector, and that includes the ones on cards. The
   // ЭмПЗУ matters most: read-enabled, it answers $D000-$FFFF from its own RAM,
@@ -168,6 +221,9 @@
     this.nextFrame = this.cpu ? this.cpu.cycles + this.framePeriod : 0;
     this.irqUntil = 0;
     this.inVblank = false;
+    this.rasterLine = 0;
+    this.nextLine = this.cpu ? this.cpu.cycles + this.linePeriod : 0;
+    this.irqRaw = irqAtLine(this.model, 0);
     this.mode = this.prevMode = 0;
     this.appleVideo = false;
     this.text = true;
@@ -395,28 +451,46 @@
     }
   };
 
-  // $C050-$C05F. On the Agat-7 this whole page disables video interrupts and
-  // touches nothing else. On the Agat-9 the low half is the Apple video
-  // switches and the high half is the palette register.
-  // Change the sub-frame interrupt rate. `hz` is the interrupt frequency.
-  // How the sub-frame interrupt is delivered. `cycles` is how long the line is
-  // held asserted; 0 makes it a pulse, one handler entry per tick. Which of the
-  // two the hardware did is not settled — see the note in the constructor.
+  // Which delivery model the sub-frame interrupt uses: 'raster', 'held' or
+  // 'pulse'. See the constructor for what each one is.
+  Machine.prototype.setIrqModel = function (name) {
+    this.irqRaster = name === 'raster';
+    if (this.irqRaster) {
+      this.rasterLine = 0;
+      this.nextLine = this.cpu.cycles + this.linePeriod;
+      this.irqRaw = irqAtLine(this.model, 0);
+    } else {
+      this.nextSub = this.cpu.cycles + this.subPeriod;
+      this.nextFrame = this.cpu.cycles + this.framePeriod;
+      this.setIrqHold(name === 'pulse' ? 0 : (this.model === 7 ? 600 : 70));
+    }
+    this.cpu.irqLine = false;
+    return name;
+  };
+
+  // How long `held` keeps the line asserted, in cycles; 0 makes it a pulse,
+  // one handler entry per tick.
   Machine.prototype.setIrqHold = function (cycles) {
     this.irqHold = cycles;
     if (!cycles) this.cpu.irqLine = false;
     return cycles;
   };
 
+  // The rate `held` and `pulse` tick at. `raster` takes its rate from the
+  // raster and ignores this.
   Machine.prototype.setSubFrameHz = function (hz) {
     this.subDivisor = Math.max(1, Math.round(hz / 50));
     this.subPeriod = (20000 / this.subDivisor) * (AGAT.CPU_HZ / 1000000);
     this.nextSub = this.cpu.cycles + this.subPeriod;
-    return AGAT.CPU_HZ / this.subPeriod;
+    return AGAT.CPU_HZ / this.irqPeriod();
   };
 
+  // $C04x arms both interrupts, $C05x (Agat-7) or $C02x (Agat-9) disarms them.
+  // Under `raster` this only connects the counter to the CPU; the two free
+  // timers of the other models restart instead, since they have no phase of
+  // their own to pick up.
   Machine.prototype.setVideoInts = function (on) {
-    if (on && !this.videoInts) {
+    if (on && !this.videoInts && !this.irqRaster) {
       this.nextSub = this.cpu.cycles + this.subPeriod;
       this.nextFrame = this.cpu.cycles + this.framePeriod;
     }
@@ -424,6 +498,9 @@
     this.videoInts = on;
   };
 
+  // $C050-$C05F. On the Agat-7 this whole page disables video interrupts and
+  // touches nothing else. On the Agat-9 the low half is the Apple video
+  // switches and the high half is the palette register.
   Machine.prototype.videoSwitch = function (n) {
     if (this.model === 7) { this.setVideoInts(false); return; }
     if (n & 8) { this.palette.select(n & 7); return; }

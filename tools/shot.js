@@ -1,6 +1,7 @@
 // Boot an image, optionally send keys, write the screen out as a PNG.
 //
 //   node tools/shot.js <image> [keys] [cycles-per-key] [out.png] [--model=7|9]
+//                      [--irq=raster|held|pulse]
 //
 // keys: ~ = Return, _ = Space, ^ = Escape, anything else is that character.
 const fs = require('fs');
@@ -84,6 +85,7 @@ H.loadRoms(ctx).then((roms) => {
   const sniffed = H.sniffFile(ctx, target);
   const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
   const m = H.makeMachine(ctx, roms, { model: model });
+  if (flags.irq) m.setIrqModel(flags.irq);
   if (sniffed.kind === 'fil') {
     ctx.AGAT.loadFil(m, sniffed.payload);
   } else {

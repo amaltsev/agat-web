@@ -24,7 +24,7 @@
     this.drives = {};                     // slot -> {name, kind}
     this.lastTime = 0;
     this.subFrameHz = opts.subFrameHz || 0;    // 0 = the machine's default
-    this.irqHold = null;                       // null = the machine's default
+    this.irqModel = opts.irqModel || 'raster';  // 'raster' | 'held' | 'pulse'
     this.soundLog = null;
     this.onStatus = opts.onStatus || function () {};
     this.frame = this.frame.bind(this);
@@ -71,16 +71,17 @@
     this.drives = {};
     for (var i = 0; i < keep.length; i++) this.insert(keep[i]);
     if (this.subFrameHz) this.machine.setSubFrameHz(this.subFrameHz);
-    if (this.irqHold !== null) this.machine.setIrqHold(this.irqHold);
+    this.machine.setIrqModel(this.irqModel);
     this.machine.reset();
     this.resize();
     this.start();
   };
 
-  // 600/70 = the agat-emulator hold; 0 = one handler entry per tick.
-  App.prototype.setIrqHold = function (cycles) {
-    this.irqHold = cycles;
-    return this.machine.setIrqHold(cycles);
+  // How the sub-frame interrupt reaches the CPU: 'raster' is the hardware as
+  // measured, 'held' and 'pulse' are agat-emulator's two readings of it.
+  App.prototype.setIrqModel = function (name) {
+    this.irqModel = name;
+    return this.machine.setIrqModel(name);
   };
 
   // Sub-frame interrupt rate, the one RISE OUT's music rides on.
@@ -135,7 +136,7 @@
       if (i === e.length || Math.abs(g - g0) > g0 * 0.25) {
         out.push({
           hz: Math.round(AGAT.CPU_HZ / (2 * g0)),
-          ints: +(g0 / this.machine.subPeriod).toFixed(2),
+          ints: +(g0 / this.machine.irqPeriod()).toFixed(2),
           ms: +((e[i - 1] - e[run]) / AGAT.CPU_HZ * 1000).toFixed(1),
           flips: i - run,
         });
@@ -162,7 +163,7 @@
         ? 'on, ' + (sp.ctx ? sp.ctx.state : '?') + ', vol ' + sp.volume
         : 'NOT STARTED — the AudioContext needs a user gesture',
       latency: sp.latency(),
-      interruptHz: Math.round(AGAT.CPU_HZ / this.machine.subPeriod),
+      interruptHz: Math.round(AGAT.CPU_HZ / this.machine.irqPeriod()),
       play500: zp,
       unitPerBank: banks,
       totalFlips: e.length,
