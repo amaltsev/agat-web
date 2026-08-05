@@ -90,10 +90,25 @@ that coincides with a frame raises both. Software arms them at `$C04x` and
 disarms at `$C05x` on the Agat-7 or `$C02x` on the Agat-9 — different addresses
 on the two machines. `$C019` reads the vertical-blank flag in bit 7.
 
-This matters more than it looks. RISE OUT generates its music inside the 1 kHz
-interrupt (`PLAY500` — «МУЗЫКА В ПРЕРЫВ.»), counting ticks to decide when to
-flip the speaker, so the interrupt rate *is* the pitch and the tempo. For the
-same reason the run loop is driven by the wall clock rather than by
+This matters more than it looks. RISE OUT generates its music inside the
+sub-frame interrupt — `PLAY500`, «МУЗЫКА В ПРЕРЫВ.» — so the interrupt rate *is*
+the pitch and the tempo. Its handler flips `$C030` once every *n* interrupts,
+where *n* is the note's period byte:
+
+```
+30E3: DEC $81        ; tick down the note period
+30E5: BNE $30F2
+30E7: STA $C030      ; flip the speaker
+30EC: LDA $85        ; reload the period
+30EE: STA $81
+```
+
+Two flips make one cycle, so the tone is `IRQ / (2n)` and the fastest note,
+`n = 1`, is 500 Hz — which is where the routine gets its name. The interrupt
+itself is 1 kHz. (If music ever sounds an octave out, that ratio is the thing to
+re-examine.)
+
+For the same reason the run loop is driven by the wall clock rather than by
 `requestAnimationFrame`: a 50 Hz frame budget issued at a 60 Hz refresh runs the
 machine 20% fast, and at 120 Hz twice that.
 
