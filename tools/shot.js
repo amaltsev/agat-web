@@ -84,12 +84,14 @@ H.loadRoms(ctx).then((roms) => {
   const sniffed = H.sniffFile(ctx, target);
   const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
   const m = H.makeMachine(ctx, roms, { model: model });
-  let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
-  if (sniffed.kind && sniffed.kind !== 'fil') {
-    slot = H.insert(m, ctx.AGAT.mount(sniffed));
+  if (sniffed.kind === 'fil') {
+    ctx.AGAT.loadFil(m, sniffed.payload);
+  } else {
+    let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
+    if (sniffed.kind) slot = H.insert(m, ctx.AGAT.mount(sniffed));
+    m.reset();
+    if (!flags.cold) m.bootSlot(slot);
   }
-  m.reset();
-  if (!flags.cold) m.bootSlot(slot);
 
   const cpu = m.cpu;
   const run = (n) => { const e = cpu.cycles + n; while (cpu.cycles < e && !cpu.halted) cpu.step(); };
@@ -99,9 +101,11 @@ H.loadRoms(ctx).then((roms) => {
   const v = new ctx.AGAT.Video(model === 7 ? roms.font7 : roms.font9, roms.palette, { m0: model === 7 ? 0x80 : 0x40 });
   v.render(m);
   fs.writeFileSync(out, png(v.width, v.height, v.pixels, 2));
-  const mode = m.text ? 'text' : (m.hires ? 'hires' : 'lores') + (m.mixed ? '+mixed' : '');
+  const mode = m.appleVideo
+    ? 'apple ' + (m.text ? 'text' : (m.hires ? 'hires' : 'lores') + (m.mixed ? '+mixed' : ''))
+    : (ctx.AGAT.MODE_NAMES[m.videoMode().vtype] || '?') +
+      ' $' + m.mode.toString(16) + ' @$' + m.videoMode().base.toString(16);
   console.log(path.basename(target) + ': Agat-' + model + ' ' + sniffed.kind +
-              ' mode=' + mode + ' page=' + (m.page2 ? 2 : 1) +
-              ' pc=$' + cpu.pc.toString(16).toUpperCase() + ' -> ' + out);
+              ' ' + mode + ' pc=$' + cpu.pc.toString(16).toUpperCase() + ' -> ' + out);
   console.log(ctx.AGAT.Video.dumpText(m));
 }).catch((e) => { console.error(e); process.exit(1); });

@@ -10,6 +10,9 @@ const H = require('./harness');
 const ctx = H.loadModules();
 const A = ctx.AGAT;
 
+// Taken when gcr140 was verified byte-for-byte against a compiled dsk2nib.
+const GCR_GOLDEN =
+  'c2d38e63a123c5e56c4f4220f35edf144a7201acee833b200a86d2d1389c0554';
 let pass = 0, fail = 0;
 function eq(what, got, want) {
   const g = JSON.stringify(got), w = JSON.stringify(want);
@@ -96,6 +99,45 @@ function eq(what, got, want) {
     eq('aim840 checksum over ' + checked + ' real sectors', bad, 0);
   } else {
     console.log('skip: aim840 checksum (no local .aim)');
+  }
+}
+
+// --- 140K GCR ---------------------------------------------------------------
+// The 6-and-2 encoder is the fiddliest transcription in the project. Its output
+// for the bundled example is checked against a digest taken when it was
+// verified byte-for-byte against agat-emulator's own dsk2nib.
+{
+  const dsk = path.join(H.ROOT, 'examples', 'rise-out.dsk');
+  if (fs.existsSync(dsk)) {
+    const media = ctx.AGAT.mount(H.sniffFile(ctx, dsk));
+    eq('gcr140 track count', [media.tracks, media.stride], [35, 6656]);
+    const sha = require('crypto').createHash('sha256')
+      .update(Buffer.from(media.bytes)).digest('hex');
+    eq('gcr140 nibble stream digest', sha, GCR_GOLDEN);
+    // Address field of track 0 sector 0, 4-and-4 encoded.
+    let i = 0;
+    while (i < 200 && !(media.bytes[i] === 0xd5 && media.bytes[i + 1] === 0xaa &&
+                        media.bytes[i + 2] === 0x96)) i++;
+    const dec = (a, b) => ((a << 1) | 1) & b;
+    eq('gcr140 T0S0 address field',
+       [dec(media.bytes[i + 3], media.bytes[i + 4]),      // volume
+        dec(media.bytes[i + 5], media.bytes[i + 6]),      // track
+        dec(media.bytes[i + 7], media.bytes[i + 8])],     // sector
+       [254, 0, 0]);
+  } else {
+    console.log('skip: gcr140 (no examples/rise-out.dsk)');
+  }
+}
+
+// --- .fil -------------------------------------------------------------------
+{
+  const fil = path.join(H.ROOT, 'examples', 'snake.fil');
+  if (fs.existsSync(fil)) {
+    const s = H.sniffFile(ctx, fil);
+    eq('fil sniff', [s.kind, s.loadAddr, s.length, s.filName],
+       ['fil', 0x2000, 3874, 'SNAKE']);
+  } else {
+    console.log('skip: fil (no examples/snake.fil)');
   }
 }
 
