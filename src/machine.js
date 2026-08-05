@@ -53,6 +53,7 @@
     this.psromOfs = 0;
 
     this.cards = [];                       // cards[slot], see addCard()
+    this.psrom = null;                     // Agat-7 ЭмПЗУ, if fitted
 
     // Video. `mode` is the $C7xx register; `appleVideo` says whether the
     // Apple-compatible switches have taken over the display, which only ever
@@ -90,7 +91,7 @@
 
   // Where each machine puts its floppy controllers.
   Machine.SLOTS = {
-    7: { fdd840: 5, fdd140: 3 },
+    7: { fdd840: 5, fdd140: 3, psrom: 2 },
     9: { fdd840: 5, fdd140: 6 },
   };
 
@@ -137,6 +138,7 @@
   Machine.prototype.addCard = function (n, card) {
     this.cards[n] = card;
     if (card && card.rom) this.slotRom.set(card.rom, n * 0x100);
+    if (card instanceof AGAT.Psrom7) this.psrom = card;
     return card;
   };
 
@@ -173,9 +175,15 @@
       // Mapping register file: reading back gives the window's current bank.
       return (a & 0xf0) | this.map[(a & 0xf0) >> 4];
     }
-    if (a < 0xc800) return this.slotRom[a - 0xc000];
+    if (a < 0xc800) {
+      var pc = this.cards[(a >> 8) & 7];
+      if (pc && pc.readReg) return pc.readReg(a);
+      return this.slotRom[a - 0xc000];
+    }
     if (a < 0xd000) return 0;
     if (this.model === 7) {
+      // The ЭмПЗУ card, when it has reads enabled, covers the monitor too.
+      if (this.psrom && this.psrom.readsRam()) return this.psrom.read(a);
       return a >= 0xf800 ? this.rom[a - 0xf800] : 0xff;
     }
     if (this.psromReadsRam()) return this.ram[this.psromAddr(a)];
@@ -196,8 +204,16 @@
       this.map[(a & 0xf0) >> 4] = a & 0x0f;
       return;
     }
-    if (a < 0xd000) return;                       // slot ROM is read-only
-    if (this.model === 7) return;                 // no built-in card up here
+    if (a < 0xc800) {
+      var wc = this.cards[(a >> 8) & 7];
+      if (wc && wc.writeReg) wc.writeReg(a);
+      return;                                     // slot ROM is otherwise read-only
+    }
+    if (a < 0xd000) return;
+    if (this.model === 7) {
+      if (this.psrom) this.psrom.write(a, v);     // no base RAM up here
+      return;
+    }
     if (this.psromWritesRam()) this.ram[this.psromAddr(a)] = v;
   };
 

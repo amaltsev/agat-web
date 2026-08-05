@@ -51,6 +51,7 @@
       ramSize: this.ramSize,
       sysmon: this.model === 7 ? this.roms.monitor7 : this.roms.monitor9,
     });
+    if (slots.psrom && AGAT.Psrom7) this.machine.addCard(slots.psrom, new AGAT.Psrom7());
     this.machine.addCard(slots.fdd840, new AGAT.Disk840({ rom: this.roms.teac }));
     if (AGAT.Disk140) {
       this.machine.addCard(slots.fdd140, new AGAT.Disk140({

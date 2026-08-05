@@ -51,6 +51,7 @@ function makeMachine(ctx, roms, opts) {
     model: model,
     sysmon: model === 7 ? roms.monitor7 : roms.monitor9,
   });
+  if (slots.psrom && A.Psrom7) m.addCard(slots.psrom, new A.Psrom7());
   m.addCard(slots.fdd840, new A.Disk840({ rom: roms.teac }));
   if (A.Disk140) {
     m.addCard(slots.fdd140, new A.Disk140({

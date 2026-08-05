@@ -61,6 +61,12 @@ well as writes). ROM is 2K at `$F800-$FFFF` and *not* mirrored. **The RAM size i
 visible to software**, because it masks the page field of the video mode
 register — so set it to match your disk.
 
+Base RAM stops at `$BFFF`, so an **ЭмПЗУ card** is fitted in slot 2 to put RAM
+behind `$D000-$FFFF`. Plenty of Agat-7 software needs it: RISE OUT keeps its
+character generator at `$D000`, its black-and-white splash at `$D800` and its
+disk driver at `$E000`, and without the card all of that is written into a void
+— the game loads, animates its colour title, and then shows an empty screen.
+
 ## Video
 
 The mode register is `$C700-$C7FF` on both machines, value taken from the low
@@ -87,9 +93,9 @@ window belongs to the font: Agat-7 characters live in bits 7..1, Agat-9 in bits
 
 Disk **writing** — images are read-only and the write-protect bit says so.
 Several Agat-9 system disks print «СИСТЕМА ИСПОРЧЕНА» as a result.
-Also absent: the Agat-7 ЭмПЗУ and ДопОЗУ expansion cards, NTSC artefact colour
-for the Apple modes, video interrupts, 80-column and Apple //e modes, mouse,
-printer and tape.
+Also absent: the Agat-7 ДопОЗУ extra-RAM card, NTSC artefact colour for the
+Apple modes, video interrupts, 80-column and Apple //e modes, mouse, printer
+and tape.
 
 ---
 

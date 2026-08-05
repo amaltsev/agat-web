@@ -5,6 +5,7 @@
 const MODULES = [
   'src/cpu6502.js',
   'src/mem7.js',
+  'src/psrom7.js',
   'src/videosel.js',
   'src/videopal.js',
   'src/machine.js',
