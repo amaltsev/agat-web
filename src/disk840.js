@@ -75,6 +75,16 @@
 
   Disk840.prototype.eject = function () { this.media = null; };
 
+  // Reset clears the 8255s, so the drive lines — motor, side, direction, select
+  // — all drop. The head does not move: nothing drives the stepper, and the boot
+  // ROM's recalibrate is what finds cylinder 0 again.
+  Disk840.prototype.reset = function () {
+    this.portC = 0;
+    this.side = 0;
+    this.ready = false;
+    this.syncSeen = false;
+  };
+
   // Which of the 160 stored tracks is under the head: cylinder 0 side 0 is
   // track 0, cylinder 0 side 1 is track 1, cylinder 1 side 0 is track 2, and so
   // on — which is what lets a 140K disk be read as sectors 0-16 of the evens.

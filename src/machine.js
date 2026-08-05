@@ -157,17 +157,33 @@
     }
   };
 
+  // Every register the CPU can read has to be back at its power-on value before
+  // cpu.reset() fetches the vector, and that includes the ones on cards. The
+  // ЭмПЗУ matters most: read-enabled, it answers $D000-$FFFF from its own RAM,
+  // so the monitor and all three vectors come from the card rather than the
+  // ROM. Cards are reset in slot order, before the CPU.
   Machine.prototype.reset = function () {
     this.videoInts = false;
     this.nextSub = this.cpu ? this.cpu.cycles + this.subPeriod : 0;
     this.nextFrame = this.cpu ? this.cpu.cycles + this.framePeriod : 0;
+    this.irqUntil = 0;
+    this.inVblank = false;
     this.mode = this.prevMode = 0;
     this.appleVideo = false;
+    this.text = true;
+    this.mixed = false;
+    this.page2 = false;
+    this.hires = false;
     this.palette.reset();
     if (this.mem7) this.mem7.reset();
     else this.map = Uint8Array.from(STARTUP_MAP);
     this.psromMode = 1;
     this.psromOfs = 0;
+    this.kbdLatch = 0;
+    for (var s = 0; s < this.cards.length; s++) {
+      var c = this.cards[s];
+      if (c && c.reset) c.reset();
+    }
     this.cpu.reset();
   };
 

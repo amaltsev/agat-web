@@ -86,9 +86,27 @@ Cards are registered by slot and may expose:
 - `rom` — 256 bytes mapped at `$Cn00`
 - `read(reg, now)` / `write(reg, v, now)` — the `$C08n` register file
 - `insert(media)` / `media` — anything that takes a disk
+- `reset()` — the bus reset line, if the card latches anything
 
 `Machine.SLOTS` is the per-model slot table, so nothing else has to know where a
 controller lives.
+
+### Reset has to reach the cards
+
+Loading an image resets the machine; it does not build a new one. So
+`Machine.reset()` is the whole contract for "as if freshly switched on", and
+every register a program can leave set has to be cleared there — including the
+ones on cards, which is what a card's `reset()` is for. It runs over the slots
+in order and only then calls `cpu.reset()`, because the vector fetch has to see
+the restored bus.
+
+The Agat-7 ЭмПЗУ shows why this is not a formality. Left read-enabled, it
+answers `$D000-$FFFF` from its own RAM, so the monitor and all three vectors
+come from the card rather than the ROM. A disk dropped onto a machine in that
+state still runs its boot ROM, and still fails, because the loader's first call
+into the monitor lands in the previous program's data. RAM contents are the
+exception and deliberately survive — reset is not a power cycle, and `.fil`
+loading fills memory itself.
 
 ### `phys()` is the seam
 

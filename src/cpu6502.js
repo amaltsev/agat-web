@@ -22,9 +22,15 @@
     this.nmiEdge = false;
   }
 
+  // RESET drops any interrupt raised but not yet taken — the request is a
+  // flip-flop and the reset line clears it. Held across, it makes the first
+  // instruction after a reset vector through $FFFA/$FFFE instead.
   CPU.prototype.reset = function () {
     this.s = 0xfd;
     this.p = I | U;
+    this.nmiEdge = false;
+    this.irqPending = false;
+    this.irqLine = false;
     this.pc = this.bus.read(0xfffc) | (this.bus.read(0xfffd) << 8);
     this.halted = false;
   };

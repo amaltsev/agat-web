@@ -30,6 +30,10 @@
     this.rom = null;                   // no $Cn00 ROM; the page is the register
   }
 
+  // Bank 0, reads off: the card is out of the way and $D000-$FFFF is the bare
+  // machine again. Its RAM keeps its contents, as the chips do.
+  Psrom7.prototype.reset = function () { this.state = 0x80; };
+
   Psrom7.prototype.readsRam = function () { return (this.state & 0x20) !== 0; };
 
   // $D000-$DFFF comes from one half of the bank, $E000-$FFFF from the top half.

@@ -48,6 +48,15 @@
   };
 
   Disk140.prototype.eject = function () { this.media = null; };
+
+  // The soft switches are cleared: motor off, drive 1, read mode. The stepper
+  // magnets are all off too, which leaves the head wherever it stood.
+  Disk140.prototype.reset = function () {
+    this.motor = 0;
+    this.drv = 0;
+    this.writeMode = false;
+  };
+
   Disk140.prototype.hasDisk = function () { return !!this.media; };
 
   Object.defineProperty(Disk140.prototype, 'track', {

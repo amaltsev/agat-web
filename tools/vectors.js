@@ -157,6 +157,34 @@ function eq(what, got, want) {
     eq('agathe9 $C1 row4 @ m0=$40', row(roms.font9, 0xc1, 4, 0x40), '..####.');
     eq('palette has 16 entries', roms.palette.length, 16);
     eq('palette[15] is white', roms.palette[15], [255, 255, 255]);
+
+    // --- what a reset has to undo -------------------------------------------
+    // A machine that has already run something is not a fresh one, and loading
+    // a new image resets rather than rebuilds it. Anything a program can leave
+    // set that changes what the CPU fetches has to be cleared here, or the next
+    // image boots into the last one's leftovers.
+    const m = H.makeMachine(ctx, roms, { model: 7 });
+    m.reset();
+    const vec = (a) => m.read(a) | (m.read(a + 1) << 8);
+    const vectors = [vec(0xfffa), vec(0xfffc), vec(0xfffe)];
+
+    m.psrom.writeReg(0xc2a0);              // ЭмПЗУ read-enabled, as RISE OUT
+    m.mem7.setState(9);                    // ...leaves them
+    m.mode = 0x35;
+    m.videoInts = true;
+    m.cpu.nmiEdge = m.cpu.irqPending = true;
+    m.cards[5].portC = 0xff;
+    m.cards[3].motor = 1;
+    m.reset();
+
+    eq('reset frees $D000-$FFFF from the ЭмПЗУ', m.psrom.readsRam(), false);
+    eq('reset restores the ROM vectors',
+       [vec(0xfffa), vec(0xfffc), vec(0xfffe)], vectors);
+    eq('reset takes no pending interrupt',
+       [m.cpu.nmiEdge, m.cpu.irqPending, m.cpu.irqLine], [false, false, false]);
+    eq('reset drops the 840K drive lines', m.cards[5].portC, 0);
+    eq('reset stops the 140K motor', m.cards[3].motor, 0);
+    eq('reset restores the video mode', [m.mode, m.videoInts], [0, false]);
     done();
   }).catch((e) => { console.error(e); process.exit(1); });
 }
