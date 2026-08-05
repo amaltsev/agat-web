@@ -545,6 +545,8 @@
     return this.cycles;
   };
 
+  // The Agat 6502 clock, and the reference for every timing in the emulator.
+  AGAT.CPU_HZ = 1020484;
   AGAT.CPU = CPU;
   AGAT.FLAGS = { C: C, Z: Z, I: I, D: D, B: B, U: U, V: V, N: N };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

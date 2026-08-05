@@ -5,7 +5,13 @@
 (function (AGAT) {
   'use strict';
 
-  var CPU_HZ = 1020484;      // the Agat's 6502 clock, near enough to the Apple's
+  var CPU_HZ = AGAT.CPU_HZ || 1020484;
+
+  // How far ahead of the audio clock we try to stay queued. Too little and any
+  // hiccup leaves a gap; too much and the sound lags the picture.
+  var TARGET_LEAD = 0.08;
+  var MIN_LEAD = 0.02;
+  var MAX_LEAD = 0.30;
 
   function Speaker(opts) {
     opts = opts || {};
@@ -59,11 +65,18 @@
     src.buffer = buf;
     src.connect(this.gain);
     var now = this.ctx.currentTime;
-    // Keep a small lead so buffers butt up against each other without gaps,
-    // but resynchronise if we ever fall behind.
-    if (this.nextStart < now + 0.005) this.nextStart = now + 0.05;
+
+    // Buffers are queued back to back. The queue only stays honest if the
+    // emulator produces emulated-seconds at the rate real seconds pass, which
+    // is why the run loop is driven by the wall clock rather than by
+    // requestAnimationFrame — at 60 Hz a 50 Hz frame budget runs 20% fast, and
+    // on a 120 Hz display twice that, which is heard as pitch and tempo.
+    var lead = this.nextStart - now;
+    if (lead < MIN_LEAD) this.nextStart = now + TARGET_LEAD;   // fell behind
+    else if (lead > MAX_LEAD) return;                          // too far ahead: skip
     src.start(this.nextStart);
     this.nextStart += n / rate;
+    this.lead = this.nextStart - now;
   };
 
   Speaker.CPU_HZ = CPU_HZ;

@@ -73,12 +73,19 @@
     // disarms at $C05x on the Agat-7 or $C02x on the Agat-9 — note that those
     // are different addresses on the two machines, and swapping them hangs
     // software that otherwise runs.
+    // Two independent timers, exactly as agat-emulator sets them up:
+    // 1000000/50 us between frames, and that divided by 20 (Agat-7) or 40
+    // (Agat-9) between sub-frame ticks. They are not one counter — every
+    // sub-frame tick raises IRQ, *including* the one that coincides with a
+    // frame, which also raises NMI. Folding them into one counter drops one
+    // IRQ in twenty, and RISE OUT's PLAY500 sequences its music on the IRQ
+    // count, so a missing tick is audible.
     this.videoInts = false;
-    this.subPerFrame = this.model === 7 ? 20 : 40;
-    this.framePeriod = 1020484 / 50;
-    this.subPeriod = this.framePeriod / this.subPerFrame;
+    var us = AGAT.CPU_HZ / 1000000;
+    this.framePeriod = 20000 * us;
+    this.subPeriod = (20000 / (this.model === 7 ? 20 : 40)) * us;
+    this.nextFrame = 0;
     this.nextSub = 0;
-    this.subCount = 0;
     this.inVblank = false;
     this.speaker = 0;           // toggles; the audio layer samples the edges
     this.speakerEdges = [];
@@ -111,24 +118,26 @@
   // 840K card's signature bytes and enters it with JMP ($0000).
   // Called before every instruction; cheap when interrupts are disarmed.
   Machine.prototype.pollInterrupts = function (now) {
-    if (!this.videoInts) { this.nextSub = now + this.subPeriod; return; }
+    if (!this.videoInts) {
+      this.nextSub = now + this.subPeriod;
+      this.nextFrame = now + this.framePeriod;
+      return;
+    }
     while (now >= this.nextSub) {
       this.nextSub += this.subPeriod;
-      if (++this.subCount >= this.subPerFrame) {
-        this.subCount = 0;
-        this.inVblank = true;
-        this.cpu.nmi();                     // start of frame
-      } else {
-        this.inVblank = false;
-        this.cpu.irq();                     // sub-frame raster tick
-      }
+      this.cpu.irq();
+    }
+    while (now >= this.nextFrame) {
+      this.nextFrame += this.framePeriod;
+      this.inVblank = true;
+      this.cpu.nmi();
     }
   };
 
   Machine.prototype.reset = function () {
     this.videoInts = false;
-    this.subCount = 0;
     this.nextSub = this.cpu ? this.cpu.cycles + this.subPeriod : 0;
+    this.nextFrame = this.cpu ? this.cpu.cycles + this.framePeriod : 0;
     this.mode = this.prevMode = 0;
     this.appleVideo = false;
     this.palette.reset();
@@ -352,8 +361,8 @@
   // switches and the high half is the palette register.
   Machine.prototype.setVideoInts = function (on) {
     if (on && !this.videoInts) {
-      this.subCount = 0;
       this.nextSub = this.cpu.cycles + this.subPeriod;
+      this.nextFrame = this.cpu.cycles + this.framePeriod;
     }
     this.videoInts = on;
   };

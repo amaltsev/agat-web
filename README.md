@@ -83,11 +83,19 @@ byte of the address. The native raster is 512 × 256.
 | 512×256×1 | Agat-9 | same interleave |
 | Apple text / lores / hires | Agat-9 only | 280×192, mono |
 
-Video interrupts follow the 50 Hz raster: the start of a frame raises NMI and a
-fixed number of sub-frame ticks per frame raise IRQ (20 on the Agat-7, 40 on the
-Agat-9). Software arms them at `$C04x` and disarms at `$C05x` on the Agat-7 or
-`$C02x` on the Agat-9 — different addresses on the two machines. `$C019` reads
-the vertical-blank flag in bit 7.
+Video interrupts are two independent timers: 20000 µs between frames (NMI) and
+that divided by 20 on the Agat-7 or 40 on the Agat-9 between sub-frame ticks
+(IRQ) — so 1 kHz and 50 Hz on an Agat-7. They are *not* one counter: the tick
+that coincides with a frame raises both. Software arms them at `$C04x` and
+disarms at `$C05x` on the Agat-7 or `$C02x` on the Agat-9 — different addresses
+on the two machines. `$C019` reads the vertical-blank flag in bit 7.
+
+This matters more than it looks. RISE OUT generates its music inside the 1 kHz
+interrupt (`PLAY500` — «МУЗЫКА В ПРЕРЫВ.»), counting ticks to decide when to
+flip the speaker, so the interrupt rate *is* the pitch and the tempo. For the
+same reason the run loop is driven by the wall clock rather than by
+`requestAnimationFrame`: a 50 Hz frame budget issued at a 60 Hz refresh runs the
+machine 20% fast, and at 120 Hz twice that.
 
 Two things worth knowing if you read the code. The video controller scans
 **physical** RAM and does not go through the CPU's bank windows — a page number

@@ -4,7 +4,8 @@
 (function (AGAT) {
   'use strict';
 
-  var CYCLES_PER_FRAME = Math.round(AGAT.Speaker.CPU_HZ / 50);   // the Agat is 50 Hz
+  var CPU_HZ = AGAT.CPU_HZ;
+  var MAX_CATCHUP_MS = 60;      // after a stall, drop the backlog rather than sprint
 
   function App(opts) {
     opts = opts || {};
@@ -20,6 +21,7 @@
     this.ramSize = 0x20000;
     this.modelPinned = false;
     this.drives = {};                     // slot -> {name, kind}
+    this.lastTime = 0;
     this.onStatus = opts.onStatus || function () {};
     this.frame = this.frame.bind(this);
   }
@@ -133,6 +135,7 @@
   App.prototype.start = function () {
     if (this.running) return;
     this.running = true;
+    this.lastTime = 0;
     requestAnimationFrame(this.frame);
   };
 
@@ -164,9 +167,22 @@
   App.prototype.frame = function () {
     if (!this.running) return;
     var m = this.machine, cpu = m.cpu;
+
+    // Run as many cycles as real time has passed, not a fixed budget per
+    // animation frame: requestAnimationFrame follows the display, which is
+    // rarely 50 Hz, and tying the CPU to it makes the machine run fast or slow
+    // depending on the monitor. Music generated inside the 1 kHz interrupt
+    // hears that directly.
+    var t = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now() : Date.now();
+    if (!this.lastTime) this.lastTime = t - 20;
+    var dt = t - this.lastTime;
+    this.lastTime = t;
+    if (dt > MAX_CATCHUP_MS) dt = MAX_CATCHUP_MS;
+
     m.speakerEdges.length = 0;
     var from = cpu.cycles;
-    var target = from + CYCLES_PER_FRAME;
+    var target = from + Math.round(dt * 0.001 * CPU_HZ);
     while (cpu.cycles < target && !cpu.halted) cpu.step();
     this.speaker.play(m.speakerEdges, from, cpu.cycles);
 
