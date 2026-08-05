@@ -84,9 +84,19 @@
   // sound that comes out wrong can be looked at rather than described.
   //   agat.recordSound(3)   ->  then agat.soundReport()
   App.prototype.recordSound = function (seconds) {
-    this.soundLog = { edges: [], until: this.machine.cpu.cycles + (seconds || 3) * AGAT.CPU_HZ };
+    this.soundLog = {
+      edges: [],
+      zp: {},                                  // PLAY500's state, values seen
+      until: this.machine.cpu.cycles + (seconds || 3) * AGAT.CPU_HZ,
+    };
     return 'recording ' + (seconds || 3) + 's of speaker activity';
   };
+
+  // PLAY500 keeps its whole state in these. $84 is the note-length unit and the
+  // usual suspect: the note runs $82 x $84 interrupts, so a $84 of 0 wraps the
+  // countdown to 256 and stretches every sound by a factor of sixteen.
+  App.PLAY500_ZP = { 0x81: 'period', 0x82: 'duration', 0x83: 'unitCount',
+                     0x84: 'unit', 0x85: 'periodReload', 0x89: 'loop', 0x8a: 'busy' };
 
   App.prototype.soundReport = function () {
     var L = this.soundLog;
@@ -106,8 +116,11 @@
         if (i < e.length) i++;
       }
     }
+    var zp = {};
+    for (var k in L.zp) zp[App.PLAY500_ZP[k]] = Object.keys(L.zp[k]).map(Number);
     return {
       interruptHz: Math.round(AGAT.CPU_HZ / this.machine.subPeriod),
+      play500: zp,
       totalFlips: e.length,
       spanMs: +((e[e.length - 1] - e[0]) / AGAT.CPU_HZ * 1000).toFixed(1),
       notes: out.slice(0, 40),
@@ -226,6 +239,10 @@
     if (this.soundLog) {
       for (var si = 0; si < m.speakerEdges.length; si++) {
         this.soundLog.edges.push(m.speakerEdges[si]);
+      }
+      for (var za in App.PLAY500_ZP) {
+        var zv = m.read(Number(za));
+        (this.soundLog.zp[za] || (this.soundLog.zp[za] = {}))[zv] = 1;
       }
       if (cpu.cycles > this.soundLog.until) {
         this.onStatus('sound recorded: ' + this.soundLog.edges.length +

@@ -85,16 +85,17 @@ byte of the address. The native raster is 512 × 256.
 
 Video interrupts are two independent timers: 20000 µs between frames (NMI) and
 that divided by 20 on the Agat-7 or 40 on the Agat-9 between sub-frame ticks
-(IRQ) — so 1 kHz and 50 Hz on an Agat-7. They are *not* one counter: the tick
-that coincides with a frame raises both. Software arms them at `$C04x` and
-disarms at `$C05x` on the Agat-7 or `$C02x` on the Agat-9 — different addresses
-on the two machines. `$C019` reads the vertical-blank flag in bit 7.
+(IRQ). They are *not* one counter: the tick that coincides with a frame raises
+both. Software arms them at `$C04x` and disarms at `$C05x` on the Agat-7 or
+`$C02x` on the Agat-9 — different addresses on the two machines. `$C019` reads
+the vertical-blank flag in bit 7.
 
-This matters more than it looks. RISE OUT has two players: `PLAY` busy-waits in
-a cycle-counted delay loop and is what the sound effects use, while `PLAY500`
-(«МУЗЫКА В ПРЕРЫВ.») runs the background music from the sub-frame interrupt, so
-for that one the interrupt rate *is* the pitch and the tempo. Its handler flips
-`$C030` once every *n* interrupts, where *n* is the note's period byte:
+The sub-frame rate matters more than it looks, because software sequences sound
+on it. RISE OUT has two players: `PLAY` busy-waits in a cycle-counted delay
+loop, used only for the reset and reboot beeps, while every sound in the game
+proper goes through `PLAY500` («МУЗЫКА В ПРЕРЫВ.») — avoiding a busy-wait was
+the point, so that sound never stutters the animation. Its handler flips `$C030`
+once every *n* interrupts, where *n* is the note's period byte:
 
 ```
 30E3: DEC $81        ; tick down the note period
@@ -104,10 +105,30 @@ for that one the interrupt rate *is* the pitch and the tempo. Its handler flips
 30EE: STA $81
 ```
 
-Two flips make one cycle, so the tone is `IRQ / (2n)` and the fastest note,
-`n = 1`, is 500 Hz — which is where the routine gets its name. The interrupt
-itself is 1 kHz. (If music ever sounds an octave out, that ratio is the thing to
-re-examine.)
+Two flips make one cycle, so the tone is `IRQ / (2n)` and the note length is
+`$82 × $84` interrupts. **The interrupt rate is therefore the pitch and the
+tempo**, and it is disputed. agat-emulator sets the sub-frame timer to
+`1000000 / 50 / 20` = 1000 CPU cycles and decrements it in whole cycles, so
+under that emulator it is 1 kHz — at which `PLAY500`'s fastest note, *n* = 1, is
+500 Hz, which would be where the routine gets its name. RISE OUT's author
+remembers the hardware interrupt itself being nearer 500 Hz, which would make
+that note 250 Hz. The difference is an octave, so the rate is a control on the
+page rather than a constant in the source; `agat.setSubFrameHz(hz)` does the
+same from the console.
+
+`tools/tone.js` runs that handler, hand-assembled, on a bare machine, which is
+how the timing here was checked: interrupts land 1019/1022 cycles apart, a note
+lasts exactly `$82 × $84` of them, and the speaker flips every `$81`. For the
+table `3,12 / 4,8 / 2,16` at `$84 = 16` that is 144 ms and 14 flips — tones of
+41.7, 62.5 and 31.25 Hz, which is to say not tones at all but a short crunch.
+
+`$84` is worth watching. It is not initialised by `PLAY500` itself, so if it is
+ever 0 when a sound starts, `DEC $83` wraps and every unit becomes 256
+interrupts instead of 16 — the same table then runs for a second and a half.
+`agat.recordSound(3)` captures the flips during real play and
+`agat.soundReport()` groups them into notes with their frequency, length and
+period in interrupts, and reports the values `PLAY500`'s zero page held while
+recording.
 
 For the same reason the run loop is driven by the wall clock rather than by
 `requestAnimationFrame`: a 50 Hz frame budget issued at a 60 Hz refresh runs the

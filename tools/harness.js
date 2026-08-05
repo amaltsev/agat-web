@@ -49,6 +49,7 @@ function makeMachine(ctx, roms, opts) {
   const slots = A.Machine.SLOTS[model];
   const m = new A.Machine({
     model: model,
+    ramSize: opts.ramSize,
     sysmon: model === 7 ? roms.monitor7 : roms.monitor9,
   });
   if (slots.psrom && A.Psrom7) m.addCard(slots.psrom, new A.Psrom7());
