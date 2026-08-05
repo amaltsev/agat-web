@@ -90,10 +90,11 @@ that coincides with a frame raises both. Software arms them at `$C04x` and
 disarms at `$C05x` on the Agat-7 or `$C02x` on the Agat-9 — different addresses
 on the two machines. `$C019` reads the vertical-blank flag in bit 7.
 
-This matters more than it looks. RISE OUT generates its music inside the
-sub-frame interrupt — `PLAY500`, «МУЗЫКА В ПРЕРЫВ.» — so the interrupt rate *is*
-the pitch and the tempo. Its handler flips `$C030` once every *n* interrupts,
-where *n* is the note's period byte:
+This matters more than it looks. RISE OUT has two players: `PLAY` busy-waits in
+a cycle-counted delay loop and is what the sound effects use, while `PLAY500`
+(«МУЗЫКА В ПРЕРЫВ.») runs the background music from the sub-frame interrupt, so
+for that one the interrupt rate *is* the pitch and the tempo. Its handler flips
+`$C030` once every *n* interrupts, where *n* is the note's period byte:
 
 ```
 30E3: DEC $81        ; tick down the note period
