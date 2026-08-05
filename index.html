@@ -167,12 +167,24 @@
     onStatus: say,
   });
 
+  // Browsers will not let an AudioContext start without a user gesture, so take
+  // the first one of any kind. Wiring this only to the canvas and the keyboard
+  // meant a program that wants neither — like the interrupt test — ran silently.
+  function unlockAudio() {
+    app.speaker.start();
+    app.speaker.resume();
+  }
+  ['pointerdown', 'keydown'].forEach(function (t) {
+    document.addEventListener(t, unlockAudio);
+  });
+
   function say(msg, isError) {
     statusEl.textContent = msg;
     statusEl.className = isError ? 'err' : '';
   }
 
   function loadFiles(files) {
+    unlockAudio();
     var chain = Promise.resolve();
     Array.prototype.forEach.call(files, function (f) {
       chain = chain.then(function () {
@@ -229,18 +241,17 @@
   document.getElementById('boot').addEventListener('click', function () { app.boot(); });
   document.getElementById('reset').addEventListener('click', function () { app.reset(); });
   document.getElementById('vol').addEventListener('input', function (e) {
-    app.speaker.start();
+    unlockAudio();
     app.speaker.setVolume(e.target.value / 100);
   });
-  screen.addEventListener('click', function () {
-    app.speaker.start(); app.speaker.resume();
-  });
+
 
   // The bundled examples, when the page is served rather than opened directly.
   var EXAMPLES = [
     ['examples/rise-out.dsk', 'RISE OUT (Agat-7, 140K disk)', 7],
     ['examples/snake.fil', 'ПИТОНЧИК / SNAKE (Agat-7, .fil)', 7],
-    ['examples/irqtest.fil', 'interrupt & sound test', 7],
+    ['examples/irqtest.dsk', 'interrupt & sound test (bootable)', 7],
+    ['examples/irqtest.fil', 'interrupt & sound test (.fil)', 7],
   ];
   var ex = document.getElementById('examples');
   ex.appendChild(document.createTextNode('Examples: '));
@@ -250,6 +261,7 @@
     a.textContent = e[1];
     a.addEventListener('click', function (ev) {
       ev.preventDefault();
+      unlockAudio();
       fetch(e[0]).then(function (r) { return r.arrayBuffer(); })
         .then(function (b) {
           if (e[2]) {

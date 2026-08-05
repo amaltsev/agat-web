@@ -148,7 +148,11 @@
     }
     var banks = {};
     for (var b in L.bank) banks['state ' + b] = Object.keys(L.bank[b]).join(',');
+    var sp = this.speaker;
     return {
+      audio: sp.enabled
+        ? 'on, ' + (sp.ctx ? sp.ctx.state : '?') + ', vol ' + sp.volume
+        : 'NOT STARTED — the AudioContext needs a user gesture',
       interruptHz: Math.round(AGAT.CPU_HZ / this.machine.subPeriod),
       play500: zp,
       unitPerBank: banks,

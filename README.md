@@ -116,11 +116,13 @@ that note 250 Hz. The difference is an octave, so the rate is a control on the
 page rather than a constant in the source; `agat.setSubFrameHz(hz)` does the
 same from the console.
 
-`examples/irqtest.fil` is the standalone check, and it is meant to be run under
-other emulators too: it installs its own handler on the sub-frame interrupt,
-counts interrupts, and flips the speaker every *n* of them for exactly 1000
-interrupts, silent for 500, for *n* = 1, 2, 4, round and round. Every number
-comes from the interrupt alone, so the pitches report the interrupt rate and the
+`examples/irqtest.dsk` is the standalone check, and it is meant to be run under
+other emulators too — it is a bootable 140K disk because that is the common
+denominator; `irqtest.fil` is the same program for anything that loads those.
+It installs its own handler on the sub-frame interrupt, counts interrupts, and
+flips the speaker every *n* of them for exactly 1000 interrupts, then is silent
+for 500, for *n* = 1, 2, 4, round and round. Every number comes from the
+interrupt alone, so the pitches report the interrupt rate and the
 tone lengths report whether the counting is right. On an Agat-7 it should be
 500 Hz, 250 Hz and 125 Hz, one second each. `tools/mkirqtest.py` builds it from
 6502 source, and agat-web measures 500.7 / 250.0 / 125.0 Hz over 999 / 998 /
