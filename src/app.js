@@ -68,6 +68,10 @@
     this.start();
   };
 
+  App.prototype.toggleLayout = function () {
+    return this.machine.toggleLayout();
+  };
+
   App.prototype.setModel = function (model, ramSize) {
     this.model = model === 7 ? 7 : 9;
     this.ramSize = this.model === 9 ? 0x20000 : (ramSize || this.ramSize);
@@ -185,6 +189,7 @@
     if (!m) return '';
     var bits = ['Agat-' + m.model];
     if (m.model === 7) bits.push((this.ramSize >> 10) + 'K');
+    bits.push(m.cyrillic ? 'РУС' : 'ЛАТ');
     bits.push(m.appleVideo
       ? 'apple ' + (m.text ? 'text' : (m.hires ? 'hires' : 'lores'))
       : (AGAT.MODE_NAMES[m.videoMode().vtype] || 'mode ?'));

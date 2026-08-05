@@ -92,6 +92,7 @@
   </select>
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
+  <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
   <label class="dim">vol <input id="vol" type="range" min="0" max="100" value="25"></label>
   <span id="status">loading…</span>
 </div>
@@ -100,7 +101,9 @@
   <p>
     Click the screen and type. <kbd>Return</kbd>, <kbd>Esc</kbd>, arrows and
     <kbd>Ctrl</kbd>+letter are passed through; sound starts on the first
-    keypress, as browsers require. <b>Boot</b> is the equivalent of
+    keypress, as browsers require. Keys go through the Agat's own scancode
+    table, so <b>ЛАТ/РУС</b> switches to a JCUKEN layout and Cyrillic comes from
+    where a key sits rather than from what your host keyboard types. <b>Boot</b> is the equivalent of
     <code>PR#N</code> — it restarts from the disk. <b>Reset</b> cold-starts into
     the machine's own monitor, which is where you land with no disk in.
   </p>
@@ -204,6 +207,11 @@
   modelSel.addEventListener('change', applyModel);
   ramSel.addEventListener('change', applyModel);
   ramSel.disabled = true;
+
+  var layoutBtn = document.getElementById('layout');
+  layoutBtn.addEventListener('click', function () {
+    layoutBtn.textContent = app.toggleLayout() ? 'РУС' : 'ЛАТ';
+  });
 
   document.getElementById('boot').addEventListener('click', function () { app.boot(); });
   document.getElementById('reset').addEventListener('click', function () { app.reset(); });

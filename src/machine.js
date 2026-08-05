@@ -322,7 +322,16 @@
     if (this.speakerEdges.length < 200000) this.speakerEdges.push(this.cpu.cycles);
   };
 
-  Machine.prototype.keyDown = function (code) { this.kbdLatch = (code & 0x7f) | 0x80; };
+  // The keyboard table's bytes already carry bit 7 where it means something
+  // (0x88 is the left arrow, not a stripped 0x08), so set it rather than
+  // rebuild the value.
+  Machine.prototype.keyDown = function (code) { this.kbdLatch = (code | 0x80) & 0xff; };
+
+  // ЛАТ / РУС. Software reads which is active at $C063.
+  Machine.prototype.toggleLayout = function () {
+    this.cyrillic = !this.cyrillic;
+    return this.cyrillic;
+  };
 
   AGAT.Machine = Machine;
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));
