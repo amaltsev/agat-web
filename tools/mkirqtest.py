@@ -15,9 +15,11 @@ Every number is derived from the interrupt alone, so the pitches say what the
 interrupt rate is and the 1.0 s tones say whether the counting is right. Two
 emulators that disagree about either will not sound the same.
 
-Agat-7: the vectors live at $FFFA/$FFFE, which is ЭмПЗУ card RAM, so the program
-pages the card the way RISE OUT's SETR does — write-enabled to store, then
-read-enabled so the CPU can fetch through it.
+It installs its handler the Apple way, through the monitor: the Agat-7's IRQ
+vector at $FFFE points into ROM at $FA26, which saves A in $45 and then does
+JMP ($03FE). So the handler address goes in $03FE/$03FF and the program needs no
+ЭмПЗУ card and no particular slot configuration — which matters, because a test
+that depends on the machine's setup cannot be used to compare two emulators.
 """
 import sys, os
 
@@ -110,19 +112,14 @@ WANTHI  = $F7
 
 START:
         sei
-; Install the vectors. A store anywhere in the slot-2 page sets the ЭмПЗУ's
-; state from the address: $C280 clears the read-enable bit so stores land in
-; card RAM, $C2A0 sets it so the CPU fetches vectors back out of it.
-        sta $C280
+; The monitor's IRQ handler jumps through $03FE, and its NMI vector points
+; straight at $03FB, where it expects an instruction rather than an address.
         lda #<IRQH
-        sta $FFFE
+        sta $03FE
         lda #>IRQH
-        sta $FFFF
-        lda #<NMIH
-        sta $FFFA
-        lda #>NMIH
-        sta $FFFB
-        sta $C2A0
+        sta $03FF
+        lda #$40                ; RTI, for the 50 Hz frame NMI
+        sta $03FB
         lda #1
         sta MUTE
         lda #0
@@ -173,12 +170,9 @@ WAITLOOP:
 WAITEND:
         rts
 
-NMIH:
-        rti
-
 ; One flip every PERIOD interrupts, and a 16-bit count of every interrupt.
+; The monitor has already stashed the interrupted A in $45; restore it and RTI.
 IRQH:
-        pha
         lda MUTE
         bne TICK
         dec PERIOD
@@ -191,7 +185,7 @@ TICK:
         bne OUT
         inc TICKHI
 OUT:
-        pla
+        lda $45
         rti
 
 TAB:

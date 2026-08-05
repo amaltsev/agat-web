@@ -125,8 +125,15 @@ for 500, for *n* = 1, 2, 4, round and round. Every number comes from the
 interrupt alone, so the pitches report the interrupt rate and the
 tone lengths report whether the counting is right. On an Agat-7 it should be
 500 Hz, 250 Hz and 125 Hz, one second each. `tools/mkirqtest.py` builds it from
-6502 source, and agat-web measures 500.7 / 250.0 / 125.0 Hz over 999 / 998 /
+6502 source, and agat-web measures 500.2 / 250.1 / 125.0 Hz over 999 / 998 /
 996 ms.
+
+It installs its handler through the monitor rather than by writing `$FFFE`
+directly: the Agat-7's IRQ vector points into ROM at `$FA26`, which saves A in
+`$45` and does `JMP ($03FE)`, and the NMI vector points straight at `$03FB`
+expecting an instruction there. Going through those means the test needs no
+ЭмПЗУ card and no particular slot configuration — which is the whole point, since
+a test that depends on the machine's setup cannot compare two emulators.
 
 `tools/tone.js` runs RISE OUT's own handler, hand-assembled, on a bare machine,
 which is how the timing here was checked: interrupts land 1019/1022 cycles apart, a note
