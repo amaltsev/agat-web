@@ -22,6 +22,8 @@
     this.modelPinned = false;
     this.drives = {};                     // slot -> {name, kind}
     this.lastTime = 0;
+    this.subFrameHz = opts.subFrameHz || 0;    // 0 = the machine's default
+    this.soundLog = null;
     this.onStatus = opts.onStatus || function () {};
     this.frame = this.frame.bind(this);
   }
@@ -66,9 +68,50 @@
       { m0: this.model === 7 ? 0x80 : 0x40 });
     this.drives = {};
     for (var i = 0; i < keep.length; i++) this.insert(keep[i]);
+    if (this.subFrameHz) this.machine.setSubFrameHz(this.subFrameHz);
     this.machine.reset();
     this.resize();
     this.start();
+  };
+
+  // Sub-frame interrupt rate, the one RISE OUT's music rides on.
+  App.prototype.setSubFrameHz = function (hz) {
+    this.subFrameHz = hz;
+    return this.machine.setSubFrameHz(hz);
+  };
+
+  // Record what the speaker is actually asked to do, for a few seconds, so a
+  // sound that comes out wrong can be looked at rather than described.
+  //   agat.recordSound(3)   ->  then agat.soundReport()
+  App.prototype.recordSound = function (seconds) {
+    this.soundLog = { edges: [], until: this.machine.cpu.cycles + (seconds || 3) * AGAT.CPU_HZ };
+    return 'recording ' + (seconds || 3) + 's of speaker activity';
+  };
+
+  App.prototype.soundReport = function () {
+    var L = this.soundLog;
+    if (!L || !L.edges.length) return 'nothing recorded — call agat.recordSound(3) first';
+    var e = L.edges, out = [], run = 0, i;
+    for (i = 1; i <= e.length; i++) {
+      var g = i < e.length ? e[i] - e[i - 1] : -1;
+      var g0 = e[run + 1] - e[run];
+      if (i === e.length || Math.abs(g - g0) > g0 * 0.25) {
+        out.push({
+          hz: Math.round(AGAT.CPU_HZ / (2 * g0)),
+          ints: +(g0 / this.machine.subPeriod).toFixed(2),
+          ms: +((e[i - 1] - e[run]) / AGAT.CPU_HZ * 1000).toFixed(1),
+          flips: i - run,
+        });
+        run = i;
+        if (i < e.length) i++;
+      }
+    }
+    return {
+      interruptHz: Math.round(AGAT.CPU_HZ / this.machine.subPeriod),
+      totalFlips: e.length,
+      spanMs: +((e[e.length - 1] - e[0]) / AGAT.CPU_HZ * 1000).toFixed(1),
+      notes: out.slice(0, 40),
+    };
   };
 
   App.prototype.toggleLayout = function () {
@@ -180,6 +223,18 @@
     this.lastTime = t;
     if (dt > MAX_CATCHUP_MS) dt = MAX_CATCHUP_MS;
 
+    if (this.soundLog) {
+      for (var si = 0; si < m.speakerEdges.length; si++) {
+        this.soundLog.edges.push(m.speakerEdges[si]);
+      }
+      if (cpu.cycles > this.soundLog.until) {
+        this.onStatus('sound recorded: ' + this.soundLog.edges.length +
+                      ' flips — call agat.soundReport()');
+        this.soundLog.until = Infinity;
+        this.soundLog.done = true;
+      }
+      if (this.soundLog.done) this.soundLog.until = -1;
+    }
     m.speakerEdges.length = 0;
     var from = cpu.cycles;
     var target = from + Math.round(dt * 0.001 * CPU_HZ);

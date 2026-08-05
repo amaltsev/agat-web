@@ -80,10 +80,16 @@
     // frame, which also raises NMI. Folding them into one counter drops one
     // IRQ in twenty, and RISE OUT's PLAY500 sequences its music on the IRQ
     // count, so a missing tick is audible.
+    // agat-emulator sets delay = 1000000/50 CPU cycles for the frame timer and
+    // that / 20 (Agat-7) or / 40 (Agat-9) for the sub-frame, giving 50 Hz and
+    // 1 kHz. Whether the hardware really ticked at 1 kHz is disputed — RISE
+    // OUT's author remembers ~500 Hz — and since a game that sequences music on
+    // the interrupt count hears the difference as an octave, it is adjustable.
     this.videoInts = false;
     var us = AGAT.CPU_HZ / 1000000;
+    this.subDivisor = opts.subDivisor || (this.model === 7 ? 20 : 40);
     this.framePeriod = 20000 * us;
-    this.subPeriod = (20000 / (this.model === 7 ? 20 : 40)) * us;
+    this.subPeriod = (20000 / this.subDivisor) * us;
     this.nextFrame = 0;
     this.nextSub = 0;
     this.inVblank = false;
@@ -359,6 +365,14 @@
   // $C050-$C05F. On the Agat-7 this whole page disables video interrupts and
   // touches nothing else. On the Agat-9 the low half is the Apple video
   // switches and the high half is the palette register.
+  // Change the sub-frame interrupt rate. `hz` is the interrupt frequency.
+  Machine.prototype.setSubFrameHz = function (hz) {
+    this.subDivisor = Math.max(1, Math.round(hz / 50));
+    this.subPeriod = (20000 / this.subDivisor) * (AGAT.CPU_HZ / 1000000);
+    this.nextSub = this.cpu.cycles + this.subPeriod;
+    return AGAT.CPU_HZ / this.subPeriod;
+  };
+
   Machine.prototype.setVideoInts = function (on) {
     if (on && !this.videoInts) {
       this.nextSub = this.cpu.cycles + this.subPeriod;
