@@ -86,7 +86,18 @@ byte of the address. The native raster is 512 × 256.
 Video interrupts are two independent timers: 20000 µs between frames (NMI) and
 that divided by 20 on the Agat-7 or 40 on the Agat-9 between sub-frame ticks
 (IRQ). They are *not* one counter: the tick that coincides with a frame raises
-both. Software arms them at `$C04x` and disarms at `$C05x` on the Agat-7 or
+both.
+
+**The sub-frame IRQ is a level, not a pulse**, and that turns out to matter more
+than its rate. agat-emulator asserts the line and drops it only
+`N_RBINT_DELAY` cycles later — 600 on the Agat-7, 70 on the Agat-9
+(`videosel.c:110`, and the `CPU_INTR_IRQ`/`CPU_INTR_NOIRQ` pair in `cpu.c`). A
+6502 whose IRQ line is still low re-enters the handler the moment `RTI` restores
+`I`, so a short handler runs *many times per tick* — about 600 divided by its own
+length. `irqtest.dsk` measures 10.3 entries per tick here. Model it as a
+one-shot instead and you get exactly one, every handler that counts interrupts
+runs an order of magnitude slow, and RISE OUT's sound effects stretch from a
+tick into a drone. Software arms them at `$C04x` and disarms at `$C05x` on the Agat-7 or
 `$C02x` on the Agat-9 — different addresses on the two machines. `$C019` reads
 the vertical-blank flag in bit 7.
 
@@ -125,8 +136,11 @@ for 500, for *n* = 1, 2, 4, round and round. Every number comes from the
 interrupt alone, so the pitches report the interrupt rate and the
 tone lengths report whether the counting is right. On an Agat-7 it should be
 500 Hz, 250 Hz and 125 Hz, one second each. `tools/mkirqtest.py` builds it from
-6502 source, and agat-web measures 500.2 / 250.1 / 125.0 Hz over 999 / 998 /
-996 ms.
+6502 source. Because the interrupt is held rather than pulsed, the handler
+actually runs about ten times per tick, so what you hear is three brief tones
+near 7400, 3950 and 2050 Hz cycling every 450 ms or so — and *that* is the
+signature to compare against another emulator. A run that gives three leisurely
+one-second tones is one that is treating the IRQ as an edge.
 
 It installs its handler through the monitor rather than by writing `$FFFE`
 directly: the Agat-7's IRQ vector points into ROM at `$FA26`, which saves A in

@@ -82,12 +82,23 @@
     // count, so a missing tick is audible.
     // agat-emulator sets delay = 1000000/50 CPU cycles for the frame timer and
     // that / 20 (Agat-7) or / 40 (Agat-9) for the sub-frame, giving 50 Hz and
-    // 1 kHz. Whether the hardware really ticked at 1 kHz is disputed — RISE
-    // OUT's author remembers ~500 Hz — and since a game that sequences music on
-    // the interrupt count hears the difference as an octave, it is adjustable.
+    // 1 kHz. The rate is adjustable because software that sequences music on
+    // the interrupt count hears a change in it as a change of octave.
+    //
+    // The sub-frame interrupt is a LEVEL, not an edge, and this matters more
+    // than the rate does. agat-emulator asserts it and only drops it
+    // N_RBINT_DELAY cycles later — 600 on the Agat-7, 70 on the Agat-9
+    // (videosel.c:110, cpu.c's CPU_INTR_IRQ/NOIRQ pair). A 6502 with the line
+    // still low re-enters the handler as soon as RTI restores I, so a short
+    // handler runs many times per tick: roughly 600 / its own length. Treating
+    // it as a one-shot gives exactly one entry per tick instead, which is why
+    // RISE OUT's sound effects ran some twenty times too long here while being
+    // right under agat-emulator.
     this.videoInts = false;
     var us = AGAT.CPU_HZ / 1000000;
     this.subDivisor = opts.subDivisor || (this.model === 7 ? 20 : 40);
+    this.irqHold = this.model === 7 ? 600 : 70;
+    this.irqUntil = 0;
     this.framePeriod = 20000 * us;
     this.subPeriod = (20000 / this.subDivisor) * us;
     this.nextFrame = 0;
@@ -125,13 +136,16 @@
     if (!this.videoInts) {
       this.nextSub = now + this.subPeriod;
       this.nextFrame = now + this.framePeriod;
+      this.cpu.irqLine = false;
       return;
     }
     while (now >= this.nextSub) {
       this.nextSub += this.subPeriod;
-      this.cpu.irq();
+      this.irqUntil = now + this.irqHold;      // hold the line, do not pulse it
+      this.cpu.irqLine = true;
       if (this.onSubInt) this.onSubInt();      // diagnostics hook
     }
+    if (this.cpu.irqLine && now >= this.irqUntil) this.cpu.irqLine = false;
     while (now >= this.nextFrame) {
       this.nextFrame += this.framePeriod;
       this.inVblank = true;
@@ -377,6 +391,7 @@
       this.nextSub = this.cpu.cycles + this.subPeriod;
       this.nextFrame = this.cpu.cycles + this.framePeriod;
     }
+    if (!on) this.cpu.irqLine = false;      // disarming drops the line at once
     this.videoInts = on;
   };
 
