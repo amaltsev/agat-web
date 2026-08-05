@@ -24,6 +24,7 @@
     this.drives = {};                     // slot -> {name, kind}
     this.lastTime = 0;
     this.subFrameHz = opts.subFrameHz || 0;    // 0 = the machine's default
+    this.irqHold = null;                       // null = the machine's default
     this.soundLog = null;
     this.onStatus = opts.onStatus || function () {};
     this.frame = this.frame.bind(this);
@@ -70,9 +71,16 @@
     this.drives = {};
     for (var i = 0; i < keep.length; i++) this.insert(keep[i]);
     if (this.subFrameHz) this.machine.setSubFrameHz(this.subFrameHz);
+    if (this.irqHold !== null) this.machine.setIrqHold(this.irqHold);
     this.machine.reset();
     this.resize();
     this.start();
+  };
+
+  // 600/70 = the agat-emulator hold; 0 = one handler entry per tick.
+  App.prototype.setIrqHold = function (cycles) {
+    this.irqHold = cycles;
+    return this.machine.setIrqHold(cycles);
   };
 
   // Sub-frame interrupt rate, the one RISE OUT's music rides on.

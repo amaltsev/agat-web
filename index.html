@@ -93,10 +93,14 @@
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
-  <select id="irq" title="Sub-frame interrupt rate. RISE OUT sequences its music on this, so it sets the pitch.">
+  <select id="irq" title="Sub-frame interrupt rate. Software that sequences sound on the interrupt count hears this as pitch and tempo.">
     <option value="0">IRQ 1000 Hz</option>
     <option value="500">IRQ 500 Hz</option>
     <option value="2000">IRQ 2000 Hz</option>
+  </select>
+  <select id="hold" title="Is the interrupt a level held for a while, so a short handler re-enters many times per tick, or a single pulse? Not settled.">
+    <option value="-1">held (agat-emulator)</option>
+    <option value="0">one per tick</option>
   </select>
   <label class="dim">vol <input id="vol" type="range" min="0" max="100" value="25"></label>
   <span id="status">loading…</span>
@@ -236,6 +240,12 @@
     say(hz ? 'sub-frame interrupt now ' + Math.round(app.setSubFrameHz(hz)) + ' Hz'
            : 'sub-frame interrupt back to the machine default');
     if (!hz) { app.subFrameHz = 0; app.build(); }
+  });
+
+  document.getElementById('hold').addEventListener('change', function (e) {
+    var v = Number(e.target.value);
+    if (v < 0) { app.irqHold = null; app.build(); say('interrupt held, as agat-emulator does it'); }
+    else { app.setIrqHold(0); say('interrupt pulsed — one handler entry per tick'); }
   });
 
   document.getElementById('boot').addEventListener('click', function () { app.boot(); });

@@ -141,8 +141,12 @@
     }
     while (now >= this.nextSub) {
       this.nextSub += this.subPeriod;
-      this.irqUntil = now + this.irqHold;      // hold the line, do not pulse it
-      this.cpu.irqLine = true;
+      if (this.irqHold) {
+        this.irqUntil = now + this.irqHold;    // hold the line
+        this.cpu.irqLine = true;
+      } else {
+        this.cpu.irq();                        // or pulse it, one entry per tick
+      }
       if (this.onSubInt) this.onSubInt();      // diagnostics hook
     }
     if (this.cpu.irqLine && now >= this.irqUntil) this.cpu.irqLine = false;
@@ -379,6 +383,15 @@
   // touches nothing else. On the Agat-9 the low half is the Apple video
   // switches and the high half is the palette register.
   // Change the sub-frame interrupt rate. `hz` is the interrupt frequency.
+  // How the sub-frame interrupt is delivered. `cycles` is how long the line is
+  // held asserted; 0 makes it a pulse, one handler entry per tick. Which of the
+  // two the hardware did is not settled — see the note in the constructor.
+  Machine.prototype.setIrqHold = function (cycles) {
+    this.irqHold = cycles;
+    if (!cycles) this.cpu.irqLine = false;
+    return cycles;
+  };
+
   Machine.prototype.setSubFrameHz = function (hz) {
     this.subDivisor = Math.max(1, Math.round(hz / 50));
     this.subPeriod = (20000 / this.subDivisor) * (AGAT.CPU_HZ / 1000000);
