@@ -3,8 +3,11 @@
 An **Agat-7 / Agat-9** emulator in the browser. Drop an `.aim`, `.dsk`, `.nib`
 or `.fil` file on the screen and it runs.
 
-Open `index.html`. No build step, no dependencies, no server — plain `<script>`
-tags and everything it needs is in the repository.
+**[Run it now](https://amaltsev.github.io/agat-web/)** — the current `main`,
+hosted, examples included.
+
+Or clone and open `index.html`. No build step, no dependencies, no server —
+plain `<script>` tags and everything it needs is in the repository.
 
 The Agat was a Soviet school micro of the mid-1980s, Apple II-adjacent but not
 an Apple II: a 6502 and some familiar soft switches, wrapped around genuinely
@@ -52,8 +55,9 @@ both the pitch and the tempo.
 `examples/` holds two of Andrew Maltsev's own games, included with his
 permission: **ПИТОНЧИК / Snake** as a `.fil`, and **ПУТЬ К
 ВЕРШИНЕ / RISE OUT** as a 140K disk. The links on the page need a
-served copy — `fetch` is blocked on `file://` — so from a local file
-use **Open…** instead.
+served copy — `fetch` is blocked on `file://` — so they work on the
+[hosted build](https://amaltsev.github.io/agat-web/), and from a local
+file use **Open…** instead.
 
 `examples/irqtest.dsk` is an interrupt and sound test, and it is meant to be run
 under **other** emulators too — it is a bootable 140K disk because every Agat
