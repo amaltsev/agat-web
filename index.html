@@ -82,12 +82,12 @@
 <div class="bar">
   <label class="file">Open… <input type="file" id="file" multiple></label>
   <select id="model">
-    <option value="9">Agat-9</option>
     <option value="7">Agat-7</option>
+    <option value="9">Agat-9</option>
   </select>
   <select id="ram" title="The Agat-7 shipped in three sizes, and software can tell">
-    <option value="131072">128K</option>
     <option value="65536">64K</option>
+    <option value="131072">128K</option>
     <option value="32768">32K</option>
   </select>
   <button id="boot">Boot</button>
@@ -212,7 +212,7 @@
   }
   modelSel.addEventListener('change', applyModel);
   ramSel.addEventListener('change', applyModel);
-  ramSel.disabled = true;
+  ramSel.disabled = modelSel.value === '9';
 
   var layoutBtn = document.getElementById('layout');
   layoutBtn.addEventListener('click', function () {
@@ -240,6 +240,7 @@
   var EXAMPLES = [
     ['examples/rise-out.dsk', 'RISE OUT (Agat-7, 140K disk)', 7],
     ['examples/snake.fil', 'ПИТОНЧИК / SNAKE (Agat-7, .fil)', 7],
+    ['examples/irqtest.fil', 'interrupt & sound test', 7],
   ];
   var ex = document.getElementById('examples');
   ex.appendChild(document.createTextNode('Examples: '));

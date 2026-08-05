@@ -116,8 +116,18 @@ that note 250 Hz. The difference is an octave, so the rate is a control on the
 page rather than a constant in the source; `agat.setSubFrameHz(hz)` does the
 same from the console.
 
-`tools/tone.js` runs that handler, hand-assembled, on a bare machine, which is
-how the timing here was checked: interrupts land 1019/1022 cycles apart, a note
+`examples/irqtest.fil` is the standalone check, and it is meant to be run under
+other emulators too: it installs its own handler on the sub-frame interrupt,
+counts interrupts, and flips the speaker every *n* of them for exactly 1000
+interrupts, silent for 500, for *n* = 1, 2, 4, round and round. Every number
+comes from the interrupt alone, so the pitches report the interrupt rate and the
+tone lengths report whether the counting is right. On an Agat-7 it should be
+500 Hz, 250 Hz and 125 Hz, one second each. `tools/mkirqtest.py` builds it from
+6502 source, and agat-web measures 500.7 / 250.0 / 125.0 Hz over 999 / 998 /
+996 ms.
+
+`tools/tone.js` runs RISE OUT's own handler, hand-assembled, on a bare machine,
+which is how the timing here was checked: interrupts land 1019/1022 cycles apart, a note
 lasts exactly `$82 × $84` of them, and the speaker flips every `$81`. For the
 table `3,12 / 4,8 / 2,16` at `$84 = 16` that is 144 ms and 14 flips — tones of
 41.7, 62.5 and 31.25 Hz, which is to say not tones at all but a short crunch.
@@ -156,6 +166,8 @@ node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/vectors.js               # pure-function tests, about a second
 node tools/check.js modules         # index.html vs tools/modules.js
 node tools/painters.js              # each video mode from a synthetic pattern
+node tools/tone.js "3,12,0" 16      # PLAY500's handler on a bare machine
+python3 tools/mkirqtest.py          # rebuild examples/irqtest.fil
 
 node tools/check.js boot   <image>  # boot and report where it got to
 node tools/check.js io     <image>  # $C0xx histogram

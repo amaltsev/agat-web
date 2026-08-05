@@ -17,8 +17,9 @@
     this.speaker = new AGAT.Speaker();
     this.image = null;
     this.running = false;
-    this.model = 9;
-    this.ramSize = 0x20000;
+    this.model = 7;                       // the commoner machine, and the one
+    this.ramSize = 0x10000;               // most native software expects
+
     this.modelPinned = false;
     this.drives = {};                     // slot -> {name, kind}
     this.lastTime = 0;
@@ -94,10 +95,17 @@
         var v = self.machine.read(Number(a));
         (L.zp[a] || (L.zp[a] = {}))[v] = (L.zp[a][v] || 0) + 1;
       }
+      // Zero page lives in the Agat-7's window 0, so the handler and a sampler
+      // running at another moment can be looking at different banks entirely.
+      if (self.machine.mem7) {
+        var st = self.machine.mem7.state;
+        (L.bank[st] || (L.bank[st] = {}))[self.machine.read(0x84)] = 1;
+      }
     };
     this.soundLog = {
       edges: [],
       zp: {},                                  // PLAY500's state, values seen
+      bank: {},                                // Agat-7 window state -> $84 seen
       until: this.machine.cpu.cycles + (seconds || 3) * AGAT.CPU_HZ,
     };
     return 'recording ' + (seconds || 3) + 's of speaker activity';
@@ -138,9 +146,12 @@
         .map(function (v) { return Number(v) + 'x' + counts[v]; })
         .join(' ');
     }
+    var banks = {};
+    for (var b in L.bank) banks['state ' + b] = Object.keys(L.bank[b]).join(',');
     return {
       interruptHz: Math.round(AGAT.CPU_HZ / this.machine.subPeriod),
       play500: zp,
+      unitPerBank: banks,
       totalFlips: e.length,
       spanMs: +((e[e.length - 1] - e[0]) / AGAT.CPU_HZ * 1000).toFixed(1),
       notes: out.slice(0, 40),

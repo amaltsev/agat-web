@@ -120,8 +120,6 @@
     9: { fdd840: 5, fdd140: 6 },
   };
 
-  // Cold start through the monitor: its reset code scans the slots, finds the
-  // 840K card's signature bytes and enters it with JMP ($0000).
   // Called before every instruction; cheap when interrupts are disarmed.
   Machine.prototype.pollInterrupts = function (now) {
     if (!this.videoInts) {
@@ -132,6 +130,7 @@
     while (now >= this.nextSub) {
       this.nextSub += this.subPeriod;
       this.cpu.irq();
+      if (this.onSubInt) this.onSubInt();      // diagnostics hook
     }
     while (now >= this.nextFrame) {
       this.nextFrame += this.framePeriod;
