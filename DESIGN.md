@@ -304,7 +304,7 @@ node tools/corpus.js <dir> --md     # walk a directory, boot everything
 node tools/debug.js …               # dump / trace / run-to-PC
 
 node tools/tone.js "3,12,0" 16      # RISE OUT's PLAY500 handler on a bare machine
-python3 tools/mkirqtest.py          # rebuild examples/irqtest.{fil,dsk}
+python3 tools/mkirqtest.py          # rebuild examples/irqtest.dsk
 python3 tools/build_roms.py --data <dir>
 ```
 

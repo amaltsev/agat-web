@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build examples/irqtest.fil — a sound and interrupt test for any Agat emulator.
+"""Build examples/irqtest.dsk — a sound and interrupt test for any Agat emulator.
 
 The point is to take RISE OUT out of the picture. It installs its own IRQ handler
 on the sub-frame video interrupt, counts interrupts, and flips the speaker every
@@ -192,41 +192,21 @@ TAB:
         dfb 1, 2, 4, 0
 """
 
-ORG = 0x0800
+# A bootable 140K disk. The controller ROM reads track 0 sector 0 into $0800 and
+# jumps to $0801, the byte at $0800 being DOS's sector count and unread by us.
+# The program fits in a sector, so it needs no second stage: the boot sector *is*
+# the program. A disk is the common denominator -- every Agat emulator boots one.
+ORG = 0x0801
 code = assemble(SRC, ORG)
+boot = bytes([0x01]) + code
+if len(boot) > 256:
+    raise SystemExit(f'boot sector overflow: {len(boot)} bytes')
 
-# --- a bootable 140K disk, for emulators that will not load a .fil -----------
-#
-# The controller ROM reads track 0 sector 0 into $0800 and jumps to $0801, the
-# byte at $0800 being DOS's sector count and unread by us. The program is 141
-# bytes, so it needs no second stage: the boot sector *is* the program.
-def make_dsk():
-    boot = bytes([0x01]) + assemble(SRC, 0x0801)
-    if len(boot) > 256:
-        raise SystemExit(f'boot sector overflow: {len(boot)} bytes')
-    img = bytearray(35 * 16 * 256)
-    img[0:len(boot)] = boot
-    return bytes(img)
+img = bytearray(35 * 16 * 256)
+img[0:len(boot)] = boot
 
-
-name = b'IRQTEST'
-hdr = bytearray(0x2c)
-hdr[0:30] = bytes(b | 0x80 for b in name).ljust(30, b'\xa0')
-hdr[0x27] = 0x04                                   # DOS type B
-hdr[0x28], hdr[0x29] = ORG & 0xff, ORG >> 8
-hdr[0x2a], hdr[0x2b] = len(code) & 0xff, len(code) >> 8
-blob = bytes(hdr) + code
-# The sniffer's rule is (size - 40) % 256 == 0, matching the real corpus: the
-# 4-byte address/length pair counts as part of the first sector's payload.
-blob += b'\x00' * ((40 - len(blob)) % 256)
-
-ex = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples')
-dest = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ex, 'irqtest.fil')
+dest = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'irqtest.dsk')
 with open(dest, 'wb') as f:
-    f.write(blob)
-print(f'{dest}: {len(code)} bytes of code at ${ORG:04X}, {len(blob)} total')
-
-dsk = os.path.join(os.path.dirname(dest), 'irqtest.dsk')
-with open(dsk, 'wb') as f:
-    f.write(make_dsk())
-print(f'{dsk}: bootable, program in track 0 sector 0')
+    f.write(img)
+print(f'{dest}: {len(code)} bytes of code at ${ORG:04X}, bootable from track 0 sector 0')

@@ -55,8 +55,8 @@ as a 140K disk. The links on the page need a served copy — `fetch` is blocked 
 `file://` — so from a local file use **Open…** instead.
 
 `examples/irqtest.dsk` is an interrupt and sound test, and it is meant to be run
-under **other** emulators too — it is a bootable 140K disk because that is the
-common denominator, and it installs its handler through the monitor so it needs
+under **other** emulators too — it is a bootable 140K disk because every Agat
+emulator boots one, and it installs its handler through the monitor so it needs
 no particular slot configuration. It flips the speaker every *n* interrupts for
 exactly 1000 interrupts, then is silent for 500, for *n* = 1, 2, 4, round and
 round. Both pitch and duration derive from the interrupt alone, so it reports
