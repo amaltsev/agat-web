@@ -49,10 +49,11 @@ both the pitch and the tempo.
 
 ### Examples
 
-`examples/` holds two of Андрей Мальцев's own games (Орёл, 1988-89), included
-with his permission: **ПИТОНЧИК** as a `.fil`, and **ПУТЬ К ВЕРШИНЕ / RISE OUT**
-as a 140K disk. The links on the page need a served copy — `fetch` is blocked on
-`file://` — so from a local file use **Open…** instead.
+`examples/` holds two of Andrew Maltsev's own games, included with his
+permission: **ПИТОНЧИК / Snake** as a `.fil`, and **ПУТЬ К
+ВЕРШИНЕ / RISE OUT** as a 140K disk. The links on the page need a
+served copy — `fetch` is blocked on `file://` — so from a local file
+use **Open…** instead.
 
 `examples/irqtest.dsk` is an interrupt and sound test, and it is meant to be run
 under **other** emulators too — it is a bootable 140K disk because every Agat

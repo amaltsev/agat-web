@@ -1,4 +1,4 @@
-# Bundled ROMs and data
+# Bundled ROMs
 
 `roms/roms.js` embeds eight binary blobs, ~8 KB gzipped, so that cloning the
 repository and opening `index.html` is enough to run something. None of it is
@@ -37,8 +37,3 @@ floppy controllers, and `dsk2nib.c` / `dsk2hfe.c` for the sector encoders.
 The ROMs themselves are Soviet-era firmware whose copyright status is unclear;
 they are redistributed here on the same basis as the two projects above. If you
 are their rights holder and would rather they were not, please open an issue.
-
-## Examples
-
-`examples/rise-out.dsk` and `examples/snake.fil` are Андрей Мальцев's own games
-(Орёл, 1988-89), included with his permission.
