@@ -179,7 +179,12 @@ phase, gives 10 per frame — **500 Hz**, which is what RISE OUT's author
 remembers and a literal reading of `PLAY500`'s name.
 
 Both the rate and the delivery model are therefore controls on the page, not
-constants in the source.
+constants in the source. The default is **held**, and that is not only because
+it is what the reference emulator does: RISE OUT's author, listening to sounds
+he wrote, judges the chirps closer to right on held than on one-per-tick. That
+is the best evidence available, and it is what the argument above cannot
+supply — but it is a judgement about which of two models sounds nearer, not a
+verdict that the model is correct, and the sound is not yet right.
 
 ### Why this matters: sound
 

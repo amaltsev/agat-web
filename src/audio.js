@@ -20,11 +20,19 @@
 
   var CPU_HZ = AGAT.CPU_HZ || 1020484;
 
-  // How far ahead of the audio clock we try to stay queued. Too little and any
-  // hiccup leaves a gap; too much and the sound lags the picture.
-  var TARGET_LEAD = 0.08;
-  var MIN_LEAD = 0.02;
-  var MAX_LEAD = 0.30;
+  // How far ahead of the audio clock we try to stay queued, and so how far the
+  // sound lags the picture. Too little and any hiccup leaves a gap; too much and
+  // a keypress is heard after it is seen.
+  //
+  // The lead is trimmed *every* buffer, not only at the extremes. Buffers are
+  // queued back to back, and the audio hardware clock does not run at exactly
+  // the rate performance.now() reports, so the lead walks. Correcting it only on
+  // a wide bound lets it settle anywhere below that bound and stay there — which
+  // is how this ended up at a third of a second.
+  var TARGET_LEAD = 0.05;
+  var MIN_LEAD = 0.02;          // below this the queue has run dry
+  var MAX_LEAD = 0.09;          // above this, pull back to target
+  var TRIM = 0.0005;            // per-buffer drift correction, inaudible
 
   // DC blocker pole. Corner is about 35 Hz at 44.1 kHz.
   var R = 0.995;
@@ -37,6 +45,8 @@
     this.dcX = 0;                 // DC blocker history
     this.dcY = 0;
     this.nextStart = 0;
+    this.lead = 0;
+    this.resyncs = 0;
     this.volume = opts.volume === undefined ? 0.25 : opts.volume;
     this.enabled = false;
   }
@@ -45,7 +55,9 @@
     if (this.ctx) return;
     var C = window.AudioContext || window.webkitAudioContext;
     if (!C) return;
-    this.ctx = new C();
+    // 'interactive' asks the browser for the smallest output buffer it can
+    // manage; its own stage is on top of ours and is usually the larger half.
+    this.ctx = new C({ latencyHint: 'interactive' });
     this.gain = this.ctx.createGain();
     this.gain.gain.value = this.volume;
     this.gain.connect(this.ctx.destination);
@@ -96,11 +108,30 @@
     // requestAnimationFrame — at 60 Hz a 50 Hz frame budget runs 20% fast, and
     // on a 120 Hz display twice that, which is heard as pitch and tempo.
     var lead = this.nextStart - now;
-    if (lead < MIN_LEAD) this.nextStart = now + TARGET_LEAD;   // queue ran dry
-    else if (lead > MAX_LEAD) this.nextStart = now + TARGET_LEAD;  // ran away
+    if (lead < MIN_LEAD || lead > MAX_LEAD) {
+      this.nextStart = now + TARGET_LEAD;      // ran dry, or ran away
+      this.resyncs++;
+    } else if (lead > TARGET_LEAD) {
+      // Ease back toward the target by overlapping the previous buffer very
+      // slightly. Half a millisecond is inaudible, and at one buffer per frame
+      // it is far more correction than the clock drift needs — so the lead stays
+      // pinned near TARGET_LEAD and the audible hard resync above stays rare.
+      this.nextStart -= Math.min(TRIM, lead - TARGET_LEAD);
+    }
     src.start(this.nextStart);
     this.nextStart += n / rate;
     this.lead = this.nextStart - now;
+  };
+
+  // What the ear actually waits: our queue, plus the browser's own output stage.
+  Speaker.prototype.latency = function () {
+    if (!this.ctx) return null;
+    return {
+      queueMs: Math.round((this.lead || 0) * 1000),
+      baseMs: Math.round((this.ctx.baseLatency || 0) * 1000),
+      outputMs: Math.round((this.ctx.outputLatency || 0) * 1000),
+      resyncs: this.resyncs,
+    };
   };
 
   Speaker.CPU_HZ = CPU_HZ;

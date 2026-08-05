@@ -161,6 +161,7 @@
       audio: sp.enabled
         ? 'on, ' + (sp.ctx ? sp.ctx.state : '?') + ', vol ' + sp.volume
         : 'NOT STARTED — the AudioContext needs a user gesture',
+      latency: sp.latency(),
       interruptHz: Math.round(AGAT.CPU_HZ / this.machine.subPeriod),
       play500: zp,
       unitPerBank: banks,

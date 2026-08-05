@@ -229,6 +229,20 @@ decay over a few milliseconds, exactly as the cone does.
 **Buffers are never dropped.** If the queue runs dry or runs away it resynchs,
 but discarding a buffer discards audio.
 
+**The queue lead is the latency, and it has to be trimmed continuously.**
+Buffers are queued back to back, so the lead only changes through drift — and the
+audio hardware clock does not run at exactly the rate `performance.now()`
+reports. Correcting only at a wide upper bound lets the lead settle anywhere
+below that bound and stay there, which is how this once reached a third of a
+second. So the lead is eased back toward `TARGET_LEAD` on *every* buffer, by up
+to half a millisecond, which is inaudible and far more correction than the drift
+needs; the audible hard resync then stays rare.
+
+    TARGET_LEAD  50 ms      MIN_LEAD  20 ms      MAX_LEAD  90 ms
+
+The browser's own output stage sits on top of that and is often the larger half.
+`agat.speaker.latency()` reports both, and `soundReport()` includes it.
+
 The `AudioContext` needs a user gesture, and it must be **any** gesture —
 `pointerdown` or `keydown` anywhere on the document. Wiring it only to the canvas
 and the keyboard meant a program that wants neither ran silently while happily

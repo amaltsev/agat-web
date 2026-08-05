@@ -51,9 +51,11 @@ Settled, with evidence, and expensive to relearn:
 
 **Not settled:** how the sub-frame IRQ is delivered. agat-emulator holds the
 line for 600 cycles (Agat-7), so a short handler re-enters ~10 times per tick;
-the alternative is one interrupt per tick at half the rate. Both the rate and the
-hold are runtime controls, and the source should not quietly commit to either.
-See [HARDWARE.md](HARDWARE.md#the-delivery-model-which-is-not-settled).
+the alternative is one interrupt per tick at half the rate. Held is the default
+and the author judges it the closer of the two by ear, but RISE OUT's sound is
+still not right, so treat this as open. Both the rate and the hold are runtime
+controls and the source should not quietly commit to either. See
+[HARDWARE.md](HARDWARE.md#the-delivery-model-which-is-not-settled).
 
 ## Provenance
 
