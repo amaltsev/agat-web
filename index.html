@@ -51,9 +51,28 @@
   /* ЛАТ and РУС are not the same width, and the bar must not shuffle
      under the pointer when the layout is switched. */
   #layout { min-width: 8ch; text-align: center; }
+  #gear { min-width: 4ch; text-align: center; }
+  #gear.on { border-color: var(--accent); }
   input[type=file] { display: none; }
   label.dim { color: var(--dim); font-size: 12.5px; cursor: default; }
   input[type=range] { width: 84px; vertical-align: middle; }
+  /* The settings section. Under the bar rather than over it: the screen is
+     above, so opening this moves the keyboard and the help and never the
+     picture. */
+  #settings {
+    width: min(94vw, var(--page)); margin-top: 8px;
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 6px; padding: 8px 10px;
+  }
+  #settings .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #settings .row + .row { margin-top: 8px; }
+  #settings .key { color: var(--dim); font-size: 12.5px; min-width: 8ch; }
+  /* A line of its own under the controls it explains, indented past the label
+     column — the same 8ch and the same gap, so it starts where they do. */
+  #settings .note {
+    color: var(--dim); font-size: 12.5px;
+    flex-basis: 100%; margin: 2px 0 0 calc(8ch + 8px);
+  }
   /* The drive lamps. Red, as the drives' own LEDs are, and as nothing else on
      the page is: an accent-blue dot among these controls reads as a button. */
   .lamps { display: flex; gap: 12px; align-items: center; }
@@ -67,6 +86,13 @@
   }
   .lamp.on i { background: #6a2a24; }
   .lamp.busy i { background: #ff5f52; box-shadow: 0 0 7px #ff5f5299; }
+  /* Which track the head is on, beside the light that says it is moving. T0 and
+     T159 are not the same width, and a seeking drive must not shuffle the lamp
+     next to it out from under the pointer. */
+  .lamp b {
+    min-width: 4ch; font: inherit; font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
   /* The on-screen keyboard. Sized in `em` throughout so the whole board scales
      with one font-size, which is what makes it fit a phone as well as a page:
      every cap width in keyview.js is a multiple of the same unit. */
@@ -172,19 +198,33 @@
     <option value="agat">АГАТ keyboard</option>
     <option value="pc">PC keyboard</option>
   </select>
-  <select id="irq" disabled title="Sub-frame interrupt rate. Software that sequences sound on the interrupt count hears this as pitch and tempo.">
-    <option value="0">IRQ 1000 Hz</option>
-    <option value="500">IRQ 500 Hz</option>
-    <option value="2000">IRQ 2000 Hz</option>
-  </select>
-  <select id="hold" title="How the sub-frame interrupt reaches the CPU. 'raster' is the hardware as measured — a level whose edges are raster lines, and it sets its own rate. The other two are agat-emulator's.">
-    <option value="raster">raster (hardware)</option>
-    <option value="held">held (agat-emulator)</option>
-    <option value="pulse">one per tick</option>
-  </select>
-  <label class="dim">vol <input id="vol" type="range" min="0" max="100" value="25"></label>
+  <button id="gear" title="Interrupt model, interrupt rate and volume" aria-expanded="false">⚙</button>
   <span class="lamps" id="lamps"></span>
   <span id="status">loading…</span>
+</div>
+
+<!-- The settings a machine is run under rather than the controls it is driven
+     by: touched once for a program, if ever, and carried by an .agc so they
+     need not be touched again. Out of the bar, which has to fit one line. -->
+<div id="settings" hidden>
+  <div class="row">
+    <span class="key">Interrupt</span>
+    <select id="hold" title="How the sub-frame interrupt reaches the CPU. 'raster' is the hardware as measured — a level whose edges are raster lines, and it sets its own rate. The other two are agat-emulator's.">
+      <option value="raster">raster (hardware)</option>
+      <option value="held">held (agat-emulator)</option>
+      <option value="pulse">one per tick</option>
+    </select>
+    <select id="irq" disabled title="Sub-frame interrupt rate. Software that sequences sound on the interrupt count hears this as pitch and tempo.">
+      <option value="0">IRQ 1000 Hz</option>
+      <option value="500">IRQ 500 Hz</option>
+      <option value="2000">IRQ 2000 Hz</option>
+    </select>
+    <span class="note">Pitch and tempo, for software that sequences sound on the interrupt count.</span>
+  </div>
+  <div class="row">
+    <span class="key">Volume</span>
+    <input id="vol" type="range" min="0" max="100" value="25">
+  </div>
 </div>
 
 <div id="keyboard"></div>
@@ -229,7 +269,15 @@
       840K in slot 5 on both machines; 140K in slot 6 on the Agat-9 and slot 3
       on the Agat-7. A dropped image goes to whichever drive can read it. Each
       drive's lamp is dim while its motor is running and bright while bytes are
-      reaching the CPU — a boot of ten seconds is normal, and looks like one.
+      reaching the CPU — a boot of ten seconds is normal, and looks like one —
+      and <code>T</code> beside it is the track its head is on.
+    </td></tr>
+    <tr><td><b>⚙</b></td><td>
+      The interrupt model, its rate and the volume. The first two are the ones
+      to reach for when sound comes out at the wrong pitch: they set how the
+      sub-frame interrupt reaches the CPU, and software that sequences sound on
+      the interrupt count hears the choice as pitch and tempo. An <code>.agc</code>
+      carries both, so a program tuned by ear stays tuned.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
       The Agat-9 is 128K in 8K banks. The Agat-7 is 32/64/128K in 16K banks and
@@ -287,6 +335,8 @@
   var holdSel = document.getElementById('hold');
   var kbdSel = document.getElementById('kbd');
   var layoutBtn = document.getElementById('layout');
+  var gearBtn = document.getElementById('gear');
+  var settingsEl = document.getElementById('settings');
   var keyboardEl = document.getElementById('keyboard');
   var kbView = null;
 
@@ -507,6 +557,14 @@
   }
   kbdSel.addEventListener('change', function () { applyKbd(); saveUrl(); });
 
+  // Whether the section is open is chrome rather than machine state, so it does
+  // not go in the address: a bookmark carries the interrupt settings themselves.
+  gearBtn.addEventListener('click', function () {
+    settingsEl.hidden = !settingsEl.hidden;
+    gearBtn.className = settingsEl.hidden ? '' : 'on';
+    gearBtn.setAttribute('aria-expanded', String(!settingsEl.hidden));
+  });
+
   rateSel.addEventListener('change', function (e) {
     var hz = Number(e.target.value);
     say(hz ? 'sub-frame interrupt now ' + Math.round(app.setSubFrameHz(hz)) + ' Hz'
@@ -591,17 +649,21 @@
 
   var lampsEl = document.getElementById('lamps');
   var lampEls = [];
+  var trackEls = [];
 
   function syncLamps() {
     var list = app.driveLamps(), i;
     for (i = lampEls.length; i < list.length; i++) {
       var el = document.createElement('span');
       var dot = document.createElement('i');
+      var trk = document.createElement('b');
       el.className = 'lamp';
       el.appendChild(dot);
       el.appendChild(document.createTextNode(list[i].label));
+      el.appendChild(trk);
       lampsEl.appendChild(el);
       lampEls.push(el);
+      trackEls.push(trk);
     }
     for (i = 0; i < list.length; i++) {
       var d = list[i];
@@ -611,8 +673,11 @@
       var cls = 'lamp' + (state === 2 ? ' busy' : state === 1 ? ' on' : '');
       var title = 'slot ' + d.slot + ' — ' +
                   (d.name ? d.name + ', track ' + d.track : 'empty');
+      // An empty drive's head is somewhere too, and saying where is noise.
+      var track = d.name ? 'T' + d.track : '';
       if (lampEls[i].className !== cls) lampEls[i].className = cls;
       if (lampEls[i].title !== title) lampEls[i].title = title;
+      if (trackEls[i].textContent !== track) trackEls[i].textContent = track;
     }
     // $C000 changes on a keypress and is cleared by the program that reads it,
     // so the readout has to be polled rather than pushed.

@@ -53,13 +53,15 @@ Drives: 840K in slot 5 on both machines, 140K in slot 6 on the Agat-9 and slot 3
 on the Agat-7. A dropped image goes to whichever drive can read it.
 
 Each drive has a **lamp** in the bar: dim while its motor line is up, bright
-while bytes are reaching the CPU. Disks of this era take their time — a boot can
-be ten seconds of reading — and the lamp is what tells that apart from a hang.
+while bytes are reaching the CPU, with the track its head is on beside it. Disks
+of this era take their time — a boot can be ten seconds of reading — and the
+lamp is what tells that apart from a hang.
 
-The two remaining selectors are for the **video interrupt**. The default,
-`raster`, is the hardware as measured off real boards — a level whose edges are
-raster lines, which sets its own rate and so greys the rate selector out. The
-other two are agat-emulator's readings of it, kept for comparison. See
+The **⚙** holds the settings a machine is run under rather than driven by: the
+volume, and two selectors for the **video interrupt**. The default, `raster`, is
+the hardware as measured off real boards — a level whose edges are raster lines,
+which sets its own rate and so greys the rate selector out. The other two are
+agat-emulator's readings of it, kept for comparison. See
 [HARDWARE.md](HARDWARE.md#the-delivery-model). They only matter for software
 that sequences sound on the interrupt count, where they set both the pitch and
 the tempo — an octave apart between `held` and `raster`.

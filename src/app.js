@@ -480,6 +480,10 @@
     requestAnimationFrame(this.frame);
   };
 
+  // What is running, in one line: the program, the machine, the video mode and
+  // what is in the drives. Only what nothing else on the page states — the
+  // keyboard layout is on its own button, which can also change it, and the head
+  // position is on the drive lamp, which is lit because the head is moving.
   App.prototype.describe = function () {
     var m = this.machine;
     if (!m) return '';
@@ -489,14 +493,11 @@
     if (this.title) bits.push(this.title);
     bits.push('Agat-' + m.model);
     if (m.model === 7) bits.push((this.ramSize >> 10) + 'K');
-    bits.push(m.cyrillic ? 'РУС' : 'ЛАТ');
     bits.push(m.appleVideo
       ? 'apple ' + (m.text ? 'text' : (m.hires ? 'hires' : 'lores'))
       : (AGAT.MODE_NAMES[m.videoMode().vtype] || 'mode ?'));
     for (var s in this.drives) {
-      var card = m.cards[s];
-      bits.push('S' + s + ' ' + this.drives[s].kind +
-                (card && card.track !== undefined ? ' T' + card.track : ''));
+      bits.push('S' + s + ' ' + this.drives[s].kind);
     }
     return bits.join(' · ');
   };
