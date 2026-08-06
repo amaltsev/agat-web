@@ -6,6 +6,9 @@ A browser emulator for the Soviet **Agat-7 / Agat-9** micros. Drop an `.aim`,
 - [README.md](README.md) — what it is and how to use it
 - [HARDWARE.md](HARDWARE.md) — the machine as emulated, and where each detail came from
 - [DESIGN.md](DESIGN.md) — the JavaScript: module map, bus, video, audio, tools
+- [AGC.md](AGC.md), [AGC.ru.md](AGC.ru.md) — the `.agc` container format, in both
+  languages. **Both are normative and must be changed together**; the Russian is
+  not a courtesy copy that may drift.
 
 ## Hard constraints
 

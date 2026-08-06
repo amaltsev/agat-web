@@ -88,6 +88,8 @@ machine.
 Knowing how to run an old program is more than having its disk: which machine,
 how much RAM, which interrupt model, and which host key sends the byte it reads.
 An `.agc` is all of that in one JSON file, which the page takes like any other.
+The format is written up field by field in [AGC.md](AGC.md), and in Russian in
+[AGC.ru.md](AGC.ru.md).
 
 ```json
 {
@@ -170,6 +172,7 @@ the `pulse` model gives.
 
 | | |
 |---|---|
+| [AGC.md](AGC.md) · [AGC.ru.md](AGC.ru.md) | the `.agc` container, field by field — in English and in Russian |
 | [HARDWARE.md](HARDWARE.md) | the machine as emulated — memory models, video modes, interrupts, floppy formats, and where each detail was transcribed from |
 | [DESIGN.md](DESIGN.md) | the JavaScript — module map, the bus, the render and audio pipelines, the run loop, the test tools |
 | [CLAUDE.md](CLAUDE.md) | the short version: constraints, what to run before believing a change, what is settled and what is not |

@@ -267,6 +267,8 @@ result, and the controllers only ever see a `Media`.
 
 ### Containers sit in front of that
 
+The format itself is specified in [AGC.md](AGC.md); this is how it is wired in.
+
 An `.agc` is JSON, so `sniff` asks `agc.parse` before it consults the size
 table — a table of disk sizes has no business being asked about text. What comes
 out is a machine and a list of media, and `App.applyAgc` sets the model, the RAM
