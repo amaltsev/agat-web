@@ -28,6 +28,7 @@ an `.aim`.
 | `.dsk` | sector images, 140K and 840K, with or without the "Agathe" header |
 | `.nib` | nibble images, 140K (35 × 6656) and 840K (160 × 21 × 282) |
 | `.fil` | a single program with its DOS 3.3 catalogue entry, poked straight into memory |
+| `.agc` | an Agat Container: one of the above plus the machine and keys it wants |
 
 **Boot** is `PR#N` — restart from the disk. **Reset** cold-starts into the
 machine's own monitor, which is where you land with no disk in.
@@ -72,16 +73,81 @@ program properly is a bookmark:
 `model` is 7 or 9, `ram` is 32, 64 or 128 (Agat-7 only — the Agat-9 is always
 128K), `irq` is `raster`, `held` or `pulse`, and `rate` is the sub-frame
 interrupt in Hz, which only the last two obey. A machine named in the URL is
-treated as chosen, so a `7a`/`9a` filename does not override it. The file
-itself is not in the address; carrying that is what the `.agc` container in
-[TODO.md](TODO.md) is for.
+treated as chosen, so a `7a`/`9a` filename does not override it.
+
+`agc=` names a container, which carries the file itself:
+
+    index.html#agc=examples/rise-out.agc
+
+A container is fetched, so this needs a served page. It is applied first and the
+other keys after it, so `#agc=…&model=9` still tries the program on the other
+machine.
+
+## `.agc` — the Agat Container
+
+Knowing how to run an old program is more than having its disk: which machine,
+how much RAM, which interrupt model, and which host key sends the byte it reads.
+An `.agc` is all of that in one JSON file, which the page takes like any other.
+
+```json
+{
+  "agc": 1,
+  "title": "RISE OUT",
+  "author": "Andrew Maltsev",
+  "date": "1989",
+  "url": "https://…",
+  "machine": { "model": 7, "ram": 64 },
+  "quirks":  { "irq": "raster", "rate": 0 },
+  "keys":    { "KeyW": { "code": "^", "note": "Shoot right" } },
+  "media": [ { "name": "rise-out.dsk", "data": ["…base64…"] } ]
+}
+```
+
+`keys` is the **keyboard remap**, and it is what makes a game with awkward
+controls playable: `^` is `$5E`, four keys away in ЛАТ and under a Shift, and
+this puts it on W in both layouts and under any modifier. A code may be written
+as the character itself, as `$5E`, or by name (`Up`, `Enter`, `Esc`, `F1`), and
+the short form `"KeyW": "^"` works where there is nothing to say about it.
+
+The `note` is the useful half. The on-screen keyboard reads the remap the same
+way it reads the shipped table, so the cap lights on a keypress and hovering `^`
+reads **W (Shoot right)** — which is the question someone in front of an
+unfamiliar game actually has.
+
+`date` is **text**, not a number: what is known about an old program is as often
+`"circa 1985"` or `"1990-92"` as it is a year.
+
+`media[].data` is plain base64 in short lines, and the payload is the image
+**as it was found**. Anything changed goes in `media[].patches` as
+`{ "at": 45312, "hex": "A9 60 85 84" }`, applied after decoding — so a container
+carries a pristine copy of what it came from and the change stays legible.
+
+`title`, `author`, `date`, `url` and `notes` are for the record — often the
+container is the only place left that says who wrote a program and when.
+Nothing but `agc` and `media` is required.
+
+**Save .agc** writes one out from the machine as it stands: what is in the
+drives, the model and RAM, both interrupt settings and the live remap. It asks
+nothing. A container that was loaded from a file keeps its own title and
+filename; one made from a bare image takes the image's name for both, so
+`irqtest.dsk` saves as `irqtest.agc` titled `irqtest.dsk` — rename it
+afterwards if it deserves better. From the command line:
+
+```sh
+node tools/mkagc.js game.dsk --title="…" --author="…" --date=1989 \
+  --model=7 --ram=64 --irq=raster --key="KeyW:^:Shoot right" > game.agc
+```
+
+`--diff=<patched image>` works out the patches by comparing, and `--patch=AT:HEX`
+states one directly.
 
 ### Examples
 
 `examples/` holds two of Andrew Maltsev's own games, included with his
-permission: **ПИТОНЧИК / Snake** as a `.fil`, and **ПУТЬ К
-ВЕРШИНЕ / RISE OUT** as a 140K disk. The links on the page need a
-served copy — `fetch` is blocked on `file://` — so they work on the
+permission: **ПИТОНЧИК / Snake** as a `.fil`, and **RISE OUT** as a 140K disk.
+Each is bundled as an `.agc` alongside the original image, so it comes up on the
+machine it wants. The links on the page need a served copy — `fetch` is blocked
+on `file://` — so they work on the
 [hosted build](https://amaltsev.github.io/agat-web/), and from a local
 file use **Open…** instead.
 
@@ -124,7 +190,11 @@ node tools/check.js modules         # index.html vs tools/modules.js
 node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/check.js boot <image>    # boot and report where it got to
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
+node tools/mkagc.js <image> …       # pack an image and its settings into an .agc
 ```
+
+Every tool takes an `.agc` wherever it takes an image, and runs it on the
+machine the container names.
 
 The full list, and what each one is for, is in
 [DESIGN.md](DESIGN.md#tools-and-testing).

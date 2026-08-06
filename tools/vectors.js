@@ -367,6 +367,109 @@ function eq(what, got, want) {
      [...drawn].filter((s) => !want.has(s)).map(hex), []);
 }
 
+// --- .agc containers --------------------------------------------------------
+// The format is the only thing here a person is expected to hand-edit, so what
+// is pinned is what a hand-written file may rely on: the line shape, that a
+// container round-trips, and that a patch is a diff rather than something baked
+// into the payload.
+{
+  const K = A.keyboard;
+  const bytes = new ctx.Uint8Array(200);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 7) & 0xff;
+
+  const lines = A.agc.encode64(bytes);
+  eq('base64 wraps at the MIME width', lines.slice(0, -1).map((l) => l.length),
+     [76, 76, 76]);
+  eq('every base64 line is whole groups',
+     lines.filter((l) => l.length % 4).length, 0);
+  eq('base64 round-trips', [...A.agc.decode64(lines)], [...bytes]);
+  eq('base64 reads back as one string too',
+     [...A.agc.decode64(lines.join('\n'))], [...bytes]);
+
+  const src = A.agc.build({
+    title: 'ИГРА', author: 'Кто-то', date: 'circa 1985', url: 'http://x/y',
+    notes: 'n', model: 7, ram: 64, irq: 'held', rate: 500,
+    keys: { KeyW: { code: '^', note: 'Shoot right' } },
+    media: [{ name: 'x.dsk', bytes: bytes, patches: [{ at: 2, hex: 'AA BB' }] }],
+  });
+  const c = A.agc.parse(Buffer.from(src, 'utf8'), 'x.agc');
+  eq('a container round-trips',
+     [c.title, c.author, c.date, c.url, c.notes, c.machine.model, c.machine.ram,
+      c.quirks.irq, c.quirks.rate, c.keys.KeyW, c.media.length, c.media[0].name],
+     ['ИГРА', 'Кто-то', 'circa 1985', 'http://x/y', 'n', 7, 64, 'held', 500,
+      { code: '^', note: 'Shoot right' }, 1, 'x.dsk']);
+  // A date is what is known, not a year: "circa 1985" has to survive.
+  eq('a date stays as it was written',
+     ['1989', 'circa 1985', '1990-92'].map(
+       (d) => A.agc.parse(Buffer.from(A.agc.build({ date: d, media: [] }), 'utf8')).date),
+     ['1989', 'circa 1985', '1990-92']);
+  eq('the payload is what was packed', [...c.media[0].bytes], [...bytes]);
+  eq('patches reach the image the machine runs',
+     [c.media[0].payload[1], c.media[0].payload[2], c.media[0].payload[3],
+      c.media[0].payload[4]],
+     [bytes[1], 0xaa, 0xbb, bytes[4]]);
+  eq('patching leaves the packed copy alone',
+     [c.media[0].bytes[2], c.media[0].bytes[3]], [bytes[2], bytes[3]]);
+  eq('a patch off the end is refused', (() => {
+    try { A.agc.applyPatches(bytes, [{ at: 199, hex: 'AABB' }]); return 'no'; }
+    catch (e) { return 'threw'; }
+  })(), 'threw');
+
+  eq('a disk is not a container', A.agc.parse(bytes, 'x.dsk'), null);
+  eq('other JSON is not a container',
+     A.agc.parse(Buffer.from('{"hello":1}', 'utf8'), 'x.json'), null);
+  eq('a broken container says so rather than passing for a disk', (() => {
+    try { A.agc.parse(Buffer.from('{"agc": 1, ', 'utf8'), 'x.agc'); return 'no'; }
+    catch (e) { return 'threw'; }
+  })(), 'threw');
+  eq('the sniffer prefers the container to the size table',
+     A.sniff(Buffer.from(src, 'utf8'), 'x.agc').kind, 'agc');
+
+  // How a code may be written in `keys`. The character form is the one worth
+  // having: `"^"` is what a game's instructions say, not `$5E`.
+  eq('codes resolve from every form they may be written in',
+     ['^', '$5E', '0x5e', 'Up', '↑', 'Ю', 'Space', 'nonsense']
+       .map(K.resolveCode),
+     [0x5e, 0x5e, 0x5e, 0x99, 0x99, 0x60, 0x20, -1]);
+}
+
+// --- the keyboard remap -----------------------------------------------------
+// A container puts a code on a host key. The remap is a layer in front of the
+// shipped table, not an edit to it, and it captures the key in every plane —
+// so a movement key does not turn into something else under a held РЕГ.
+{
+  const K = A.keyboard;
+  const names = (c) => K.routesTo(c).map(K.routeName).join(', ');
+
+  const r = K.setRemap({ KeyW: '^', ArrowUp: 'Esc', KeyZZ: '^', KeyX: 'nope' });
+  eq('setRemap names what it could not use', [r.ok, r.bad],
+     [2, ['KeyZZ → ^', 'KeyX → nope']]);
+  eq('a remapped key sends its code in every plane',
+     [K.codeFor(0x11, 0, 0), K.codeFor(0x11, 1, 1), K.codeFor(0x11, 1, 2)],
+     [0xde, 0xde, 0xde]);
+  eq('its neighbours are untouched', K.codeFor(0x12, 0, 0), 0xc5);
+  // Scancode $48 is Numpad8 and, with an E0 in front of it, ↑. Remapping one
+  // must not take the other: they are the same number in different planes.
+  eq('an ext remap captures only the ext plane',
+     [K.codeFor(0x48, 0, 3), K.codeFor(0x48, 0, 0)], [0x9b, 0x91]);
+
+  eq('the remapped key reaches its new code', names(0x5e),
+     'ЛАТ Shift+6, ЛАТ Shift+`, РУС X, РУС Shift+`, W (remap)');
+  eq('and no longer reaches its old one', names(0x57), 'РУС D');
+
+  // The long form says what the key is for, and that is what the board's
+  // tooltip should read out — "which key is ^" is rarely the real question.
+  K.setRemap({ KeyW: { code: '^', note: 'Shoot right' } });
+  eq('a noted remap says what the key does',
+     names(0x5e).split(', ').pop(), 'W (Shoot right)');
+  eq('a noted remap still sends the code', K.codeFor(0x11, 1, 1), 0xde);
+
+  K.setRemap(null);
+  eq('dropping the remap restores the table',
+     [names(0x57), K.codeFor(0x11, 0, 0), K.codeFor(0x48, 0, 3)],
+     ['ЛАТ W, РУС D', 0xd7, 0x99]);
+}
+
 // --- .fil -------------------------------------------------------------------
 {
   const fil = path.join(H.ROOT, 'examples', 'snake.fil');

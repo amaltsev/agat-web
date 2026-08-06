@@ -46,6 +46,11 @@
 
   AGAT.sniff = function (bytes, name) {
     name = name || '';
+    // A container is JSON and everything else here is binary, so it is asked
+    // about first: a size table has no business being consulted about text.
+    var agc = AGAT.agc && AGAT.agc.parse(bytes, name);
+    if (agc) return { kind: 'agc', name: name, agc: agc };
+
     var head = hasHeader(bytes);
     var body = head ? bytes.subarray(HEADER_SIZE) : bytes;
     var kind = SIZES[body.length] || null;

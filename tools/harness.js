@@ -9,7 +9,7 @@ const ROOT = path.dirname(__dirname);
 
 function loadModules() {
   const sandbox = {
-    console, atob, btoa, Response, DecompressionStream,
+    console, atob, btoa, Response, DecompressionStream, TextDecoder, TextEncoder,
     Uint8Array, Uint16Array, Uint32Array, Uint8ClampedArray, Int32Array,
     Promise, Math, Date, JSON, Object, Array, String, Number, Error,
     setTimeout, clearTimeout,
@@ -32,9 +32,22 @@ function loadRoms(ctx) {
 }
 
 // Read a file off disk and classify it exactly as the browser does.
+//
+// An .agc is unwrapped to its first medium, with the container left on the
+// result: a tool wants the image, and the machine the container names is a
+// better default than the one a filename implies. Its own `hintModel` is what
+// carries that, so every tool that already honours a `7a` in a path honours a
+// container without being changed.
 function sniffFile(ctx, p, displayName) {
   const bytes = new ctx.Uint8Array(fs.readFileSync(p));
-  return ctx.AGAT.sniff(bytes, displayName || String(p));
+  const s = ctx.AGAT.sniff(bytes, displayName || String(p));
+  if (s.kind !== 'agc') return s;
+  const first = s.agc.media[0];
+  if (!first) throw new Error(p + ': container carries no media');
+  const inner = ctx.AGAT.sniff(first.payload, first.name);
+  inner.hintModel = s.agc.machine.model || inner.hintModel;
+  inner.agc = s.agc;
+  return inner;
 }
 
 function mountFile(ctx, p) {

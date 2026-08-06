@@ -59,6 +59,7 @@ Load order matters only in that a module's dependencies must already be on
 | `drive.js` | normalised `Media` container and head position |
 | `aim840.js` | DSK840/NIB840 → AIM words |
 | `gcr140.js` | 4-and-4 and 6-and-2 track synthesis |
+| `agc.js` | the `.agc` container: read, write, base64, patches |
 | `image.js` | sniff and normalise any dropped file |
 | `disk840.js` | 840K Teac controller |
 | `disk140.js` | 140K Shugart controller |
@@ -264,6 +265,21 @@ controller ever has to know about file formats:
 `image.js` sniffs, `aim840.js`/`gcr140.js` synthesise, `drive.js` holds the
 result, and the controllers only ever see a `Media`.
 
+### Containers sit in front of that
+
+An `.agc` is JSON, so `sniff` asks `agc.parse` before it consults the size
+table — a table of disk sizes has no business being asked about text. What comes
+out is a machine and a list of media, and `App.applyAgc` sets the model, the RAM
+size and both interrupt settings *before* build(), so the machine is taken apart
+once rather than four times, and then hands each medium to the ordinary `load()`
+path. A `.fil` in a container therefore works because `.fil` already works.
+
+`App.sources` is the other half: the file **as it arrived**, keyed by slot,
+because nothing else keeps it. `drives[slot]` holds a name and a kind, the
+mounted `Media` is normalised past recognition, and Save would otherwise have
+nothing to write. Patches are kept beside those bytes rather than folded into
+them, so a container that is loaded and saved again is the same file.
+
 The GCR encoder was verified **byte-for-byte against compiled `dsk2nib.c`** over
 all 232,960 bytes of a track set. That is the only exact external oracle in the
 project and it earned its keep: the 6-and-2 encoder's decrementing double loop
@@ -339,6 +355,26 @@ consequences fall straight out and are the point of the thing:
   now, `far` if only the other layout does, `dead` if none ever does. РУС
   cannot type `' , / ;`; ЛАТ cannot type `Ю`, `Ч` or `Ъ`.
 
+### The remap is a layer, not an edit
+
+A container can put a code on a host key — `"KeyW": "^"` — and it captures that
+key in **every** plane: both layouts, with or without Shift and Ctrl. A game's
+movement key that changed meaning under a modifier the player happened to be
+holding would be worse than no remap.
+
+The long form carries what the key is *for* —
+`{ "code": "^", "note": "Shoot right" }` — and that note rides on the route, so
+the board's tooltip answers the question someone actually has rather than the
+one the index was built to answer.
+
+That is one `if` at the top of `codeFor()`, and it is deliberately the *only*
+place, because everything else already runs through there: the keypress path,
+and the PC board's per-cap "what does this send right now" line. The other
+direction — `buildRoutes()` — drops the table entries whose scancode has been
+taken over and adds the remap's own, so `routesTo` and `routeName` keep being
+the single answer to "which key sends this". The board then greys ЛАТ `W` and
+tooltips `^` as `W (remap)` without knowing a remap exists.
+
 `capCode` handles the one case the index cannot: УПР sends `$81-$9F`, which is
 the letter's own code less `$40`, so a Ctrl'd byte is shown on the letter it was
 made from.
@@ -410,6 +446,9 @@ node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
 node tools/corpus.js <dir> --md     # walk a directory, boot everything
 node tools/debug.js …               # dump / trace / run-to-PC
 
+node tools/mkagc.js <image> …       # pack an image and its settings into an .agc
+node tools/mkagc.js a.dsk --diff=b.dsk    # ...with the difference as patches
+
 node tools/tone.js "3,12,0" 16      # RISE OUT's PLAY500 handler on a bare machine
 node tools/tone.js "3,12,0" 16 0 raster    # ...under a given interrupt model
 python3 tools/mkirqtest.py          # rebuild examples/irqtest.dsk
@@ -421,6 +460,12 @@ a second. `videoSel7`/`videoSel9` against a hand-transcribed table, `Mem7`
 against the decode tables, the AIM checksum against sectors pulled from a real
 `.aim`, `gcr140` against compiled `dsk2nib`, `AGAT.sniff` against the size
 census, and a font case asserting glyph `$C1` renders correctly at `m0 = $80`.
+
+The `.agc` cases pin what a hand-written container may rely on — the line width,
+a build/parse round-trip, and that a patch reaches the payload without touching
+the packed copy — and the remap cases pin both directions of it at once: `W`
+sending `$DE` in every plane, `$5E` naming `W` as a route, `$57` losing ЛАТ `W`,
+and all three coming back when the remap is dropped.
 
 `tools/corpus.js` walks a directory of images, infers the model from the path
 (`*7a` → 7, `*9a` → 9, as `agat.sh` does), boots each, and emits a Markdown

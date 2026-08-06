@@ -1,7 +1,7 @@
 # agat-web
 
 A browser emulator for the Soviet **Agat-7 / Agat-9** micros. Drop an `.aim`,
-`.dsk`, `.nib` or `.fil` file on the page and it runs.
+`.dsk`, `.nib`, `.fil` or `.agc` file on the page and it runs.
 
 - [README.md](README.md) — what it is and how to use it
 - [HARDWARE.md](HARDWARE.md) — the machine as emulated, and where each detail came from

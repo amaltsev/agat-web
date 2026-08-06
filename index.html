@@ -149,11 +149,12 @@
 
 <div class="screen empty" id="screen">
   <canvas id="canvas" width="512" height="256"></canvas>
-  <div class="drophint">drop an <code>.aim</code>, <code>.dsk</code>, <code>.nib</code> or <code>.fil</code> file here</div>
+  <div class="drophint">drop an <code>.aim</code>, <code>.dsk</code>, <code>.nib</code>, <code>.fil</code> or <code>.agc</code> file here</div>
 </div>
 
 <div class="bar">
   <label class="file">Open… <input type="file" id="file" multiple></label>
+  <button id="save" title="Write what is loaded, and the settings it is running under, as an .agc container">Save .agc</button>
   <select id="model">
     <option value="7">Agat-7</option>
     <option value="9">Agat-9</option>
@@ -214,6 +215,12 @@
       <code>.fil</code> program files. Format is detected by size, not by
       extension, because Agat images in the wild are routinely misnamed.
     </td></tr>
+    <tr><td><b>.agc</b></td><td>
+      An Agat Container: one of those images plus the machine it wants, the
+      interrupt settings it was tuned for, and a keyboard remap — so a game
+      whose controls are four keys away under a Shift can put them where your
+      fingers are. <b>Save .agc</b> writes one from the machine as it stands.
+    </td></tr>
     <tr><td><b>Drives</b></td><td>
       840K in slot 5 on both machines; 140K in slot 6 on the Agat-9 and slot 3
       on the Agat-7. A dropped image goes to whichever drive can read it. Each
@@ -229,7 +236,8 @@
     <tr><td><b>Bookmarks</b></td><td>
       The machine, its RAM size, both interrupt settings and which keyboard is
       up ride in the address, so a configuration that runs a program properly
-      can be kept or passed on.
+      can be kept or passed on. <code>#agc=</code> names a container, which
+      carries the program itself.
     </td></tr>
   </table>
   <p id="examples"></p>
@@ -253,6 +261,7 @@
 <script src="src/drive.js"></script>
 <script src="src/aim840.js"></script>
 <script src="src/gcr140.js"></script>
+<script src="src/agc.js"></script>
 <script src="src/image.js"></script>
 <script src="src/disk840.js"></script>
 <script src="src/disk140.js"></script>
@@ -286,8 +295,10 @@
   // history.replaceState(): a page opened straight off the disk has a null
   // origin, and replaceState() refuses to be handed a file:// URL there.
   //
-  // The file itself is not in the URL. Something that can carry it is the .agc
-  // container in TODO.md.
+  // The file itself is not in the URL, but `agc=` names one that can carry it:
+  // a container holds the image and the machine together, so a link to one is a
+  // link to a program that runs. A container is applied first and these keys
+  // after it, so a hand-edited `model=9` still wins over what it says.
 
   function readUrl() {
     var out = {};
@@ -311,7 +322,11 @@
   }
 
   function saveUrl() {
-    var q = ['model=' + modelSel.value];
+    var q = [];
+    // The container comes first because it is what the address is *for* once
+    // there is one: the rest of the keys read as adjustments to it.
+    if (agcUrl) q.push('agc=' + encodeURIComponent(agcUrl));
+    q.push('model=' + modelSel.value);
     if (modelSel.value === '7') q.push('ram=' + (Number(ramSel.value) >> 10));
     q.push('irq=' + holdSel.value);
     // The rate belongs to the free-running models; under `raster` it comes off
@@ -324,6 +339,7 @@
   }
 
   var url = readUrl();
+  var agcUrl = url.agc || '';
   var pinned = pick(modelSel, url.model);
   pick(ramSel, Number(url.ram) * 1024);
   pick(holdSel, url.irq);
@@ -353,6 +369,11 @@
   // another when an Agat-7 and an Agat-9 are open side by side.
   function syncMachineUI() {
     modelSel.value = String(app.model);
+    // A container names the interrupt settings too, so the menus have to follow
+    // the App rather than keep showing what was chosen before it was loaded.
+    pick(holdSel, app.irqModel);
+    pick(rateSel, String(app.subFrameHz));
+    rateSel.disabled = app.irqModel === 'raster';
     // The Agat-9's 128K is not a choice, and writing it into the menu would
     // still be sitting there when the machine went back to being an Agat-7.
     if (app.model === 7) ramSel.value = String(app.ramSize);
@@ -380,18 +401,43 @@
     statusEl.className = isError ? 'err' : '';
   }
 
+  function afterLoad() {
+    screen.classList.remove('empty');
+    syncMachineUI();
+    // A container may have brought a remap with it, and the board draws which
+    // host key reaches which code.
+    if (kbView) kbView.refresh();
+    // The address has to stop naming a container the moment something else is
+    // loaded, or a bookmark taken afterwards reopens the wrong program.
+    saveUrl();
+  }
+
   function loadFiles(files) {
     unlockAudio();
     var chain = Promise.resolve();
     Array.prototype.forEach.call(files, function (f) {
       chain = chain.then(function () {
-        return app.readFile(f).then(function () {
-          screen.classList.remove('empty');
-          syncMachineUI();
-        });
+        // A file opened by hand is not the one the address names.
+        agcUrl = '';
+        return app.readFile(f).then(afterLoad);
       }).catch(function (e) { say(e.message, true); });
     });
     return chain;
+  }
+
+  // Fetch a container the address names. Served pages only — fetch is blocked
+  // on file://, where Open… is the way in.
+  function loadUrl(path) {
+    unlockAudio();
+    return fetch(path).then(function (r) {
+      if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+      return r.arrayBuffer();
+    }).then(function (b) {
+      app.load(new Uint8Array(b), path.split('/').pop());
+      afterLoad();
+    }).catch(function (e) {
+      say(path + ': ' + e.message + ' — on file:// use Open…', true);
+    });
   }
 
   document.getElementById('file').addEventListener('change', function (e) {
@@ -479,6 +525,29 @@
                            : 'interrupt held, as agat-emulator does it');
   });
 
+  // ---- writing a container out ----------------------------------------------
+  //
+  // What is loaded plus how it is running: the machine, both interrupt settings
+  // and the remap. The point is that a configuration arrived at by ear — which
+  // is how the interrupt model is chosen — survives as a file rather than as a
+  // memory of which menus were touched.
+
+  // Nothing is asked. A container that came from a file keeps its own title and
+  // filename; one made from a bare image takes the image's name for both. That
+  // is a guess, and renaming a downloaded file is easier than answering a
+  // dialog before every save.
+  document.getElementById('save').addEventListener('click', function () {
+    var name = app.agcName();
+    if (!name) { say('nothing loaded to save', true); return; }
+    var text = app.toAgc();
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    a.download = name;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+    say('saved ' + name + ' — ' + Math.round(text.length / 1024) + 'K');
+  });
+
   document.getElementById('boot').addEventListener('click', function () { app.boot(); });
   document.getElementById('reset').addEventListener('click', function () { app.reset(); });
   document.getElementById('vol').addEventListener('input', function (e) {
@@ -488,33 +557,23 @@
 
 
   // The bundled examples, when the page is served rather than opened directly.
+  // Each is a container and names its own machine, so there is nothing to pick
+  // here — and clicking one leaves an address that opens it again.
   var EXAMPLES = [
-    ['examples/rise-out.dsk', 'RISE OUT (Agat-7, 140K disk)', 7],
-    ['examples/snake.fil', 'ПИТОНЧИК / SNAKE (Agat-7, .fil)', 7],
-    ['examples/irqtest.dsk', 'interrupt & sound test', 7],
+    ['examples/rise-out.agc', 'RISE OUT (Agat-7, 140K disk)'],
+    ['examples/snake.agc', 'ПИТОНЧИК / SNAKE (Agat-7, .fil)'],
+    ['examples/irqtest.agc', 'interrupt & sound test'],
   ];
   var ex = document.getElementById('examples');
   ex.appendChild(document.createTextNode('Examples: '));
   EXAMPLES.forEach(function (e, i) {
     var a = document.createElement('a');
-    a.href = '#';
+    a.href = '#agc=' + encodeURIComponent(e[0]);
     a.textContent = e[1];
     a.addEventListener('click', function (ev) {
       ev.preventDefault();
-      unlockAudio();
-      fetch(e[0]).then(function (r) { return r.arrayBuffer(); })
-        .then(function (b) {
-          if (e[2]) {
-            modelSel.value = String(e[2]);
-            applyModel();
-          }
-          app.load(new Uint8Array(b), e[0].split('/').pop());
-          screen.classList.remove('empty');
-          syncMachineUI();
-        })
-        .catch(function () {
-          say('examples need a served page — on file:// use Open…', true);
-        });
+      agcUrl = e[0];
+      loadUrl(e[0]);
     });
     if (i) ex.appendChild(document.createTextNode(' · '));
     ex.appendChild(a);
@@ -563,8 +622,23 @@
     say(e.message + ' @' + String(e.filename).split('/').pop() + ':' + e.lineno, true);
   });
 
+  // A container names a machine, and the address may disagree with it on
+  // purpose — that is how a program gets tried on the other model, or under
+  // another interrupt setting, without editing the file. So the container is
+  // applied first and whatever the fragment actually carried is applied over it.
+  function applyUrlOverrides() {
+    if (url.model && pick(modelSel, url.model)) {
+      if (url.ram) pick(ramSel, Number(url.ram) * 1024);
+      applyModel();
+    }
+    if (url.irq && pick(holdSel, url.irq)) app.setIrqModel(holdSel.value);
+    if (url.rate && pick(rateSel, url.rate)) app.setSubFrameHz(Number(rateSel.value));
+    rateSel.disabled = holdSel.value === 'raster';
+  }
+
   app.init().then(function () {
     applyKbd();
+    if (agcUrl) loadUrl(agcUrl).then(applyUrlOverrides);
     say('ready — drop a file, or press Reset for the monitor');
     setInterval(function () { if (app.running) say(app.describe()); }, 500);
     // The lamps run five times faster than the status line: at 500 ms a drive

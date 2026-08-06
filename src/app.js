@@ -23,6 +23,19 @@
 
     this.modelPinned = false;
     this.drives = {};                     // slot -> {name, kind}
+    // What was loaded, as it arrived: slot -> {name, bytes, patches}, plus
+    // 'fil:<name>' for programs poked into memory. The mounted Media is
+    // normalised and the drives keep only a name, so without this there is
+    // nothing left to write an .agc back out of.
+    this.sources = {};
+    // A container's own fields, kept so that loading one and saving it again
+    // does not quietly drop what it said about the program.
+    this.title = '';                      // also what the status line shows
+    this.author = '';
+    this.date = '';                       // text: "1989", "circa 1985", "1990-92"
+    this.url = '';
+    this.notes = '';
+    this.fromAgc = '';                    // the container's filename, if any
     this.lastTime = 0;
     this.subFrameHz = opts.subFrameHz || 0;    // 0 = the machine's default
     this.irqModel = opts.irqModel || 'raster';  // 'raster' | 'held' | 'pulse'
@@ -221,6 +234,14 @@
     return out;
   };
 
+  App.prototype.ejectAll = function () {
+    for (var s = 0; s < 8; s++) {
+      var card = this.machine.cards[s];
+      if (card && card.eject) card.eject();
+    }
+    this.drives = {};
+  };
+
   App.prototype.insert = function (media) {
     var slot = this.slotFor(media.kind);
     var card = this.machine.cards[slot];
@@ -231,10 +252,27 @@
   };
 
   // Disks are inserted and booted; .fil files are poked straight into memory.
-  App.prototype.load = function (bytes, name) {
+  //
+  // `from` is the container entry this came out of, when it came out of one:
+  // the bytes as they were packed and the patches applied to them, so a
+  // container that is loaded and saved again writes back what it carried
+  // rather than the patched image it ran.
+  App.prototype.load = function (bytes, name, from) {
     var s = AGAT.sniff(bytes, name);
     if (!s.kind) {
       throw new Error(name + ': not a recognised Agat image (' + bytes.length + ' bytes)');
+    }
+    if (s.kind === 'agc') {
+      if (from) throw new Error(name + ': a container inside a container');
+      return this.applyAgc(s.agc);
+    }
+    // A file dropped on its own belongs to no container, and the last one's
+    // title and remap are about a different program: a game's movement keys
+    // silently applying to the next disk would be worse than no remap at all.
+    if (!from) {
+      this.title = this.author = this.date = this.url = '';
+      this.notes = this.fromAgc = '';
+      AGAT.keyboard.setRemap(null);
     }
     // Honour the machine the filename implies, unless the user has chosen one.
     if (s.hintModel && s.hintModel !== this.model && !this.modelPinned) {
@@ -243,17 +281,112 @@
     if (s.kind === 'fil') {
       if (!AGAT.loadFil) throw new Error('.fil loading is not built in yet');
       AGAT.loadFil(this.machine, s.payload);
+      this.remember('fil:' + name, name, bytes, from);
       this.start();
       this.onStatus('loaded ' + (s.filName || name) + ' at $' +
                     s.loadAddr.toString(16).toUpperCase());
       return { kind: 'fil' };
     }
     var slot = this.insert(AGAT.mount(s));
+    this.remember(slot, name, bytes, from);
     this.machine.reset();
     this.machine.bootSlot(slot);
     this.start();
     this.onStatus('booting ' + name + ' from slot ' + slot);
     return { kind: s.kind, slot: slot };
+  };
+
+  // Keyed by slot, so re-dropping a disk into a drive replaces what was there
+  // rather than saving both.
+  App.prototype.remember = function (key, name, bytes, from) {
+    this.sources[key] = {
+      name: name,
+      bytes: from ? from.bytes : bytes,
+      patches: from ? from.patches : [],
+    };
+  };
+
+  // ---- containers ----------------------------------------------------------
+
+  // A container names a machine, so applying one is a rebuild: the model, the
+  // RAM size and both interrupt settings go in together and build() applies
+  // them all at once, rather than the machine being taken apart four times.
+  App.prototype.applyAgc = function (c) {
+    // A container describes a whole machine, so the drives start empty: a disk
+    // left in another drive is not part of what it says, and build() would
+    // otherwise carry it across into the machine the container asked for.
+    this.ejectAll();
+    if (c.machine.model) {
+      this.modelPinned = true;         // as deliberate as a machine off the menu
+      this.model = c.machine.model;
+    }
+    this.ramSize = this.model === 9 ? 0x20000
+                 : (c.machine.ram ? c.machine.ram * 1024 : this.ramSize);
+    if (c.quirks.irq) this.irqModel = c.quirks.irq;
+    this.subFrameHz = c.quirks.rate || 0;
+    this.build();
+
+    var keys = AGAT.keyboard.setRemap(c.keys);
+    this.sources = {};                 // the container is the whole set
+    this.title = c.title;
+    this.author = c.author;
+    this.date = c.date;
+    this.url = c.url;
+    this.notes = c.notes;
+    this.fromAgc = c.name;
+    for (var i = 0; i < c.media.length; i++) {
+      this.load(c.media[i].payload, c.media[i].name, c.media[i]);
+    }
+    this.onStatus(this.credit() +
+                  (keys.ok ? ' — ' + keys.ok + ' key' + (keys.ok > 1 ? 's' : '') +
+                             ' remapped' : '') +
+                  (keys.bad.length ? ' — ignored ' + keys.bad.join(', ') : ''));
+    return { kind: 'agc', title: c.title, media: c.media.length };
+  };
+
+  // The program, said the way a container names it: "RISE OUT — Andrew
+  // Maltsev, 1989". The run loop's own status line has no room for this, so it
+  // is worth saying once, on the load that brought it in.
+  App.prototype.credit = function () {
+    var who = [this.author, this.date].filter(Boolean).join(', ');
+    return (this.title || this.fromAgc) + (who ? ' — ' + who : '');
+  };
+
+  // What a saved container should be called: the one it came from, or the
+  // loaded image with its extension swapped. A title good enough to publish is
+  // a decision for whoever renames the file afterwards.
+  App.prototype.agcName = function () {
+    if (this.fromAgc) return this.fromAgc;
+    for (var k in this.sources) {
+      return this.sources[k].name.replace(/\.[^.\/]*$/, '') + '.agc';
+    }
+    return '';
+  };
+
+  // The machine as it stands, as a container: what is in the drives, the model
+  // and RAM it is running as, both interrupt settings, and the live remap.
+  App.prototype.toAgc = function () {
+    var media = [], k;
+    for (k in this.sources) {
+      media.push({
+        name: this.sources[k].name,
+        bytes: this.sources[k].bytes,
+        patches: this.sources[k].patches,
+      });
+    }
+    return AGAT.agc.build({
+      title: this.title || (media.length ? media[0].name : ''),
+      author: this.author,
+      date: this.date,
+      url: this.url,
+      notes: this.notes,
+      model: this.model,
+      ram: this.ramSize >> 10,
+      irq: this.irqModel,
+      rate: this.subFrameHz,
+      keys: AGAT.keyboard.remap(),
+      media: media,
+    });
   };
 
   App.prototype.readFile = function (file) {
@@ -350,7 +483,11 @@
   App.prototype.describe = function () {
     var m = this.machine;
     if (!m) return '';
-    var bits = ['Agat-' + m.model];
+    var bits = [];
+    // A container's title survives in the status line, which the run loop
+    // otherwise overwrites twice a second with the machine's state.
+    if (this.title) bits.push(this.title);
+    bits.push('Agat-' + m.model);
     if (m.model === 7) bits.push((this.ramSize >> 10) + 'K');
     bits.push(m.cyrillic ? 'РУС' : 'ЛАТ');
     bits.push(m.appleVideo

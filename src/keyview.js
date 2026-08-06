@@ -29,17 +29,9 @@
 
   var K = AGAT.keyboard;
 
-  // Code -> the glyph the Agat-7 draws for it. $20-$5F is ASCII apart from the
-  // currency sign; $60-$7F is the Cyrillic band.
-  var CHAR = (function () {
-    var t = [], i;
-    for (i = 0; i < 128; i++) t.push('');
-    for (i = 0x20; i < 0x60; i++) t[i] = String.fromCharCode(i);
-    t[0x24] = '¤';
-    var KOI = 'ЮАБЦДЕФГХИЙКЛМНОПЯРСТУЖВЬЫЗШЭЩЧЪ';
-    for (i = 0; i < 32; i++) t[0x60 + i] = KOI.charAt(i);
-    return t;
-  })();
+  // Code -> the glyph the Agat-7 draws for it. Lives in keyboard.js, next to the
+  // table it indexes.
+  var CHAR = K.CHAR;
 
   // The three kinds of cap, as the tables below spell them:
   //
@@ -342,7 +334,9 @@
     var i, any = 0;
     for (i = 0; i < rs.length; i++) {
       any = 1;
-      if (rs[i].mod === K.EXT) return 2;
+      // A remapped key ignores both layout and modifier, so it reaches its code
+      // now whatever the board is showing.
+      if (rs[i].remap || rs[i].mod === K.EXT) return 2;
       if (rs[i].layout === layout && rs[i].mod === mod) return 2;
     }
     return any;

@@ -129,15 +129,110 @@
     Insert: 0x52, Delete: 0x53, NumpadEnter: 0x1c, NumpadDivide: 0x35,
   };
 
+  // Code -> the glyph the Agat-7 draws for it. $20-$5F is ASCII apart from the
+  // currency sign; $60-$7F is the Cyrillic band, in KOI-7 N2 order. Lives here
+  // rather than with the on-screen board because it is what a code *is*, and
+  // both the board and the remap's `"^"` have to read it.
+  var CHAR = (function () {
+    var t = [], i;
+    for (i = 0; i < 128; i++) t.push('');
+    for (i = 0x20; i < 0x60; i++) t[i] = String.fromCharCode(i);
+    t[0x24] = '¤';
+    var KOI = 'ЮАБЦДЕФГХИЙКЛМНОПЯРСТУЖВЬЫЗШЭЩЧЪ';
+    for (i = 0; i < 32; i++) t[0x60 + i] = KOI.charAt(i);
+    return t;
+  })();
+
+  // The codes with no glyph to name them by. These are the machine's own caps —
+  // the arrow cluster, ↵, ПРОБЕЛ and F1-F3 — and the values are the ones
+  // keyview.js paints on them.
+  var NAMED = {
+    Up: 0x99, Down: 0x9a, Left: 0x88, Right: 0x95,
+    '↑': 0x99, '↓': 0x9a, '←': 0x88, '→': 0x95,
+    Enter: 0x8d, '↵': 0x8d, Esc: 0x9b, Space: 0x20, Tab: 0x89, Bksp: 0x88,
+    F1: 0x84, F2: 0x85, F3: 0x86,
+  };
+
+  var BY_CHAR = (function () {
+    var out = {}, i;
+    for (i = 0; i < 128; i++) if (CHAR[i]) out[CHAR[i]] = i;
+    return out;
+  })();
+
+  // A code, written the way a person would write it: `$5E`, `0x5E`, a name from
+  // the table above, or the character itself — `^`, `@`, `Ю`. -1 for none of
+  // those, which is what lets a container name a key it got wrong and be told.
+  function resolveCode(v) {
+    if (typeof v === 'number') return v & 0xff;
+    if (typeof v !== 'string' || !v) return -1;
+    if (/^(\$|0x)[0-9a-f]{1,2}$/i.test(v)) return parseInt(v.replace(/^(\$|0x)/i, ''), 16);
+    if (NAMED[v] !== undefined) return NAMED[v];
+    if (BY_CHAR[v] !== undefined) return BY_CHAR[v];
+    return -1;
+  }
+
+  // ---- the remap -----------------------------------------------------------
+  //
+  // A container can put a code on a host key: `"KeyW": "^"` for a game that
+  // reads $5E. It is a layer in front of KEYMAP rather than an edit to it, and
+  // it captures the key in *every* plane — W sends $5E in ЛАТ and in РУС, with
+  // or without РЕГ and УПР — because a game's movement key must not change
+  // under a modifier the player happens to be holding.
+  //
+  // The long form carries what the key is *for*:
+  //
+  //   "keys": { "KeyW": { "code": "^", "note": "Shoot right" } }
+  //
+  // which is the answer to the question someone actually has in front of an
+  // unfamiliar game, and it reaches the on-screen board's tooltips through the
+  // same route index as everything else.
+  //
+  // Kept by scancode, `scan + (ext ? 256 : 0)` as KEYNAME is, so the one lookup
+  // in codeFor() covers the keyboard and the on-screen board at once.
+
+  var REMAP = null;         // scancode -> code
+  var NOTES = null;         // scancode -> what the key does
+  var REMAP_SRC = null;     // the map as it was given, for writing back out
+
+  function setRemap(map) {
+    var bad = [], ok = 0, key, scan, code, ext, spec;
+    ROUTES = null;                 // the backwards index is built from both
+    REMAP = null;
+    NOTES = null;
+    REMAP_SRC = null;
+    if (!map) return { ok: 0, bad: bad };
+    REMAP = {};
+    NOTES = {};
+    for (key in map) {
+      spec = map[key];
+      if (!spec || typeof spec !== 'object') spec = { code: spec };
+      ext = Object.prototype.hasOwnProperty.call(EXT_SCAN, key);
+      scan = ext ? EXT_SCAN[key] : SCAN[key];
+      code = resolveCode(spec.code);
+      if (scan === undefined || code < 0) { bad.push(key + ' → ' + spec.code); continue; }
+      REMAP[scan + (ext ? 256 : 0)] = code;
+      NOTES[scan + (ext ? 256 : 0)] = spec.note || '';
+      ok++;
+    }
+    REMAP_SRC = map;
+    return { ok: ok, bad: bad };
+  }
+
+  function remap() { return REMAP_SRC; }
+
   // Which plane a scancode is read from, given the modifiers.
   function planeFor(ext, ctrl, shift) {
     return ext ? EXT : ctrl ? CTRL : shift ? SHIFT : NORMAL;
   }
 
-  // The table lookup itself. Returns the byte to put in $C000, or -1 for
-  // "nothing here" — the planes are sparse, and a hole means the machine has
-  // no key that sends anything from this one.
+  // The table lookup itself, with the remap in front of it. Returns the byte to
+  // put in $C000, or -1 for "nothing here" — the planes are sparse, and a hole
+  // means the machine has no key that sends anything from this one.
   function codeFor(scan, layout, mod) {
+    if (REMAP) {
+      var r = REMAP[scan + (mod === EXT ? 256 : 0)];
+      if (r !== undefined) return r | 0x80;
+    }
     var v = KEYMAP[((layout * 4 + mod) << 7) | scan];
     return v ? (v | 0x80) : -1;
   }
@@ -169,7 +264,7 @@
   var ROUTES = null;
 
   function buildRoutes() {
-    var i, layout, mod, scan, v;
+    var i, layout, mod, scan, v, key, ext;
     ROUTES = [];
     for (i = 0; i < 128; i++) ROUTES.push([]);
     for (layout = 0; layout < 2; layout++) {
@@ -180,9 +275,20 @@
           // The two EXT planes are the same plane: an arrow key does not care
           // which layout is up, and listing it twice would only say so twice.
           if (mod === EXT && layout !== LAT) continue;
+          // A remapped key no longer reaches what the table has under it, and
+          // the board has to grey those legends out rather than keep offering
+          // a key that now sends something else.
+          if (REMAP && REMAP[scan + (mod === EXT ? 256 : 0)] !== undefined) continue;
           ROUTES[v & 0x7f].push({ layout: layout, mod: mod, scan: scan });
         }
       }
+    }
+    for (key in REMAP) {
+      ext = Number(key) >= 256;
+      ROUTES[REMAP[key] & 0x7f].push({
+        scan: Number(key) & 255, ext: ext, mod: ext ? EXT : NORMAL,
+        remap: true, note: NOTES[key],
+      });
     }
   }
 
@@ -224,8 +330,16 @@
     return KEYNAME[scan + (mod === EXT ? 256 : 0)] || '$' + scan.toString(16);
   }
 
-  // A route, said out loud: "ЛАТ Shift+6", "РУС X", "↑".
+  // A route, said out loud: "ЛАТ Shift+6", "РУС X", "↑", "W (remap)", or
+  // "W (Shoot right)" where the container said what the key is for. A remap
+  // carries no layout because it ignores both, and is marked either way, so
+  // that a key which only reaches this code because a container put it there is
+  // not mistaken for something the machine's own table does.
   function routeName(r) {
+    if (r.remap) {
+      return keyName(r.scan, r.ext ? EXT : NORMAL) +
+             ' (' + (r.note || 'remap') + ')';
+    }
     if (r.mod === EXT) return keyName(r.scan, EXT);
     return (r.layout === RUS ? 'РУС ' : 'ЛАТ ') +
            (r.mod === SHIFT ? 'Shift+' : r.mod === CTRL ? 'Ctrl+' : '') +
@@ -285,7 +399,8 @@
   AGAT.keyboard = {
     decode: decode, codeFor: codeFor, scanOf: scanOf, planeFor: planeFor,
     routesTo: routesTo, routeName: routeName, keyName: keyName,
-    KEYMAP: KEYMAP, SCAN: SCAN, EXT_SCAN: EXT_SCAN,
+    setRemap: setRemap, remap: remap, resolveCode: resolveCode,
+    KEYMAP: KEYMAP, SCAN: SCAN, EXT_SCAN: EXT_SCAN, CHAR: CHAR,
     LAT: LAT, RUS: RUS, NORMAL: NORMAL, SHIFT: SHIFT, CTRL: CTRL, EXT: EXT,
   };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

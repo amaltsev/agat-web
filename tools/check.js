@@ -55,6 +55,25 @@ if (cmd === 'sniff') {
     } else if (s.kind) {
       extra = '  model-hint=' + (s.hintModel || '-') + (s.writeProtect ? ' WP' : '');
     }
+    // sniffFile unwraps a container to its first medium, so the line above
+    // describes the image; this says which container it came out of.
+    if (s.agc) {
+      const c = s.agc;
+      const key = (k) => {
+        const v = c.keys[k], spec = v && typeof v === 'object' ? v : { code: v };
+        return k + '→' + spec.code + (spec.note ? ' (' + spec.note + ')' : '');
+      };
+      extra += '\n         .agc "' + c.title + '"' +
+               (c.author ? ' by ' + c.author : '') + (c.date ? ', ' + c.date : '') +
+               '  Agat-' + (c.machine.model || '?') +
+               (c.machine.ram ? ' ' + c.machine.ram + 'K' : '') +
+               (c.quirks.irq ? ' irq=' + c.quirks.irq : '') +
+               (c.quirks.rate ? '@' + c.quirks.rate + 'Hz' : '') +
+               '  ' + c.media.length + ' media' +
+               (c.url ? '\n         ' + c.url : '') +
+               '\n         keys: ' + (Object.keys(c.keys).length
+                 ? Object.keys(c.keys).map(key).join(', ') : 'none');
+    }
     console.log((s.kind || 'unknown').padEnd(8) + ' ' +
                 String(size).padStart(8) + '  ' + path.basename(p) + extra);
   }
@@ -70,8 +89,15 @@ if (!target) { console.error('need an image'); process.exit(2); }
 H.loadRoms(ctx).then((roms) => {
   const sniffed = H.sniffFile(ctx, target);
   const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
-  const m = H.makeMachine(ctx, roms, { model: model });
+  const agc = sniffed.agc;
+  const m = H.makeMachine(ctx, roms, {
+    model: model,
+    ramSize: agc && agc.machine.ram ? agc.machine.ram * 1024 : undefined,
+  });
+  // A flag beats the container; the container beats the machine's default.
   if (flags.irq) m.setIrqModel(flags.irq);
+  else if (agc && agc.quirks.irq) m.setIrqModel(agc.quirks.irq);
+  if (agc && agc.quirks.rate) m.setSubFrameHz(agc.quirks.rate);
   let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
   if (sniffed.kind && sniffed.kind !== 'fil') {
     slot = H.insert(m, ctx.AGAT.mount(sniffed));
@@ -103,7 +129,8 @@ H.loadRoms(ctx).then((roms) => {
     else { stuck = 0; lastPC = cpu.pc; }
   }
 
-  console.log('image      ' + path.basename(target) + '  (' + sniffed.kind + ')');
+  console.log('image      ' + path.basename(target) + '  (' + sniffed.kind + ')' +
+              (agc ? '  .agc "' + agc.title + '"' : ''));
   console.log('machine    Agat-' + model + (flags.cold ? ', cold start' : ', boot slot ' + slot) +
               (flags.irq ? ', irq ' + flags.irq : ''));
   console.log('cycles     ' + cpu.cycles + ' (' + (cpu.cycles / 1.02e6).toFixed(2) + ' s)');

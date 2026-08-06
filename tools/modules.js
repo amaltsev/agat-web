@@ -12,6 +12,7 @@ const MODULES = [
   'src/drive.js',
   'src/aim840.js',
   'src/gcr140.js',
+  'src/agc.js',
   'src/image.js',
   'src/disk840.js',
   'src/disk140.js',
