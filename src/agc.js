@@ -103,6 +103,27 @@
     return out;
   }
 
+  // Where two images differ, as patch records. Runs are joined across gaps of
+  // up to 8 identical bytes, because a patch that reads as one change should be
+  // one record: three separate `at`s for `A9 60 EA EA 85 84` helps nobody.
+  function diff(orig, mod) {
+    if (orig.length !== mod.length) {
+      throw new Error('cannot diff a ' + mod.length + '-byte image against a ' +
+                      orig.length + '-byte one — patches are byte-for-byte');
+    }
+    var out = [], at = -1, last = -1, i;
+    for (i = 0; i < orig.length; i++) {
+      if (orig[i] === mod[i]) continue;
+      if (at < 0 || i - last > 8) {
+        if (at >= 0) out.push({ at: at, hex: toHex(mod.subarray(at, last + 1)) });
+        at = i;
+      }
+      last = i;
+    }
+    if (at >= 0) out.push({ at: at, hex: toHex(mod.subarray(at, last + 1)) });
+    return out;
+  }
+
   // Is this text at all, and does it start like an object? A container is UTF-8
   // JSON and every other format here is binary, so this rejects a 2 MB .aim on
   // its first byte rather than trying to decode it.
@@ -208,7 +229,7 @@
   AGAT.agc = {
     parse: parse, build: build,
     encode64: encode64, decode64: decode64,
-    fromHex: fromHex, toHex: toHex, applyPatches: applyPatches,
+    fromHex: fromHex, toHex: toHex, applyPatches: applyPatches, diff: diff,
     VERSION: VERSION, LINE: LINE,
   };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

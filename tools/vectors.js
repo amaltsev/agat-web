@@ -124,7 +124,7 @@ function eq(what, got, want) {
     let i = 0;
     while (i < 200 && !(media.bytes[i] === 0xd5 && media.bytes[i + 1] === 0xaa &&
                         media.bytes[i + 2] === 0x96)) i++;
-    const dec = (a, b) => ((a << 1) | 1) & b;
+    const dec = A.gcr140.decode44;
     eq('gcr140 T0S0 address field',
        [dec(media.bytes[i + 3], media.bytes[i + 4]),      // volume
         dec(media.bytes[i + 5], media.bytes[i + 6]),      // track
@@ -132,6 +132,168 @@ function eq(what, got, want) {
        [254, 0, 0]);
   } else {
     console.log('skip: gcr140 (no examples/rise-out.dsk)');
+  }
+}
+
+// --- 140K GCR, the way back -------------------------------------------------
+// The decoder has no upstream to be checked against, so what stands in for one
+// is the encoder: over a whole real disk, denibblizing must give back the
+// sector image byte for byte. That rides on the encoder's own chain of trust
+// back to a compiled dsk2nib, so an error would have to be a matching pair.
+{
+  const dsk = path.join(H.ROOT, 'examples', 'rise-out.dsk');
+  if (fs.existsSync(dsk)) {
+    const s = H.sniffFile(ctx, dsk);
+    const media = A.mount(s);
+    let short = 0, wrong = 0;
+    for (let t = 0; t < media.tracks; t++) {
+      const got = A.gcr140.denibblizeTrack(media.bytes, media.trackBase(t),
+                                           media.trackLen[t], t, s.prodos);
+      if (got.got !== 16) { short++; continue; }
+      for (let i = 0; i < 4096; i++) {
+        if (got.bytes[i] !== s.payload[t * 4096 + i]) wrong++;
+      }
+    }
+    eq('gcr140 round trip over 35 tracks', [short, wrong], [0, 0]);
+  } else {
+    console.log('skip: gcr140 round trip (no examples/rise-out.dsk)');
+  }
+}
+
+// A data field that has been damaged is not a data field. Both refusals matter:
+// a wrong sector quietly written into a saved .dsk is worse than a save that
+// falls back to the nibble stream.
+{
+  const src = new ctx.Uint8Array(256);
+  for (let i = 0; i < 256; i++) src[i] = (i * 11 + 5) & 0xff;
+  const field = new ctx.Uint8Array(0x157);
+  A.gcr140.code62(src, 0, field, 0);
+  const out = new ctx.Uint8Array(256);
+  eq('decode62 inverts code62', [A.gcr140.decode62(field, 0, out, 0),
+                                 Buffer.compare(Buffer.from(out), Buffer.from(src))],
+     [true, 0]);
+
+  const bad = new ctx.Uint8Array(field);
+  bad[0x156] = A.gcr140.CODE[(A.gcr140.DECODE[bad[0x156]] + 1) & 0x3f];
+  eq('decode62 refuses a wrong checksum', A.gcr140.decode62(bad, 0, out, 0), false);
+
+  const junk = new ctx.Uint8Array(field);
+  junk[100] = 0x55;                          // never a disk byte
+  eq('decode62 refuses a byte no disk carries',
+     A.gcr140.decode62(junk, 0, out, 0), false);
+}
+
+// --- writing a 140K disk ----------------------------------------------------
+// Through the register file, the way DOS does it: latch a byte into $C0ED and
+// shift it out with $C0EC. What comes back is checked by denibblizing the track
+// the drive wrote, so the read path, the write path and both codecs have to
+// agree before this passes.
+{
+  const dsk = path.join(H.ROOT, 'examples', 'rise-out.dsk');
+  if (fs.existsSync(dsk)) {
+    const s = H.sniffFile(ctx, dsk);
+    const media = A.mount(s);
+    const card = new A.Disk140({});
+    card.insert(media);
+    eq('a disk arrives locked whatever it said', media.writeProtect, true);
+
+    let now = 0;
+    // One byte of track per call: spin() hands over one per 32 cycles, and
+    // readData gives it up exactly once.
+    const next = () => { now += A.Disk140.CYCLES_PER_BYTE; return card.read(0xc, now); };
+    const shift = (b) => {
+      now += A.Disk140.CYCLES_PER_BYTE;
+      card.write(0xd, b, now);                 // STA $C08D,X
+      card.read(0xc, now);                     // ORA $C08C,X
+    };
+
+    card.access(0x9, now);                     // $C0E9, motor on
+    const before = new ctx.Uint8Array(media.bytes);
+    card.read(0xf, now);                       // $C0EF, write mode
+    for (let i = 0; i < 32; i++) shift(0x96);
+    eq('a locked disk takes no writes',
+       Buffer.compare(Buffer.from(media.bytes), Buffer.from(before)), 0);
+    card.read(0xe, now);                       // $C0EE, back to reading
+
+    media.locked = false;
+    eq('unlocking clears the bit software reads',
+       card.read(0xe, now) & 0x80, 0);
+
+    // The head starts on track 10. Wind round to the data field of the sector
+    // DOS calls 9, which is where file sector 3 was nibblized to.
+    const want = A.gcr140.REN1[3];
+    const win = [0, 0, 0];
+    let addr = -1, found = false;
+    for (let i = 0; i < media.stride * 2 && !found; i++) {
+      win.shift(); win.push(next());
+      if (win[0] === 0xd5 && win[1] === 0xaa && win[2] === 0x96) {
+        const f = [];
+        for (let j = 0; j < 8; j++) f.push(next());
+        addr = A.gcr140.decode44(f[4], f[5]);
+      } else if (addr === want && win[0] === 0xd5 && win[1] === 0xaa && win[2] === 0xad) {
+        found = true;
+      }
+    }
+    eq('wound to a data field on track 10', [found, card.track], [true, 10]);
+
+    const wrote = new ctx.Uint8Array(256);
+    for (let i = 0; i < 256; i++) wrote[i] = (i * 3 + 17) & 0xff;
+    const field = new ctx.Uint8Array(0x157);
+    A.gcr140.code62(wrote, 0, field, 0);
+    card.read(0xf, now);                       // $C0EF, write mode
+    for (let i = 0; i < field.length; i++) shift(field[i]);
+    card.read(0xe, now);
+
+    eq('the track is marked written', [media.written[10], media.isWritten()], [1, true]);
+    const got = A.gcr140.denibblizeTrack(media.bytes, media.trackBase(10),
+                                         media.trackLen[10], 10, s.prodos);
+    eq('the written sector reads back', [got.got,
+        Buffer.compare(Buffer.from(got.bytes.subarray(3 * 256, 4 * 256)),
+                       Buffer.from(wrote))], [16, 0]);
+    // Everything else on the track is where it was.
+    let elsewhere = 0;
+    for (let k = 0; k < 16; k++) {
+      if (k === 3) continue;
+      for (let i = 0; i < 256; i++) {
+        if (got.bytes[k * 256 + i] !== s.payload[10 * 4096 + k * 256 + i]) elsewhere++;
+      }
+    }
+    eq('the other 15 sectors are untouched', elsewhere, 0);
+
+    // And out through the saving path, with no App around it: writeBack reads
+    // the sources it is given and the card's media, and nothing else.
+    const app = {
+      sources: { 6: { name: 'rise-out.dsk', bytes: s.payload, patches: [],
+                      kind: 'dsk140', offset: 0, prodos: s.prodos } },
+      machine: { cards: { 6: card } },
+    };
+    const back = A.App.prototype.writeBack.call(app, 6);
+    const want256 = new ctx.Uint8Array(s.payload);
+    want256.set(wrote, 10 * 4096 + 3 * 256);
+    eq('writeBack patches say what changed',
+       [back.name, back.patches.length,
+        Buffer.compare(Buffer.from(A.agc.applyPatches(back.bytes, back.patches)),
+                       Buffer.from(want256))],
+       ['rise-out.dsk', 1, 0]);
+    eq('writeBack leaves the source alone, so saving twice is the same file',
+       [app.sources[6].patches.length,
+        JSON.stringify(A.App.prototype.writeBack.call(app, 6).patches) ===
+        JSON.stringify(back.patches)],
+       [0, true]);
+
+    // A track that will not decode has no sector image to be a patch against.
+    // One data-field prologue struck out is enough to lose that sector.
+    const t10 = media.trackBase(10);
+    for (let i = 0; i < media.stride; i++) {
+      if (media.bytes[t10 + i] === 0xd5 && media.bytes[t10 + i + 1] === 0xaa &&
+          media.bytes[t10 + i + 2] === 0xad) { media.bytes[t10 + i + 2] = 0x96; break; }
+    }
+    const fell = A.App.prototype.writeBack.call(app, 6);
+    eq('an undecodable track saves as nibbles instead',
+       [fell.name, fell.bytes.length, fell.patches.length],
+       ['rise-out.nib', 35 * 6656, 0]);
+  } else {
+    console.log('skip: 140K writing (no examples/rise-out.dsk)');
   }
 }
 

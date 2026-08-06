@@ -23,10 +23,12 @@
 
     this.modelPinned = false;
     this.drives = {};                     // slot -> {name, kind}
-    // What was loaded, as it arrived: slot -> {name, bytes, patches}, plus
-    // 'fil:<name>' for programs poked into memory. The mounted Media is
-    // normalised and the drives keep only a name, so without this there is
-    // nothing left to write an .agc back out of.
+    // What was loaded, as it arrived: slot -> {name, bytes, patches, kind,
+    // offset, prodos}, plus 'fil:<name>' for programs poked into memory. The
+    // mounted Media is normalised and the drives keep only a name, so without
+    // this there is nothing left to write an .agc back out of. The last three
+    // are what saving a disk that has been written to needs in order to put the
+    // sectors back where they came from.
     this.sources = {};
     // A container's own fields, kept so that loading one and saving it again
     // does not quietly drop what it said about the program.
@@ -73,7 +75,9 @@
     if (this.machine) {
       for (s = 0; s < 8; s++) {
         c = this.machine.cards[s];
-        if (c && c.media) keep.push(c.media);
+        // Which slot it was in comes along: the 140K drive is slot 6 on the
+        // Agat-9 and slot 3 on the Agat-7, and `sources` is keyed by slot.
+        if (c && c.media) keep.push({ from: s, media: c.media });
       }
     }
     var slots = AGAT.Machine.SLOTS[this.model];
@@ -94,7 +98,19 @@
       this.roms.palette,
       { m0: this.model === 7 ? 0x80 : 0x40 });
     this.drives = {};
-    for (var i = 0; i < keep.length; i++) this.insert(keep[i]);
+    // The disks move with the machine, and so must what each one was loaded
+    // from — otherwise switching models between writing to a disk and saving
+    // would leave Save looking in an empty slot. Staged rather than moved in
+    // place, because two drives can trade slots.
+    var moved = {}, i, to;
+    for (i = 0; i < keep.length; i++) {
+      to = this.insert(keep[i].media);
+      if (to !== keep[i].from && this.sources[keep[i].from]) {
+        moved[to] = this.sources[keep[i].from];
+        delete this.sources[keep[i].from];
+      }
+    }
+    for (var slot in moved) this.sources[slot] = moved[slot];
     if (this.subFrameHz) this.machine.setSubFrameHz(this.subFrameHz);
     this.machine.setIrqModel(this.irqModel);
     this.machine.reset();
@@ -223,15 +239,47 @@
     for (i = 0; i < want.length; i++) {
       var slot = want[i][0], card = this.machine.cards[slot];
       if (!card || !card.lamp) continue;
+      var media = card.media;
       out.push({
         slot: slot,
         label: want[i][1],
         name: this.drives[slot] ? this.drives[slot].name : '',
         track: card.track,
         lamp: card.lamp(now),
+        locked: !media || media.locked,
+        // The disk claimed it was protected, which is worth showing even now
+        // that the lock is the user's to set.
+        headerProtect: !!(media && media.headerProtect),
+        canUnlock: this.canUnlock(slot),
+        written: !!(media && media.isWritten()),
       });
     }
     return out;
+  };
+
+  // Only the 140K controller writes. The 840K models no data-write register at
+  // all, so unlocking one of its disks would promise something that cannot
+  // happen; the lock stays on and the drive says why.
+  App.prototype.canUnlock = function (slot) {
+    var card = this.machine.cards[slot];
+    return !!(card && card.media && card.media.kind === 'nib140' &&
+              this.sources[slot]);
+  };
+
+  App.prototype.setLocked = function (slot, locked) {
+    if (!this.canUnlock(slot)) return false;
+    this.machine.cards[slot].media.locked = !!locked;
+    return true;
+  };
+
+  // Has anything been written to a disk since it was mounted? What the Save
+  // button uses to say there is something new to save.
+  App.prototype.hasWrites = function () {
+    for (var s = 0; s < 8; s++) {
+      var card = this.machine.cards[s];
+      if (card && card.media && card.media.isWritten()) return true;
+    }
+    return false;
   };
 
   App.prototype.ejectAll = function () {
@@ -281,14 +329,14 @@
     if (s.kind === 'fil') {
       if (!AGAT.loadFil) throw new Error('.fil loading is not built in yet');
       AGAT.loadFil(this.machine, s.payload);
-      this.remember('fil:' + name, name, bytes, from);
+      this.remember('fil:' + name, name, bytes, from, s);
       this.start();
       this.onStatus('loaded ' + (s.filName || name) + ' at $' +
                     s.loadAddr.toString(16).toUpperCase());
       return { kind: 'fil' };
     }
     var slot = this.insert(AGAT.mount(s));
-    this.remember(slot, name, bytes, from);
+    this.remember(slot, name, bytes, from, s);
     this.machine.reset();
     this.machine.bootSlot(slot);
     this.start();
@@ -298,11 +346,14 @@
 
   // Keyed by slot, so re-dropping a disk into a drive replaces what was there
   // rather than saving both.
-  App.prototype.remember = function (key, name, bytes, from) {
+  App.prototype.remember = function (key, name, bytes, from, s) {
     this.sources[key] = {
       name: name,
       bytes: from ? from.bytes : bytes,
       patches: from ? from.patches : [],
+      kind: s.kind,
+      offset: s.offset || 0,
+      prodos: !!s.prodos,
     };
   };
 
@@ -363,17 +414,60 @@
     return '';
   };
 
+  // One source as it should be saved: the file it arrived as, plus what has
+  // been written to it since.
+  //
+  // A written track is decoded back to the 16 sectors it was nibblized from and
+  // the difference comes out as patches, so a container still carries the image
+  // as it was found and what changed stays legible. `this.sources` is left
+  // alone and the baseline is the patched image the machine actually mounted,
+  // so saving twice gives the same file rather than the same patch twice.
+  //
+  // A track that will not decode — a disk formatted some other way, a write
+  // caught half done — has no sector image to be the difference from. Then the
+  // nibble stream itself is what is saved, which is a bigger and duller file
+  // but not a lossy one.
+  App.prototype.writeBack = function (key) {
+    var src = this.sources[key];
+    var entry = { name: src.name, bytes: src.bytes, patches: src.patches };
+    var card = this.machine.cards[key], gcr = AGAT.gcr140;
+    var media = card && card.media;
+    if (!media || !media.isWritten()) return entry;
+
+    var base = AGAT.agc.applyPatches(src.bytes, src.patches);
+    var out = new Uint8Array(base), ok = true, t, got;
+    if (src.kind === 'nib140') {
+      out.set(media.bytes.subarray(0, gcr.TRACKS * gcr.TRACK_LEN), src.offset);
+    } else if (src.kind === 'dsk140') {
+      for (t = 0; t < media.tracks && ok; t++) {
+        if (!media.written[t]) continue;
+        got = gcr.denibblizeTrack(media.bytes, media.trackBase(t),
+                                  media.trackLen[t], t, src.prodos);
+        if (got.got !== gcr.SECTORS) ok = false;
+        else out.set(got.bytes, src.offset + t * gcr.SECTORS * 256);
+      }
+    } else {
+      ok = false;
+    }
+    if (!ok) {
+      return {
+        name: src.name.replace(/\.[^.\/]*$/, '') + '.nib',
+        bytes: new Uint8Array(media.bytes),
+        patches: [],
+      };
+    }
+    return {
+      name: src.name,
+      bytes: src.bytes,
+      patches: src.patches.concat(AGAT.agc.diff(base, out)),
+    };
+  };
+
   // The machine as it stands, as a container: what is in the drives, the model
   // and RAM it is running as, both interrupt settings, and the live remap.
   App.prototype.toAgc = function () {
     var media = [], k;
-    for (k in this.sources) {
-      media.push({
-        name: this.sources[k].name,
-        bytes: this.sources[k].bytes,
-        patches: this.sources[k].patches,
-      });
-    }
+    for (k in this.sources) media.push(this.writeBack(k));
     return AGAT.agc.build({
       title: this.title || (media.length ? media[0].name : ''),
       author: this.author,

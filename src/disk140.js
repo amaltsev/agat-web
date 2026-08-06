@@ -4,8 +4,8 @@
 //   $C0E0-$C0E7  stepper phases: phase = reg>>1, on = reg&1
 //   $C0E8/$C0E9  motor off / on
 //   $C0EA/$C0EB  select drive 1 / 2
-//   $C0EC        read the data latch
-//   $C0ED        write latch (writes are not implemented)
+//   $C0EC        read the data latch; in write mode, shift the latch out
+//   $C0ED        load the data latch
 //   $C0EE        leave write mode; reading gives write-protect in bit 7
 //   $C0EF        enter write mode
 //
@@ -14,6 +14,11 @@
 // value with bit 7 CLEAR, and every boot loop in existence is an
 // `LDA $C08C,X / BPL` spinning on precisely that. Return a ready byte too eagerly
 // and nothing boots, with no diagnostic to show for it.
+//
+// Writing is the same register file the other way round: `STA $C08D,X` loads
+// the latch, and the `ORA $C08C,X` after it shifts the byte out. It reaches the
+// media only if the drive has been unlocked; every disk arrives locked, and
+// $C0EE says so.
 (function (AGAT) {
   'use strict';
 
@@ -40,6 +45,7 @@
     this.drv = 0;
     this.motor = 0;
     this.writeMode = false;
+    this.latch = 0;                // the byte $C0ED loaded, waiting for $C0EC
     this.time = 0;
     this.last = 0xff;
     this.lastByteAt = -Infinity;   // cpu cycle the CPU last took a media byte
@@ -83,8 +89,16 @@
   };
 
   // Turn the disk forward to `now`, one byte per rotation tick.
+  //
+  // Except in write mode, where the head is carried by the writes instead: a
+  // byte on the track is a byte however long the CPU took over it. A self-sync
+  // $FF is ten bit-cells and DOS spends 40 cycles on each, which is not the 32
+  // this quantises to, so a rotating head would leave stale gap bytes stranded
+  // between the sync bytes the next read has to lock onto — and a head moved by
+  // both the clock and the writes moves twice per byte.
   Disk140.prototype.spin = function (now) {
     var h = this.heads[this.drv];
+    if (this.writeMode) { this.time = now; return; }
     if (!this.time || this.time > now) this.time = now;
     var dt = now - this.time;
     if (dt > CYCLES_PER_BYTE * 20000) dt = CYCLES_PER_BYTE * 20000;
@@ -137,10 +151,29 @@
     return this.last = this.media.bytes[this.media.trackBase(h.track) + h.index];
   };
 
+  // One latched byte onto the track, at the byte after the one the head last
+  // dealt with. `index` names the byte just read or just written, the way
+  // readData leaves it, so the next byte to come under the head is the one
+  // after — and a program that reads an address field and then starts writing
+  // lands on the gap behind it rather than on top of its own prologue.
+  //
+  // In write mode this is the only thing that moves the head; see spin().
+  Disk140.prototype.writeData = function (now) {
+    var h = this.heads[this.drv];
+    if (!this.media || !this.motor || this.media.writeProtect) return;
+    h.index = h.index + 1 >= this.media.stride ? 0 : h.index + 1;
+    this.media.bytes[this.media.trackBase(h.track) + h.index] = this.latch;
+    this.media.markWritten(h.track);
+    this.lastByteAt = now;
+    h.rotated = 0;
+  };
+
   Disk140.prototype.read = function (reg, now) {
     this.access(reg, now);
     switch (reg) {
-      case 0xc: return this.readData(now);
+      case 0xc:
+        if (this.writeMode) { this.writeData(now); return this.latch; }
+        return this.readData(now);
       case 0xe: return this.media && this.media.writeProtect ? 0xff : 0x7f;
       case 0xa: case 0xb: return this.rand();
       default: return 0;
@@ -149,7 +182,13 @@
 
   Disk140.prototype.write = function (reg, val, now) {
     this.access(reg, now);
-    // Writing is not implemented; the write-protect bit above tells software so.
+    switch (reg) {
+      // The latch loads on any write to $C0ED, in write mode or not: it is a
+      // register, and only the shift out is gated on the mode.
+      case 0xd: this.latch = val & 0xff; break;
+      case 0xc: if (this.writeMode) this.writeData(now); break;
+      default: break;
+    }
   };
 
   // The drive lamp: 0 dark, 1 spinning, 2 transferring. The LED is on the motor

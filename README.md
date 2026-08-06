@@ -57,6 +57,14 @@ while bytes are reaching the CPU, with the track its head is on beside it. Disks
 of this era take their time — a boot can be ten seconds of reading — and the
 lamp is what tells that apart from a hang.
 
+Beside each lamp is **RO / RW**, the drive's write lock. Every disk arrives
+read-only and the drive tells the program so; click `RO` and the 140K drive will
+write. That is what an Agat-9 system disk is asking for when it says «СИСТЕМА
+ИСПОРЧЕНА», and what DOS needs before `SAVE` or `INIT` will work. Writes go to
+memory and nowhere else — the file on your disk is never touched, and closing
+the tab loses them; **Save AGC** lights up while there are any, and keeps them
+as patches on the image they came from. The 840K drive does not write.
+
 The **⚙** holds the settings a machine is run under rather than driven by: the
 volume, and two selectors for the **video interrupt**. The default, `raster`, is
 the hardware as measured off real boards — a level whose edges are raster lines,
@@ -124,7 +132,10 @@ unfamiliar game actually has.
 `media[].data` is plain base64 in short lines, and the payload is the image
 **as it was found**. Anything changed goes in `media[].patches` as
 `{ "at": 45312, "hex": "A9 60 85 84" }`, applied after decoding — so a container
-carries a pristine copy of what it came from and the change stays legible.
+carries a pristine copy of what it came from and the change stays legible. What
+a program writes to an unlocked disk is saved the same way: the written track is
+read back into the sectors it was built from, so a saved game costs a patch and
+not a second copy of the disk.
 
 `title`, `author`, `date`, `url` and `notes` are for the record — often the
 container is the only place left that says who wrote a program and when.
@@ -182,10 +193,10 @@ the `pulse` model gives.
 
 ## What is not there
 
-Disk **writing** — images are read-only and the write-protect bit says so.
-Several Agat-9 system disks print «СИСТЕМА ИСПОРЧЕНА» as a result.
-Also absent: the Agat-7 ДопОЗУ extra-RAM card, NTSC artefact colour for the
-Apple modes, 80-column and Apple //e modes, mouse, printer and tape.
+Disk writing on the **840K** drive — its images are read-only and the
+write-protect bit says so. Also absent: the Agat-7 ДопОЗУ extra-RAM card, NTSC
+artefact colour for the Apple modes, 80-column and Apple //e modes, mouse,
+printer and tape.
 
 ## Development
 
@@ -194,6 +205,7 @@ node tools/vectors.js               # pure-function tests, about a second
 node tools/check.js modules         # index.html vs tools/modules.js
 node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/check.js boot <image>    # boot and report where it got to
+node tools/check.js write <image> --keys=…   # boot unlocked, say what was written
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
 node tools/mkagc.js <image> …       # pack an image and its settings into an .agc
 ```

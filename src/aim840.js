@@ -113,7 +113,7 @@
       }
     }
     var m = media(bytes, attrs, stride, null, s);
-    m.writeProtect = true;                            // as agat-emulator does
+    m.headerProtect = true;                           // as agat-emulator does
     return m;
   }
 

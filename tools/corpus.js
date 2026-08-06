@@ -50,12 +50,7 @@ function show(p, base) {
   return s.replace(/[^\x20-\x7e]/g, (c) => '%' + c.charCodeAt(0).toString(16));
 }
 
-function keyCode(c) {
-  if (c === '~') return 0x0d;
-  if (c === '_') return 0x20;
-  if (c === '^') return 0x1b;
-  return c.toUpperCase().charCodeAt(0);
-}
+const keyCode = H.keyCode;
 
 H.loadRoms(ctx).then((roms) => {
   const files = walk(dir, []).sort();

@@ -351,9 +351,44 @@ The sector checksum is an **ADC-with-carry chain**, not an XOR.
 A Disk II clone (`fdd/fdd1.c`), with the same GCR 6-and-2 sector encoding and
 4-and-4 address fields.
 
+| | |
+|---|---|
+| `$C0E0-$C0E7` | stepper phases: phase = `reg>>1`, on = `reg&1` |
+| `$C0E8` / `$C0E9` | motor off / on |
+| `$C0EA` / `$C0EB` | select drive 1 / 2 |
+| `$C0EC` | read the data latch; in write mode, shift the latch out |
+| `$C0ED` | load the data latch |
+| `$C0EE` | leave write mode; reading gives write-protect in bit 7 |
+| `$C0EF` | enter write mode |
+
 The `Rotated` flag is what boot loops poll on: each track byte is handed out
 once, and a re-read before the next rotation tick returns bit 7 **clear**.
 Getting this wrong hangs every 140K disk with no diagnostic.
+
+#### Writing
+
+The same register file the other way round: `STA $C08D,X` loads the latch and
+the `ORA $C08C,X` after it puts the byte on the track, which is the pair DOS
+3.3's write loop is built from.
+
+The model is **a byte of track per byte written**, not per rotation tick. While
+write mode is set the rotation clock does not move the head at all; each
+shift-out moves it one. That is a deliberate departure from the read path, and
+it follows from the media being a stream of bytes rather than of bit-cells: a
+self-sync `$FF` is ten bit-cells and DOS spends 40 cycles on each, against the
+32 the rotation is quantised to, so a rotating head would strand stale gap bytes
+between the sync bytes the next read has to lock onto. The upshot is that write
+timing does not have to be right for the data to be, which is forgiving of
+software this emulator has never seen.
+
+`index` names the byte the head last dealt with, read or written, so a write
+goes to the one after it. A program that reads an address field and then starts
+writing therefore lands on the gap behind it rather than on top of its own
+prologue.
+
+Every disk is mounted **locked**, whatever the image says about itself, and
+`$C0EE` reports it; the drive's `RO` control in the page is what clears it. The
+840K controller models no data-write register at all and cannot be unlocked.
 
 ### Image formats
 
@@ -408,8 +443,10 @@ configuration.
 
 ## Not emulated
 
-Disk **writing** — images are read-only and the write-protect bit says so.
-Several Agat-9 system disks print «СИСТЕМА ИСПОРЧЕНА» as a result.
+Disk writing on the **840K** controller — its second 8255's data port is
+decoded and dropped, and the desync plane an `.aim` write would have to author
+has no oracle here. Those images stay read-only and the write-protect bit says
+so. The 140K controller writes; see above.
 
 Also absent: the Agat-7 ДопОЗУ extra-RAM card, NTSC artefact colour for the
 Apple modes, 80-column/Videoterm/DHGR and Apple //e modes, cycle-accurate raster

@@ -42,30 +42,9 @@ if (!files.length) {
 const ctx = H.loadModules();
 const A = ctx.AGAT;
 
-// Where two images differ, as patch records. Runs are joined across gaps of up
-// to 8 identical bytes, because a patch that reads as one change should be one
-// record: three separate `at`s for `A9 60 EA EA 85 84` helps nobody.
-function diff(orig, mod) {
-  if (orig.length !== mod.length) {
-    throw new Error('--diff image is ' + mod.length + ' bytes, the original ' +
-                    orig.length + ' — patches are byte-for-byte');
-  }
-  const out = [];
-  let at = -1, last = -1;
-  for (let i = 0; i < orig.length; i++) {
-    if (orig[i] === mod[i]) continue;
-    if (at < 0 || i - last > 8) {
-      if (at >= 0) out.push([at, last]);
-      at = i;
-    }
-    last = i;
-  }
-  if (at >= 0) out.push([at, last]);
-  return out.map(([from, to]) => ({
-    at: from,
-    hex: A.agc.toHex(mod.subarray(from, to + 1)),
-  }));
-}
+// The differ is src/agc.js's, the same one the page's Save button runs over a
+// disk that has been written to, so --diff and a save produce the same records.
+const diff = A.agc.diff;
 
 // CODE:VALUE:NOTE, split on the first two colons — a value is `^`, `$5E` or a
 // name and never contains one, so only the note can.

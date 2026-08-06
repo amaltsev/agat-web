@@ -179,6 +179,18 @@ what it came from, the change is legible to anyone reading the file, and saving
 a container that was loaded writes back what it carried rather than the patched
 result.
 
+**What a program writes to a disk is saved the same way.** A 140K drive that has
+been unlocked writes to the nibble stream in memory; saving reads each written
+track back into the 16 sectors it was built from and records the difference
+here. A game that keeps a high score costs a patch of a few hundred bytes, not a
+second copy of the disk, and it stays as readable as any other patch.
+
+A track that will not read back as sectors — a disk formatted some other way, a
+write caught half done — has no sector image for a patch to be the difference
+from. Then the whole nibble stream is saved instead, as a `.nib` payload with no
+patches. It is a bigger and duller file, but not a lossy one, and it reloads
+without any of this having to know: media are identified by size.
+
 ---
 
 ## Making one
@@ -186,8 +198,8 @@ result.
 ### From the emulator
 
 **Save AGC** writes a container from the machine as it stands: what is in the
-drives, the model and RAM, both interrupt settings, and the live remap. It asks
-nothing.
+drives, the model and RAM, both interrupt settings, the live remap, and anything
+a program has written to an unlocked disk. It asks nothing.
 
 A container that was loaded from a file keeps its own title and filename. One
 made from a bare image takes the image's name for both, so `game.dsk` saves as

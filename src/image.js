@@ -70,6 +70,9 @@
       kind: kind,
       name: name,
       payload: body.subarray(0, PAYLOAD[kind]),
+      // Where the payload starts inside the file. Saving writes patches at
+      // offsets into the file as it arrived, header and all.
+      offset: head ? HEADER_SIZE : 0,
       writeProtect: head ? bytes[48] !== 0 : false,
       // Agat Emulator's own heuristic, and the only signal a file carries about
       // its sector order.

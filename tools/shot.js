@@ -72,12 +72,7 @@ function png(width, height, rgba, scale) {
   ]);
 }
 
-function keyCode(c) {
-  if (c === '~') return 0x0d;
-  if (c === '_') return 0x20;
-  if (c === '^') return 0x1b;
-  return c.toUpperCase().charCodeAt(0);
-}
+const keyCode = H.keyCode;
 
 if (!target) { console.error('need an image'); process.exit(2); }
 

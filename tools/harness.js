@@ -88,7 +88,17 @@ function insert(m, media) {
 
 function ctx_SLOTS(m) { return m.constructor.SLOTS; }
 
+// The keystrokes a --keys= string sends. `~` is Return, `_` Space, `^` Escape,
+// and anything else is itself: enough to drive a menu or type a DOS command,
+// and short enough to sit in a shell argument without quoting.
+function keyCode(c) {
+  if (c === '~') return 0x0d;
+  if (c === '_') return 0x20;
+  if (c === '^') return 0x1b;
+  return c.toUpperCase().charCodeAt(0);
+}
+
 module.exports = {
-  loadModules, loadRoms, sniffFile, mountFile, makeMachine, insert,
+  loadModules, loadRoms, sniffFile, mountFile, makeMachine, insert, keyCode,
   ROOT, MODULES,
 };

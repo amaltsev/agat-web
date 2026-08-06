@@ -24,9 +24,32 @@
     this.tracks = opts.tracks;
     this.trackLen = opts.trackLen ||
       fill(new Uint16Array(opts.tracks), opts.stride);
-    this.writeProtect = !!opts.writeProtect;
+    // Every disk arrives locked, whatever it says about itself: a program that
+    // writes to the disk it booted from is doing something the person watching
+    // has not asked for, and the tab holds the only copy. `headerProtect` keeps
+    // what the file claimed, which is worth saying in the drive's tooltip even
+    // though nothing turns on it.
+    this.locked = true;
+    this.headerProtect = !!opts.writeProtect;
+    // Which tracks have been written since the disk was mounted. Per track
+    // rather than per byte because saving works a track at a time: a written
+    // track is decoded back to its 16 sectors whole.
+    this.written = new Uint8Array(opts.tracks);
     this.name = opts.name || '';
   }
+
+  // The bit software reads at $C0EE, and the one the user controls: the same
+  // bit, so a disk that refuses writes is a disk that says so beforehand.
+  Object.defineProperty(Media.prototype, 'writeProtect', {
+    get: function () { return this.locked; },
+  });
+
+  Media.prototype.markWritten = function (t) { this.written[t] = 1; };
+
+  Media.prototype.isWritten = function () {
+    for (var t = 0; t < this.written.length; t++) if (this.written[t]) return true;
+    return false;
+  };
 
   function fill(arr, v) {
     for (var i = 0; i < arr.length; i++) arr[i] = v;

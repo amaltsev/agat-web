@@ -53,6 +53,11 @@ Settled, with evidence, and expensive to relearn:
   **two independent timers**, not one counter; folding them drops one IRQ in
   twenty. `raster` has one counter because the hardware does.
 - Image formats are identified **by size, not extension**.
+- On the 140K drive, **write mode stops the rotation clock**: the head moves one
+  byte per byte written, never one per 32 cycles. A self-sync `$FF` is 40 cycles
+  against a 32-cycle quantum, so a rotating head strands stale gap bytes in the
+  sync field. A write lands on the byte *after* `index`, which is where
+  `readData` leaves it.
 - The Agat-7 has **no** Apple video modes; do not add a fallback to them.
 - Every sound in RISE OUT proper goes through `PLAY500` on the interrupt, never
   the busy-wait `PLAY`.

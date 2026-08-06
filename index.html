@@ -53,6 +53,9 @@
   #layout { min-width: 8ch; text-align: center; }
   #gear { min-width: 4ch; text-align: center; }
   #gear.on { border-color: var(--accent); }
+  /* Something has been written to a disk and is in memory only. Red, as the
+     drive lamps are: this is the drives saying it, not the page. */
+  #save.lit { color: #ff8078; border-color: #6a2a24; }
   input[type=file] { display: none; }
   label.dim { color: var(--dim); font-size: 12.5px; cursor: default; }
   input[type=range] { width: 84px; vertical-align: middle; }
@@ -93,6 +96,20 @@
     min-width: 4ch; font: inherit; font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
+  /* The write lock, on the drive it belongs to rather than in the settings
+     panel: it is about the disk in that slot, and it is answered by looking at
+     the drive. Every disk starts RO. */
+  .lamp button {
+    font: inherit; font-size: 10.5px; letter-spacing: .04em;
+    color: var(--dim); background: none; border: 1px solid var(--edge);
+    border-radius: 4px; padding: 0 4px; min-width: 4ch; text-align: center;
+  }
+  .lamp button:disabled { opacity: .3; cursor: default; }
+  .lamp button:disabled:hover { border-color: var(--edge); }
+  .lamp button.rw { color: #ff8078; border-color: #6a2a24; }
+  /* An empty drive has nothing to lock, but it keeps the space: a disk being
+     dropped in must not shift the drive beside it out from under the pointer. */
+  .lamp button.blank { visibility: hidden; }
   /* The on-screen keyboard. Sized in `em` throughout so the whole board scales
      with one font-size, which is what makes it fit a phone as well as a page:
      every cap width in keyview.js is a multiple of the same unit. */
@@ -180,7 +197,7 @@
 
 <div class="bar">
   <label class="file">Open… <input type="file" id="file" multiple></label>
-  <button id="save" title="Write what is loaded, and the settings it is running under, as an .agc container">Save AGC</button>
+  <button id="save" title="Write what is loaded, the settings it is running under, and anything written to a disk, as an .agc container">Save AGC</button>
   <select id="model">
     <option value="7">Agat-7</option>
     <option value="9">Agat-9</option>
@@ -271,6 +288,15 @@
       drive's lamp is dim while its motor is running and bright while bytes are
       reaching the CPU — a boot of ten seconds is normal, and looks like one —
       and <code>T</code> beside it is the track its head is on.
+    </td></tr>
+    <tr><td><b>RO / RW</b></td><td>
+      Every disk arrives read-only, and the drive tells the program so. Click
+      <code>RO</code> to let it write — which is what an Agat-9 system disk
+      wants when it says «СИСТЕМА ИСПОРЧЕНА», and what DOS needs before it will
+      <code>SAVE</code> or <code>INIT</code>. Writes go to memory and nowhere
+      else: the image on your disk is never touched, and closing the tab loses
+      them. <b>Save AGC</b> keeps them, as patches on the disk they came from.
+      Only the 140K drive writes.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
       The interrupt model, its rate and the volume. The first two are the ones
@@ -648,8 +674,47 @@
   // that takes ten seconds to load otherwise looks exactly like a hang.
 
   var lampsEl = document.getElementById('lamps');
+  var saveEl = document.getElementById('save');
   var lampEls = [];
   var trackEls = [];
+  var lockEls = [];
+
+  // The write lock, one per drive. Every disk arrives read-only: a program that
+  // writes to the disk it booted from would otherwise change the only copy the
+  // tab holds before anyone had agreed to it. Unlocking follows the disk, so
+  // ejecting one and dropping in another locks the drive again.
+  function syncLock(el, d) {
+    var open = !!d.name && !d.locked;
+    var label = d.name ? (open ? 'RW' : 'RO') : '';
+    var title = !d.name ? 'no disk'
+      : !d.canUnlock
+        ? (d.label === '840K'
+             ? 'The 840K controller does not write'
+             : 'This disk cannot be written')
+        : open
+          ? 'Writable. What a program writes stays in memory — Save AGC keeps it'
+          : 'Read-only. Click to let a program write to this disk' +
+            (d.headerProtect ? ' (the image says it is write-protected)' : '');
+    var cls = !d.name ? 'blank' : open ? 'rw' : '';
+    if (el.getAttribute('data-slot') !== String(d.slot)) {
+      el.setAttribute('data-slot', d.slot);
+    }
+    if (el.textContent !== label) el.textContent = label;
+    if (el.title !== title) el.title = title;
+    if (el.className !== cls) el.className = cls;
+    if (el.disabled !== !d.canUnlock) el.disabled = !d.canUnlock;
+  }
+
+  function toggleLock(e) {
+    var slot = Number(e.currentTarget.getAttribute('data-slot'));
+    var card = app.machine.cards[slot];
+    if (!card || !card.media) return;
+    if (!app.setLocked(slot, !card.media.locked)) return;
+    say(card.media.locked
+        ? 'slot ' + slot + ' is read-only again'
+        : 'slot ' + slot + ' can be written to — Save AGC keeps what is written');
+    syncLamps();
+  }
 
   function syncLamps() {
     var list = app.driveLamps(), i;
@@ -657,13 +722,19 @@
       var el = document.createElement('span');
       var dot = document.createElement('i');
       var trk = document.createElement('b');
+      var lock = document.createElement('button');
       el.className = 'lamp';
       el.appendChild(dot);
       el.appendChild(document.createTextNode(list[i].label));
       el.appendChild(trk);
+      el.appendChild(lock);
+      // The slot is on the element rather than closed over, because the list is
+      // rebuilt for a different model and the elements outlive one machine.
+      lock.addEventListener('click', toggleLock);
       lampsEl.appendChild(el);
       lampEls.push(el);
       trackEls.push(trk);
+      lockEls.push(lock);
     }
     for (i = 0; i < list.length; i++) {
       var d = list[i];
@@ -672,13 +743,19 @@
       var state = app.running ? d.lamp : 0;
       var cls = 'lamp' + (state === 2 ? ' busy' : state === 1 ? ' on' : '');
       var title = 'slot ' + d.slot + ' — ' +
-                  (d.name ? d.name + ', track ' + d.track : 'empty');
+                  (d.name ? d.name + ', track ' + d.track : 'empty') +
+                  (d.name && d.written ? ', written to' : '');
       // An empty drive's head is somewhere too, and saying where is noise.
       var track = d.name ? 'T' + d.track : '';
       if (lampEls[i].className !== cls) lampEls[i].className = cls;
       if (lampEls[i].title !== title) lampEls[i].title = title;
       if (trackEls[i].textContent !== track) trackEls[i].textContent = track;
+      syncLock(lockEls[i], d);
     }
+    // Lit rather than relabelled: the bar is one line and a button that changes
+    // width shuffles everything after it out from under the pointer.
+    var pending = app.hasWrites() ? 'lit' : '';
+    if (saveEl.className !== pending) saveEl.className = pending;
     // $C000 changes on a keypress and is cleared by the program that reads it,
     // so the readout has to be polled rather than pushed.
     if (kbView) kbView.sync();

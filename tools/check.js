@@ -4,12 +4,20 @@
 //   node tools/check.js io     <image> [cycles]  histogram of $C0xx accesses
 //   node tools/check.js trace  <image> [cycles]  every $C0xx access, in order
 //   node tools/check.js pages  <image> [cycles]  RAM write histogram by page
+//   node tools/check.js write  <image> [cycles]  boot unlocked, then say what
+//                                                the disk was written with
 //   node tools/check.js sniff  <file...>         what the sniffer makes of each
 //   node tools/check.js modules                  index.html vs tools/modules.js
 //
 // --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
 // --cold skips the boot and cold-starts into the monitor instead,
-// --irq=raster|held|pulse picks the sub-frame interrupt's delivery model.
+// --irq=raster|held|pulse picks the sub-frame interrupt's delivery model,
+// --keys=STR types a string once the machine is up (~ Return, _ Space, ^ Esc)
+// and --per=N is how many cycles each keystroke gets.
+//
+// `write` is what turns "the save worked" into something measurable:
+//
+//   node tools/check.js write dos33.dsk --keys='~SAVE_X~'
 const fs = require('fs');
 const path = require('path');
 const H = require('./harness');
@@ -103,6 +111,13 @@ H.loadRoms(ctx).then((roms) => {
     slot = H.insert(m, ctx.AGAT.mount(sniffed));
   }
   if (flags.slot) slot = Number(flags.slot);
+  // The page makes this a click on the drive. Nothing writes until it happens,
+  // so a `write` run that forgot it would report an honest but useless nothing.
+  if (cmd === 'write') {
+    const disk = m.cards[slot];
+    if (!disk || !disk.media) { console.error('no disk in slot ' + slot); process.exit(2); }
+    disk.media.locked = false;
+  }
 
   const seen = [];
   const pages = new Float64Array(256);
@@ -122,6 +137,15 @@ H.loadRoms(ctx).then((roms) => {
 
   const cpu = m.cpu;
   const end = cpu.cycles + cycles;
+  // Keys go in before the watchdog below, because a program sitting at a prompt
+  // is spinning on the keyboard and that is exactly what the watchdog calls
+  // stuck. Nothing is typed unless --keys asked for it.
+  if (flags.keys) {
+    const per = Number(flags.per || 4e6);
+    const run = (n) => { const e = cpu.cycles + n; while (cpu.cycles < e && !cpu.halted) cpu.step(); };
+    run(per * 2);
+    for (const c of flags.keys) { m.keyDown(H.keyCode(c)); run(per); }
+  }
   let lastPC = -1, stuck = 0, stuckAt = -1;
   while (cpu.cycles < end && !cpu.halted) {
     cpu.step();
@@ -143,6 +167,40 @@ H.loadRoms(ctx).then((roms) => {
     console.log('disk head  track ' + card.track + ', byte ' + card.pos);
   }
 
+  if (cmd === 'write') {
+    const media = m.cards[slot].media;
+    const tracks = [];
+    for (let t = 0; t < media.tracks; t++) if (media.written[t]) tracks.push(t);
+    console.log('written    ' + (tracks.length ? 'tracks ' + tracks.join(' ') : 'nothing'));
+    // The save path itself, with no App around it: writeBack reads the sources
+    // it is handed and the card's media, and nothing else. A container is
+    // unwrapped by sniffFile, so its packed bytes are what a save writes back.
+    const from = sniffed.agc && sniffed.agc.media[0];
+    const sources = {};
+    sources[slot] = {
+      name: from ? from.name : path.basename(target),
+      bytes: from ? from.bytes : new ctx.Uint8Array(fs.readFileSync(target)),
+      patches: from ? from.patches : [],
+      kind: sniffed.kind,
+      offset: sniffed.offset || 0,
+      prodos: !!sniffed.prodos,
+    };
+    const back = ctx.AGAT.App.prototype.writeBack.call({ sources, machine: m }, slot);
+    const off = sources[slot].offset;
+    console.log('save       ' + back.name + ', ' +
+                (back.name === sources[slot].name
+                   ? back.patches.length + ' patch' + (back.patches.length === 1 ? '' : 'es')
+                   : 'as nibbles — a track would not decode back to sectors'));
+    for (const p of back.patches.slice(0, 24)) {
+      const n = p.hex.replace(/[\s,]+/g, '').length / 2;
+      const where = sniffed.kind === 'dsk140'
+        ? '  T' + Math.floor((p.at - off) / 4096) +
+          ' S' + Math.floor(((p.at - off) % 4096) / 256) : '';
+      console.log('  at ' + String(p.at).padStart(7) + '  ' + String(n).padStart(4) +
+                  ' bytes' + where);
+    }
+    if (back.patches.length > 24) console.log('  … ' + (back.patches.length - 24) + ' more');
+  }
   if (cmd === 'io') {
     console.log('--- $C0xx accesses ---');
     for (const k of Object.keys(m.ioSeen).sort()) {
