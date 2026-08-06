@@ -131,11 +131,48 @@ The full list, and what each one is for, is in
 
 ## Credits
 
-The reference for nearly every hardware detail is **Agat Emulator** by NOP
-(<https://sourceforge.net/projects/agatemulator/>, GPLv2) and **AgatF** by
-Ravodin & co. Their ROMs are bundled here; see [ROMS.md](ROMS.md).
+This emulator is a transcription more than an invention. Almost nothing in it
+was worked out from first principles — it was read out of other people's work,
+and it would not exist without any of the following.
+
+- **Agat Emulator** by NOP — <https://sourceforge.net/projects/agatemulator/>,
+  GPLv2. The reference for nearly every hardware detail: the two memory maps
+  (`baseram.c`), the video modes and painters (`videoprocs.c`, `videosel7.c`,
+  `videosel9.c`), both floppy controllers (`fdd.c`, `fdd1.c`) and the sector
+  encoders (`dsk2nib.c`, `dsk2hfe.c`). The keyboard's scancode table is its
+  shipped `keyb/default.bin` emitted verbatim, and the undocumented-opcode set
+  is checked against its `cpu/cpu6502.c`. The bundled ROMs, character
+  generators and palette are from its data package.
+- **AgatF** by Ravodin & co. — the second reading of the same hardware, and the
+  source of the same five ROMs under different names, byte-for-byte identical.
+  See [ROMS.md](ROMS.md) for both, with checksums.
+- **agatcomp.ru** — the hardware archive, and the source of two things measured
+  rather than inferred. The [clock-frequency page][clocks] reports 19.97093 ms
+  between frame interrupts, averaged over six boards with a calibrated Ч3-63
+  counter, which is what pins the raster at 312 lines of 672 clocks. And the
+  on-screen keyboard is transcribed from its [photograph of the Клавиатура][kbd],
+  which is what settles that a keycap is a *code* rather than a scancode.
+- **The Agat hardware replica project** — <https://agat-hardware.sourceforge.io/>.
+  Running its PROM images through the Agat-9's video state machine is how the
+  312-state cycle and its 39 interrupt lines were established.
+- **Klaus Dormann's 6502 functional test** —
+  <https://github.com/Klaus2m5/6502_65C02_functional_tests>. `tools/` bundles a
+  built `6502_functional_test.bin`; the source project is published under GPLv3.
+- **The 6502 opcode matrix at** <https://www.oxyron.de/html/opcodes02.html> — the
+  undocumented opcodes and their addressing modes, by way of agat-emulator's
+  transcription of it.
+
+Where a transcription is subtle the source file is named in a comment, so a
+disagreement is a lookup rather than an argument.
+
+[clocks]: https://agatcomp.ru/agat/Hardware/useful/clock.shtml
+[kbd]: https://www.agatcomp.ru/agat/Hardware/Key_Joy/KeyClassic/kbd15.jpg
 
 ## Licence
 
-MIT for the emulator, see [LICENSE](LICENSE). The ROMs and the example programs
-are not ours — see [ROMS.md](ROMS.md).
+MIT for the emulator, see [LICENSE](LICENSE). Three sets of bundled files are
+not ours and are not MIT: the ROMs, character generators and palette in
+`roms/roms.js` — see [ROMS.md](ROMS.md) — the example programs in `examples/`,
+and `tools/6502_functional_test.bin`, which is built from Klaus Dormann's
+GPLv3 test sources. None of the three is part of the emulator itself; the test
+binary is read by `tools/cputest.js` and never ships to the browser.
