@@ -18,6 +18,7 @@ const A = ctx.AGAT;
 const GCR_GOLDEN =
   '722e4b46646bb16bfc5c64ae06000f5399563411d38b73ddea2b3f6480c1a3ef';
 let pass = 0, fail = 0;
+const hex = (v) => '$' + v.toString(16).toUpperCase();
 function eq(what, got, want) {
   const g = JSON.stringify(got), w = JSON.stringify(want);
   if (g === w) { pass++; return; }
@@ -180,6 +181,82 @@ function eq(what, got, want) {
   }
 }
 
+// --- undocumented opcodes ---------------------------------------------------
+// The Klaus Dormann test covers the official set and says nothing about either
+// the undocumented opcodes or anyone's cycle counts. Both matter here: the
+// sub-frame interrupt is the Agat's music clock, so an instruction that is a
+// few cycles cheap shifts pitch and tempo.
+//
+// Counted against agat-emulator's own table (cpu/cpu6502.c, from
+// oxyron.de/html/opcodes02.html), which carries all 105 of them. The
+// read-modify-write group takes the legal read-modify-write counts and pays no
+// page-cross penalty: the extra fetch happens whether or not the index carried.
+{
+  const step = (bytes, setup) => {
+    const ram = new Uint8Array(0x10000);
+    const cpu = new A.CPU({
+      read: (a) => ram[a & 0xffff],
+      write: (a, v) => { ram[a & 0xffff] = v & 0xff; },
+    });
+    ram[0xfffc] = 0x00; ram[0xfffd] = 0x02;
+    cpu.reset();
+    bytes.forEach((b, i) => { ram[0x0200 + i] = b; });
+    if (setup) setup(cpu, ram);
+    const c0 = cpu.cycles;
+    cpu.step();
+    return { cycles: cpu.cycles - c0, cpu: cpu, ram: ram };
+  };
+
+  // Every JAM, and only those, stops the CPU. A hole here is an opcode that
+  // silently does nothing instead of the undocumented thing a game wanted.
+  {
+    const jam = [];
+    for (let op = 0; op < 256; op++) if (step([op, 0x10, 0x03]).cpu.halted) jam.push(op);
+    eq('exactly the twelve JAM opcodes halt', jam.map(hex),
+       [0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x92, 0xb2, 0xd2, 0xf2].map(hex));
+  }
+
+  // The read-modify-write six, across all seven of their addressing modes.
+  {
+    const want = { 0x03: 8, 0x07: 5, 0x0f: 6, 0x13: 8, 0x17: 6, 0x1b: 7, 0x1f: 7 };
+    const bad = [];
+    for (const base of [0x00, 0x20, 0x40, 0x60, 0xc0, 0xe0]) {
+      for (const off in want) {
+        const op = base | Number(off);
+        const got = step([op, 0x10, 0x03]).cycles;
+        if (got !== want[off]) bad.push(hex(op) + ' ' + got + '!=' + want[off]);
+      }
+    }
+    eq('SLO RLA SRE RRA DCP ISC cycle counts', bad, []);
+  }
+
+  // The rest, mode by mode, so a wrong addressing mode shows up as a wrong count.
+  {
+    const bad = [], want = {
+      0xa7: 3, 0xb7: 4, 0xaf: 4, 0xbf: 4, 0xa3: 6, 0xb3: 5, 0xab: 2,   // LAX
+      0x87: 3, 0x97: 4, 0x8f: 4, 0x83: 6,                              // SAX
+      0x0b: 2, 0x2b: 2, 0x4b: 2, 0x6b: 2, 0xcb: 2, 0x8b: 2,            // ANC ALR ARR SBX XAA
+      0x9b: 5, 0x9c: 5, 0x9e: 5, 0x9f: 5, 0x93: 6, 0xbb: 4,            // TAS SHY SHX AHX LAS
+      0x1a: 2, 0x80: 2, 0x04: 3, 0x14: 4, 0x0c: 4, 0x1c: 4,            // the NOPs
+    };
+    for (const op in want) {
+      const got = step([Number(op), 0x10, 0x03]).cycles;
+      if (got !== want[op]) bad.push(hex(Number(op)) + ' ' + got + '!=' + want[op]);
+    }
+    eq('the remaining undocumented cycle counts', bad, []);
+  }
+
+  // And that a couple of them actually do the undocumented thing.
+  {
+    const r = step([0xa7, 0x40], (c, ram) => { ram[0x40] = 0x7f; });
+    eq('LAX $40 loads A and X', [r.cpu.a, r.cpu.x], [0x7f, 0x7f]);
+    const s = step([0x87, 0x40], (c) => { c.a = 0xf0; c.x = 0x3c; });
+    eq('SAX $40 stores A & X', s.ram[0x40], 0x30);
+    const t = step([0xcb, 0x10], (c) => { c.a = 0xf0; c.x = 0x3c; });
+    eq('SBX #$10 puts (A & X) - imm in X', t.cpu.x, 0x20);
+  }
+}
+
 // --- the keyboard, and the two boards that draw it --------------------------
 // The АГАТ board is a transcription of a photograph, and a transcription is
 // exactly the kind of thing that is wrong in one place and looks right. These
@@ -206,7 +283,6 @@ function eq(what, got, want) {
 
   // Which host keys reach a code. The three below are the ones worth pinning:
   // Ч and Ю are unreachable in ЛАТ, and ¤ needs a shift the cap does not show.
-  const hex = (v) => '$' + v.toString(16).toUpperCase();
   const names = (c) => K.routesTo(c).map(K.routeName).join(', ');
   eq('Ч ($5E) comes from РУС X', names(0x5e),
      'ЛАТ Shift+6, ЛАТ Shift+`, РУС X, РУС Shift+`');

@@ -135,6 +135,30 @@ that knows about banking. Two consequences:
 as small closures. It is not cycle-accurate at the bus level; it accumulates a
 cycle count per instruction, including the page-cross penalties.
 
+### Undocumented opcodes
+
+All of them are implemented — the same 105 agat-emulator carries in
+`cpu/cpu6502.c`, from `oxyron.de/html/opcodes02.html`, and the same twelve
+JAM/KIL codes halt. agat-emulator gates its set behind an `undoc` flag that its
+Qt build turns **on** by default (`CFG_INT_CPU_EXT = 1`, `sysconf.c`) with a
+checkbox to turn it off; there is no flag here, because refusing to run an
+opcode the hardware would have run is not a behaviour worth reproducing.
+
+Cycle counts matter more here than in most emulators: the sub-frame interrupt is
+the Agat's music clock, so an instruction that is a few cycles cheap moves pitch
+and tempo. `SLO`, `RLA`, `SRE`, `RRA`, `DCP` and `ISC` all share one addressing
+pattern keyed on the opcode's low five bits — `illRmw()` resolves the mode and
+the count together — and take the legal read-modify-write counts: 5 zp, 6 zpx, 6
+abs, 7 absx, 7 absy, 8 izx, 8 izy, with **no page-cross penalty**, because a
+read-modify-write does the extra fetch whether or not the index carried.
+
+Klaus Dormann's test covers none of this — not the undocumented opcodes and not
+anyone's cycle counts — so `tools/vectors.js` checks all 105 against
+agat-emulator's table directly. Note that its table is not right everywhere:
+`BRK` is listed as 8 cycles rather than 7, `$3D AND absx` as 3 rather than 4 and
+`$E1 SBC izx` as 4 rather than 6, so it is worth reading as a cross-check rather
+than as an authority.
+
 `step()` polls interrupts **before** each instruction:
 
 ```js

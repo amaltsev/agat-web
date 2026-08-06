@@ -212,6 +212,24 @@
       self.wr(addr, fn(m));
     }
 
+    // SLO, RLA, SRE, RRA, DCP and ISC are one read-modify-write instruction
+    // each, and all six use the same seven addressing modes at the same offsets
+    // from their opcode base — so the mode and the cycle count both come off the
+    // low five bits. The counts are the legal read-modify-write ones, and none
+    // of them pays a page-cross penalty: a read-modify-write does the extra
+    // fetch whether or not the index carried.
+    function illRmw() {
+      switch (op & 0x1f) {
+        case 0x03: self.cycles += 8; return izx();
+        case 0x07: self.cycles += 5; return zp();
+        case 0x0f: self.cycles += 6; return abs();
+        case 0x13: self.cycles += 8; return izy();
+        case 0x17: self.cycles += 6; return zpx();
+        case 0x1b: self.cycles += 7; return absy();
+      }
+      self.cycles += 7; return absx();                  // 0x1f
+    }
+
     function bit(m) {
       self.p = (self.p & ~(Z | N | V)) | ((self.a & m) ? 0 : Z) | (m & (N | V));
     }
@@ -432,45 +450,27 @@
       case 0x83: this.wr(izx(), this.a & this.x); this.cycles += 6; break;
 
       case 0xc7: case 0xd7: case 0xcf: case 0xdf: case 0xdb: case 0xc3: case 0xd3:
-        a = (op === 0xc7) ? zp() : (op === 0xd7) ? zpx() : (op === 0xcf) ? abs() :
-            (op === 0xdf) ? absx() : (op === 0xdb) ? absy() : (op === 0xc3) ? izx() : izy();
-        rmw(a, function (m) { m = (m - 1) & 0xff; cmp(self.a, m); return m; });
-        this.cycles += 5;
+        rmw(illRmw(), function (m) { m = (m - 1) & 0xff; cmp(self.a, m); return m; });
         break;
 
       case 0xe7: case 0xf7: case 0xef: case 0xff: case 0xfb: case 0xe3: case 0xf3:
-        a = (op === 0xe7) ? zp() : (op === 0xf7) ? zpx() : (op === 0xef) ? abs() :
-            (op === 0xff) ? absx() : (op === 0xfb) ? absy() : (op === 0xe3) ? izx() : izy();
-        rmw(a, function (m) { m = (m + 1) & 0xff; sbc(m); return m; });
-        this.cycles += 5;
+        rmw(illRmw(), function (m) { m = (m + 1) & 0xff; sbc(m); return m; });
         break;
 
       case 0x07: case 0x17: case 0x0f: case 0x1f: case 0x1b: case 0x03: case 0x13:
-        a = (op === 0x07) ? zp() : (op === 0x17) ? zpx() : (op === 0x0f) ? abs() :
-            (op === 0x1f) ? absx() : (op === 0x1b) ? absy() : (op === 0x03) ? izx() : izy();
-        rmw(a, function (m) { m = asl(m); self.a = self.setNZ(self.a | m); return m; });
-        this.cycles += 5;
+        rmw(illRmw(), function (m) { m = asl(m); self.a = self.setNZ(self.a | m); return m; });
         break;
 
       case 0x27: case 0x37: case 0x2f: case 0x3f: case 0x3b: case 0x23: case 0x33:
-        a = (op === 0x27) ? zp() : (op === 0x37) ? zpx() : (op === 0x2f) ? abs() :
-            (op === 0x3f) ? absx() : (op === 0x3b) ? absy() : (op === 0x23) ? izx() : izy();
-        rmw(a, function (m) { m = rol(m); self.a = self.setNZ(self.a & m); return m; });
-        this.cycles += 5;
+        rmw(illRmw(), function (m) { m = rol(m); self.a = self.setNZ(self.a & m); return m; });
         break;
 
       case 0x47: case 0x57: case 0x4f: case 0x5f: case 0x5b: case 0x43: case 0x53:
-        a = (op === 0x47) ? zp() : (op === 0x57) ? zpx() : (op === 0x4f) ? abs() :
-            (op === 0x5f) ? absx() : (op === 0x5b) ? absy() : (op === 0x43) ? izx() : izy();
-        rmw(a, function (m) { m = lsr(m); self.a = self.setNZ(self.a ^ m); return m; });
-        this.cycles += 5;
+        rmw(illRmw(), function (m) { m = lsr(m); self.a = self.setNZ(self.a ^ m); return m; });
         break;
 
       case 0x67: case 0x77: case 0x6f: case 0x7f: case 0x7b: case 0x63: case 0x73:
-        a = (op === 0x67) ? zp() : (op === 0x77) ? zpx() : (op === 0x6f) ? abs() :
-            (op === 0x7f) ? absx() : (op === 0x7b) ? absy() : (op === 0x63) ? izx() : izy();
-        rmw(a, function (m) { m = ror(m); adc(m); return m; });
-        this.cycles += 5;
+        rmw(illRmw(), function (m) { m = ror(m); adc(m); return m; });
         break;
 
       case 0x0b: case 0x2b:                                     // ANC
@@ -508,7 +508,7 @@
       case 0x9f: case 0x93:                                     // AHX
         a = (op === 0x9f) ? absy() : izy();
         this.wr(a, this.a & this.x & (((a >> 8) + 1) & 0xff));
-        this.cycles += 5;
+        this.cycles += (op === 0x9f) ? 5 : 6;
         break;
       case 0xbb:                                                // LAS
         v = this.rd(absy()) & this.s;
