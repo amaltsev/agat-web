@@ -2,9 +2,14 @@
 // the project's regression harness.
 //
 //   node tools/corpus.js <dir> [--out=DIR] [--cycles=N] [--keys=~] [--md]
+//                              [--ram=32|64|128] [--nocards]
 //
 // The model comes from the path (…7a… -> Agat-7, …9a… -> Agat-9), the way
 // AgatF's own agat.sh infers it. With --out, a PNG is written per image.
+//
+// `--ram` overrides the Agat-7's base RAM and `--nocards` pulls both of its
+// memory cards, which together are how you tell "this disk wants more memory"
+// apart from "the emulator changed": run the corpus twice and diff.
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -24,6 +29,8 @@ if (!dir) { console.error('need a directory'); process.exit(2); }
 const cycles = Number(flags.cycles || 16e6);
 const keys = flags.keys || '';
 const outDir = flags.out || null;
+const ramSize = flags.ram ? Number(flags.ram) * 1024 : undefined;
+const slots = flags.nocards ? { 2: null, 4: null } : undefined;
 if (outDir) fs.mkdirSync(outDir, { recursive: true });
 
 const ctx = H.loadModules();
@@ -63,7 +70,8 @@ H.loadRoms(ctx).then((roms) => {
       if (!s.kind) { rows.push(row); continue; }
       const model = s.hintModel || 9;
       row.model = model;
-      const m = H.makeMachine(ctx, roms, { model: model });
+      const m = H.makeMachine(ctx, roms,
+        { model: model, ramSize: ramSize, slots: slots });
       if (s.kind === 'fil') {
         if (!ctx.AGAT.loadFil) { row.note = 'fil loader pending'; rows.push(row); continue; }
         ctx.AGAT.loadFil(m, s.payload);

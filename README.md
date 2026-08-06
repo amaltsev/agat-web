@@ -51,10 +51,13 @@ disappears and one named arrow brings the whole cluster. It needs a `.agc` that
 says which keys those are, and on a phone it is what such a container opens
 with.
 
-Pick the **machine and RAM size** to match your disk: the Agat-7 shipped in
-three sizes and software can tell, because the RAM size masks the video mode
-register's page field. The default is an Agat-7 with 64K. A filename containing
-`7a` or `9a` picks the machine for you until you choose one yourself.
+The bar picks the **machine**; the ⚙ popup has its memory. The default Agat-7 is
+the machine as sold — 96K in three separate devices: 32K of base RAM, a 32K
+ЭмПЗУ card in slot 2 and a 32K ОЗУ expansion in slot 4. Base RAM is the one to
+set to match your disk, because it is the only memory the video controller scans
+and its size masks the video mode register's page field, so software can tell.
+A filename containing `7a` or `9a` picks the machine for you until you choose
+one yourself.
 
 Drives: 840K in slot 5 on both machines, 140K in slot 6 on the Agat-9 and slot 3
 on the Agat-7. A dropped image goes to whichever drive can read it.
@@ -87,8 +90,10 @@ program properly is a bookmark:
     index.html#model=7&ram=64&irq=raster
     index.html#model=7&ram=128&irq=held&rate=500
 
-`model` is 7 or 9, `ram` is 32, 64 or 128 (Agat-7 only — the Agat-9 is always
-128K), `irq` is `raster`, `held` or `pulse`, and `rate` is the sub-frame
+`model` is 7 or 9; `ram` is base RAM in KB — 32, 64 or 128, Agat-7 only, since
+the Agat-9 is always 128K; `psrom` and `xram` size the two Agat-7 memory cards
+in KB, and appear only when they are not the stock 32K (`0` leaves the slot
+empty); `irq` is `raster`, `held` or `pulse`; and `rate` is the sub-frame
 interrupt in Hz, which only the last two obey. A machine named in the URL is
 treated as chosen, so a `7a`/`9a` filename does not override it.
 
@@ -152,8 +157,9 @@ container is the only place left that says who wrote a program and when.
 Nothing but `agc` and `media` is required.
 
 **Save .agc** writes one out from the machine as it stands: what is in the
-drives, the model and RAM, both interrupt settings and the live remap. It asks
-nothing. A container that was loaded from a file keeps its own title and
+drives, the model and its memory, both interrupt settings and the live remap.
+Cards are written down only where they differ from the stock machine, so a
+container for an ordinary Agat-7 stays short. It asks nothing. A container that was loaded from a file keeps its own title and
 filename; one made from a bare image takes the image's name for both, so
 `irqtest.dsk` saves as `irqtest.agc` titled `irqtest.dsk` — rename it
 afterwards if it deserves better. From the command line:
@@ -175,6 +181,13 @@ machine it wants. The links on the page need a served copy — `fetch` is blocke
 on `file://` — so they work on the
 [hosted build](https://amaltsev.github.io/agat-web/), and from a local
 file use **Open…** instead.
+
+`examples/TESTOZU7_140.dsk` is the **factory memory test**, which asks you to
+declare the machine's memory and then verifies that it really is that — so it is
+the one thing here that can tell a wrong card from a wrong emulator. The stock
+Agat-7 passes all three of its branches. Its menu, transcribed from the 1986
+manual, is in [examples/TESTOZU7_140.md](examples/TESTOZU7_140.md); the short
+version is that **исполнение starts at 0**, where `0` is 32K.
 
 `examples/irqtest.dsk` is an interrupt and sound test, and it is meant to be run
 under **other** emulators too — it is a bootable 140K disk because every Agat
@@ -204,9 +217,8 @@ the `pulse` model gives.
 ## What is not there
 
 Disk writing on the **840K** drive — its images are read-only and the
-write-protect bit says so. Also absent: the Agat-7 ДопОЗУ extra-RAM card, NTSC
-artefact colour for the Apple modes, 80-column and Apple //e modes, mouse,
-printer and tape.
+write-protect bit says so. Also absent: NTSC artefact colour for the Apple
+modes, 80-column and Apple //e modes, mouse, printer and tape.
 
 ## Development
 
@@ -273,3 +285,9 @@ not ours and are not MIT: the ROMs, character generators and palette in
 and `tools/6502_functional_test.bin`, which is built from Klaus Dormann's
 GPLv3 test sources. None of the three is part of the emulator itself; the test
 binary is read by `tools/cputest.js` and never ships to the browser.
+
+`examples/TESTOZU7_140.dsk` is a 1986 Soviet factory diagnostic from
+[agatcomp.su](https://agatcomp.su/agat/Paper/DocsShtat/A7_K5.shtml). Its licence
+is **unknown**; it is included on the assumption that something of that origin
+and age is as close to public domain as anything gets, and it will be removed if
+the rights holder would rather it were not here.

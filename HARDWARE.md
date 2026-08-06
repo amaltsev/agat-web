@@ -43,16 +43,29 @@ The Agat-9 is the only one of the two with the Apple-compatible video modes.
 
 ### Agat-7
 
-32/64/128K in **16K** banks through three windows (`$0000`, `$4000`, `$8000`),
-with the bank register at `$C0F0-$C0FF` — also taking its value from the low
-nibble of the address, on reads as well as writes. Decode tables are transcribed
-verbatim from `baseram.c:475-502`.
+The machine as sold is **96K in three separate devices**, not one setting:
+32K of base RAM on the motherboard, a 32K ЭмПЗУ card in slot 2 and a 32K ОЗУ
+expansion in slot 4. That is agat-emulator's own default complement
+(`sysconf.c:72-77`, `143-150`, `303-306`), and `memsizes_b` (`sysconf.c:28-50`)
+has no 96K entry at all — the figure is these three added up. `Machine.PROFILES`
+carries the whole thing.
+
+Base RAM is 32/64/128K in **16K** banks through three windows (`$0000`, `$4000`,
+`$8000`), with the bank register at `$C0F0-$C0FF` — also taking its value from
+the low nibble of the address, on reads as well as writes. Decode tables are
+transcribed verbatim from `baseram.c:475-502`.
+
+**At 32K there is no bank register on the board.** agat-emulator installs it
+only above `$8000` of RAM (`baseram.c:573`), so `$C0F0-$C0FF` is an undecoded
+address that reads `$FF` and changes nothing, and `$8000-$BFFF` belongs to the
+expansion card or to no one.
 
 ROM is 2K at `$F800-$FFFF` and **not** mirrored.
 
-**The RAM size is visible to software**, because it masks the page field of the
-video mode register: `page = (mode >> 4) & ((ramSize >> 13) - 1)`. Set it to
-match the disk or the picture comes from the wrong address.
+**The base RAM size is visible to software**, because it masks the page field of
+the video mode register: `page = (mode >> 4) & ((ramSize >> 13) - 1)`. Set it to
+match the disk or the picture comes from the wrong address. Only base RAM is
+scanned — see the note under the expansion card below.
 
 Base RAM stops at `$BFFF`. There is no built-in language card.
 
@@ -81,6 +94,68 @@ generator at `$D000`, its black-and-white splash at `$D800` and its disk driver
 at `$E000`; without the card all of that is written into a void, and the game
 loads, animates its colour title, and then shows an empty screen.
 
+32K as fitted, up to 128K — the bank field is three bits wide, and below 128K
+the top banks alias.
+
+### Checking both cards against the factory test
+
+`examples/TESTOZU7_140.dsk` asks for the machine's memory configuration and then
+verifies it, which makes it the one measurement that can tell a wrong card from a
+wrong emulator. Its **исполнение** is the fitting — `0` = 32K, `1` = 64K,
+`2` = 128K — and the stock machine passes all three of its branches:
+
+```sh
+node tools/shot.js examples/TESTOZU7_140.dsk 101  --model=7   # ОЗУ,    base RAM 32K
+node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7   # ДОПОЗУ, slot 4, 32K
+node tools/shot.js examples/TESTOZU7_140.dsk 4201 --model=7   # ПЗУ,    slot 2, 32K
+```
+
+A clean run shows the pass counter advancing with no error lines. Declaring one
+size and giving the emulator another — `--xram=16` against исполнение 0 — makes
+it report mismatches, which is how you confirm the test is really reaching the
+card and not agreeing with itself.
+
+**Base RAM above 32K does not pass**: `--ram=64` with исполнение 1, and
+`--ram=128` with исполнение 2, both report errors under `БАНК F0`. This predates
+the expansion card — it reproduces on the commit before it was added — and is
+not yet explained.
+
+The full menu, transcribed from the 1986 factory manual, is in
+[examples/TESTOZU7_140.md](examples/TESTOZU7_140.md).
+
+### ОЗУ expansion (Agat-7, slot 4)
+
+The card that fills `$8000-$BFFF`, which base RAM on a 32K board does not reach.
+Ported from `xram7.c`.
+
+Its control register is the slot's **whole `$Cn00-$CnFF` page** and takes its
+value from the address, like the ЭмПЗУ's — but only **seven** bits of it
+(`xram7.c:154`), so `$C480` is another name for `$C400`. Reading returns the
+state.
+
+| bits | |
+|---|---|
+| 2..0 | 16K bank within the card's RAM |
+| 3 | module selected. Set, the card answers `$8000-$BFFF`; clear, it lets go |
+| 4 | write protect. The card still answers reads; stores are dropped |
+
+The window is **arbitrated, not shared**. While bit 3 is set the card owns
+`$8000-$BFFF` outright, whatever base RAM would have put there; clearing it
+hands the address straight back, which on a 64K or 128K board means the banked
+base RAM behind it, contents intact. agat-emulator does this by broadcasting
+`SYS_COMMAND_XRAM_RELEASE` and letting `baseram` reclaim the window
+(`xram7.c:150-156`, `baseram.c:532-540`); here it is one predicate on the read
+path.
+
+**Neither memory card is a display page.** The video controller scans base RAM
+and never these — agat-emulator calls `vid_invalidate_addr` from `baseram.c` and
+from neither `xram7.c` nor `psrom7.c`, because on the boards the scanner is
+wired to the motherboard's memory. A picture cannot be put in the expansion.
+
+**Neither card decodes `$C080+16n` either.** Both fill `io_sel` and never
+`baseio_sel`, so `$C0Ax` and `$C0Cx` are open bus on an Agat-7 rather than a
+window into whichever card sits in that slot.
+
 ---
 
 ## Slots
@@ -89,7 +164,11 @@ loads, animates its colour title, and then shows an empty screen.
 |---|---|---|
 | ЭмПЗУ | 2 | — |
 | 140K Shugart | 3 | 6 |
+| ОЗУ expansion | 4 | — |
 | 840K Teac | 5 | 5 |
+
+This is the stock complement, in `Machine.PROFILES`; an `.agc` or the gear popup
+can move a card or resize it.
 
 ---
 

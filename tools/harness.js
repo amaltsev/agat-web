@@ -54,39 +54,34 @@ function mountFile(ctx, p) {
   return ctx.AGAT.mount(sniffFile(ctx, p));
 }
 
-// Build a machine with the standard card complement for its model.
+// Build a machine with the stock card complement for its model — the same
+// Machine.PROFILES the page builds from, so a tool and the browser cannot end
+// up testing different hardware. `opts.slots` overrides it the way an .agc does.
 function makeMachine(ctx, roms, opts) {
   opts = opts || {};
   const A = ctx.AGAT;
   const model = opts.model === 7 ? 7 : 9;
-  const slots = A.Machine.SLOTS[model];
   const m = new A.Machine({
     model: model,
     ramSize: opts.ramSize,
     sysmon: model === 7 ? roms.monitor7 : roms.monitor9,
   });
-  if (slots.psrom && A.Psrom7) m.addCard(slots.psrom, new A.Psrom7());
-  m.addCard(slots.fdd840, new A.Disk840({ rom: roms.teac }));
-  if (A.Disk140) {
-    m.addCard(slots.fdd140, new A.Disk140({
-      rom: model === 7 ? roms.shugart7 : roms.shugart9,
-    }));
-  }
+  m.slots = A.Machine.resolveSlots(model, opts.slots);
+  m.fit(m.slots, roms);
   if (opts.media) insert(m, opts.media);
   return m;
 }
 
 // Put media into whichever controller can read it; returns the slot used.
 function insert(m, media) {
-  const slots = ctx_SLOTS(m)[m.model];
-  const slot = media.kind === 'nib140' ? slots.fdd140 : slots.fdd840;
+  const A = m.constructor;
+  const slots = m.slots || A.resolveSlots(m.model, null);
+  const slot = A.slotOf(slots, media.kind === 'nib140' ? 'fdd140' : 'fdd840');
   const card = m.cards[slot];
   if (!card || !card.insert) throw new Error('no controller for ' + media.kind);
   card.insert(media);
   return slot;
 }
-
-function ctx_SLOTS(m) { return m.constructor.SLOTS; }
 
 // The keystrokes a --keys= string sends. `~` is Return, `_` Space, `^` Escape,
 // and anything else is itself: enough to drive a menu or type a DOS command,

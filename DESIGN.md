@@ -53,6 +53,7 @@ Load order matters only in that a module's dependencies must already be on
 | `cpu6502.js` | NMOS 6502. Passes the Klaus Dormann functional test. |
 | `mem7.js` | Agat-7 16K window decode |
 | `psrom7.js` | Agat-7 ЭмПЗУ card |
+| `xram7.js` | Agat-7 ОЗУ expansion card |
 | `videosel.js` | pure `$C7xx` mode decode, `videoSel7` / `videoSel9` |
 | `videopal.js` | four palettes, `$C058-$C05B` |
 | `machine.js` | the bus: memory maps, soft switches, slots, interrupt timers |
@@ -87,6 +88,10 @@ Cards are registered by slot and may expose:
 
 - `rom` — 256 bytes mapped at `$Cn00`
 - `read(reg, now)` / `write(reg, v, now)` — the `$C08n` register file
+- `readReg(a)` / `writeReg(a)` — for a card whose control *is* its `$Cn00` page,
+  which on the Agat is common: the value rides in the address
+- `ioRegs = false` — this card does not decode `$C08n` at all, so that page
+  stays open bus. Both memory cards say so; the drives do not.
 - `insert(media)` / `media` — anything that takes a disk
 - `reset()` — the bus reset line, if the card latches anything
 - `lamp(now)` — `0` dark, `1` spinning, `2` transferring, for the drive lamps
@@ -95,8 +100,22 @@ Cards are registered by slot and may expose:
 is the motor line — port C bit 7 on the 840K, `$C0E9` on the 140K — and which
 read hands a byte to the CPU rather than merely being polled.
 
-`Machine.SLOTS` is the per-model slot table, so nothing else has to know where a
-controller lives.
+### Machine profiles
+
+`Machine.PROFILES` is what each model *is*: base RAM, and a card with a size in
+every slot. `App.build()` and `tools/harness.js`'s `makeMachine` both go through
+`Machine.resolveSlots()` and `Machine.fit()`, so a tool and the browser cannot
+end up testing different hardware — which they could, and briefly did, when each
+spelled the card list out for itself.
+
+An override is a slot map merged over the profile: a different card, a different
+size, or `null` for a slot left empty. Two things produce one — an `.agc`'s
+`machine.slots` and the gear popup — and `App.slotDiff()` turns the live machine
+back into the smallest map that describes it, so a container for a stock machine
+carries no slots at all.
+
+`Machine.SLOTS` is derived from the profiles and answers "which slot is the 140K
+drive in", so nothing else has to know.
 
 ### Reset has to reach the cards
 
@@ -549,6 +568,19 @@ and all three coming back when the remap is dropped.
 (`*7a` → 7, `*9a` → 9, as `agat.sh` does), boots each, and emits a Markdown
 table. The images stay local and uncommitted; the table is the regression
 artifact.
+
+`tools/shot.js` takes `--ram=`, `--psrom=` and `--xram=` in kilobytes for the
+same reason, and that is what drives the factory memory test — see
+[HARDWARE.md](HARDWARE.md#checking-both-cards-against-the-factory-test). A test
+that declares the configuration and then verifies it is worth more than any
+number of assertions written from the same reading of the source that produced
+the bug.
+
+`corpus.js` takes `--ram=` and `--nocards` too, which is how a table that has
+moved gets attributed. When the base RAM default went
+from 64K to 32K, `--ram=64` reproduced the old table exactly — so the diff was
+the default and not the emulator, and the three images that lost their picture
+are three images that want more memory than the machine was sold with.
 
 ### Two traps worth knowing about
 

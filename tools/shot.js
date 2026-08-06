@@ -2,8 +2,21 @@
 //
 //   node tools/shot.js <image> [keys] [cycles-per-key] [out.png] [--model=7|9]
 //                      [--irq=raster|held|pulse]
+//                      [--ram=32|64|128] [--psrom=KB] [--xram=KB]
 //
 // keys: ~ = Return, _ = Space, ^ = Escape, anything else is that character.
+//
+// The three size flags are kilobytes and override the Agat-7's stock memory;
+// `0` pulls a card out. They are what drives the factory memory test, which
+// asks for the configuration and then verifies it — so telling it one thing and
+// the emulator another is how you find out which of the two is wrong:
+//
+//   node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7  # ДОПОЗУ, slot 4
+//   node tools/shot.js examples/TESTOZU7_140.dsk 4201 --model=7  # ЭмПЗУ, slot 2
+//   node tools/shot.js examples/TESTOZU7_140.dsk 101  --model=7  # base RAM
+//
+// where the digits are конфигурация, then слот for a card, then исполнение
+// (0 = 32K, 1 = 64K, 2 = 128K) and режим 1. See examples/TESTOZU7_140.md.
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -79,7 +92,18 @@ if (!target) { console.error('need an image'); process.exit(2); }
 H.loadRoms(ctx).then((roms) => {
   const sniffed = H.sniffFile(ctx, target);
   const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
-  const m = H.makeMachine(ctx, roms, { model: model });
+  const slots = {};
+  const card = (n, name, kb) => {
+    if (kb === undefined) return;
+    slots[n] = Number(kb) ? { card: name, ram: Number(kb) * 1024 } : null;
+  };
+  card(2, 'psrom', flags.psrom);
+  card(4, 'xram', flags.xram);
+  const m = H.makeMachine(ctx, roms, {
+    model: model,
+    ramSize: flags.ram ? Number(flags.ram) * 1024 : undefined,
+    slots: Object.keys(slots).length ? slots : undefined,
+  });
   if (flags.irq) m.setIrqModel(flags.irq);
   if (sniffed.kind === 'fil') {
     ctx.AGAT.loadFil(m, sniffed.payload);

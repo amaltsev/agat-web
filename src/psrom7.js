@@ -24,11 +24,18 @@
 
   function Psrom7(opts) {
     opts = opts || {};
-    this.size = opts.size || 0x20000;  // 128K, the largest the 3-bit bank field reaches
+    // 32K as sold, and as agat-emulator fits it by default (sysconf.c:143-146).
+    // The 3-bit bank field reaches 128K, which is the most an override can ask
+    // for; below that the top banks alias.
+    this.size = opts.size || 0x8000;
     this.ram = new Uint8Array(this.size);
     this.state = 0x80;
     this.rom = null;                   // no $Cn00 ROM; the page is the register
   }
+
+  // The card does not decode $C080+16n. agat-emulator's psrom7_init fills only
+  // io_sel, never baseio_sel, so that page stays open bus — see Machine.ioRead.
+  Psrom7.prototype.ioRegs = false;
 
   // Bank 0, reads off: the card is out of the way and $D000-$FFFF is the bare
   // machine again. Its RAM keeps its contents, as the chips do.

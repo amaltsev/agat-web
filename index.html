@@ -213,11 +213,6 @@
     <option value="7">Agat-7</option>
     <option value="9">Agat-9</option>
   </select>
-  <select id="ram" title="The Agat-7 shipped in three sizes, and software can tell">
-    <option value="65536">64K</option>
-    <option value="131072">128K</option>
-    <option value="32768">32K</option>
-  </select>
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
@@ -227,7 +222,7 @@
     <option value="pc">PC keyboard</option>
     <option value="used">Only mapped keys</option>
   </select>
-  <button id="gear" title="Interrupt model, interrupt rate and volume" aria-expanded="false">⚙</button>
+  <button id="gear" title="Memory sizes, interrupt model, interrupt rate and volume" aria-expanded="false">⚙</button>
   <span class="lamps" id="lamps"></span>
   <span id="status">loading…</span>
 </div>
@@ -236,6 +231,32 @@
      by: touched once for a program, if ever, and carried by an .agc so they
      need not be touched again. Out of the bar, which has to fit one line. -->
 <div id="settings" hidden>
+  <div class="row">
+    <span class="key">Memory</span>
+    <select id="ram" title="Base RAM on the motherboard. It is what the video controller scans, and it masks the video mode register's page field, so software can tell.">
+      <option value="32768">32K base</option>
+      <option value="65536">64K base</option>
+      <option value="131072">128K base</option>
+    </select>
+    <select id="psrom" title="ЭмПЗУ in slot 2 — RAM behind $D000-$FFFF. Agat-7 software that installs its own vectors, character generator or disk driver needs it.">
+      <option value="16">16K ЭмПЗУ</option>
+      <option value="32">32K ЭмПЗУ</option>
+      <option value="48">48K ЭмПЗУ</option>
+      <option value="64">64K ЭмПЗУ</option>
+      <option value="128">128K ЭмПЗУ</option>
+      <option value="0">no ЭмПЗУ</option>
+    </select>
+    <select id="xram" title="ОЗУ expansion in slot 4 — the 16K window at $8000-$BFFF, banked out of the card's own RAM.">
+      <option value="16">16K ОЗУ</option>
+      <option value="32">32K ОЗУ</option>
+      <option value="48">48K ОЗУ</option>
+      <option value="64">64K ОЗУ</option>
+      <option value="128">128K ОЗУ</option>
+      <option value="0">no ОЗУ</option>
+    </select>
+    <span class="note">The Agat-7 as sold is 32K base plus two 32K cards — 96K in three
+      separate devices. Only the base is a display page.</span>
+  </div>
   <div class="row">
     <span class="key">Interrupt</span>
     <select id="hold" title="How the sub-frame interrupt reaches the CPU. 'raster' is the hardware as measured — a level whose edges are raster lines, and it sets its own rate. The other two are agat-emulator's.">
@@ -311,23 +332,28 @@
       Only the 140K drive writes.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
-      The interrupt model, its rate and the volume. The first two are the ones
-      to reach for when sound comes out at the wrong pitch: they set how the
-      sub-frame interrupt reaches the CPU, and software that sequences sound on
-      the interrupt count hears the choice as pitch and tempo. An <code>.agc</code>
-      carries both, so a program tuned by ear stays tuned.
+      The three memory sizes, the interrupt model, its rate and the volume. The
+      interrupt settings are the ones to reach for when sound comes out at the
+      wrong pitch: they set how the sub-frame interrupt reaches the CPU, and
+      software that sequences sound on the interrupt count hears the choice as
+      pitch and tempo. An <code>.agc</code> carries all of it, so a program
+      tuned by ear stays tuned.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
-      The Agat-9 is 128K in 8K banks. The Agat-7 is 32/64/128K in 16K banks and
-      the size is visible to software, so set it to match your disk. A filename
-      containing <code>7a</code> or <code>9a</code> picks the machine for you
-      until you choose one yourself.
+      The Agat-9 is 128K in 8K banks, and nothing about it is adjustable. The
+      Agat-7 as sold is three separate 32K devices — 32K of base RAM in 16K
+      banks, a ЭмПЗУ card in slot 2 behind <code>$D000-$FFFF</code>, and an ОЗУ
+      expansion in slot 4 filling <code>$8000-$BFFF</code> — which is the 96K
+      machine most software was written for. Only the base RAM is scanned by the
+      video controller, and its size masks the mode register's page field, so
+      set that one to match your disk. A filename containing <code>7a</code> or
+      <code>9a</code> picks the machine for you until you choose one yourself.
     </td></tr>
     <tr><td><b>Bookmarks</b></td><td>
-      The machine, its RAM size, both interrupt settings and which keyboard is
-      up ride in the address, so a configuration that runs a program properly
-      can be kept or passed on. <code>#agc=</code> names a container, which
-      carries the program itself.
+      The machine, all three memory sizes, both interrupt settings and which
+      keyboard is up ride in the address, so a configuration that runs a program
+      properly can be kept or passed on. <code>#agc=</code> names a container,
+      which carries the program itself.
     </td></tr>
   </table>
   <p id="examples"></p>
@@ -345,6 +371,7 @@
 <script src="src/cpu6502.js"></script>
 <script src="src/mem7.js"></script>
 <script src="src/psrom7.js"></script>
+<script src="src/xram7.js"></script>
 <script src="src/videosel.js"></script>
 <script src="src/videopal.js"></script>
 <script src="src/machine.js"></script>
@@ -369,6 +396,8 @@
   var statusEl = document.getElementById('status');
   var modelSel = document.getElementById('model');
   var ramSel = document.getElementById('ram');
+  var psromSel = document.getElementById('psrom');
+  var xramSel = document.getElementById('xram');
   var rateSel = document.getElementById('irq');
   var holdSel = document.getElementById('hold');
   var kbdSel = document.getElementById('kbd');
@@ -380,8 +409,9 @@
 
   // ---- the settings, in the URL ---------------------------------------------
   //
-  // Which machine a program wants — Agat-7 at 64K, an interrupt model, and the
-  // rate the two free-running models run at — is part of knowing how to run it,
+  // Which machine a program wants — an Agat-7 with this much base RAM and these
+  // cards, an interrupt model, and the rate the two free-running models run at
+  // — is part of knowing how to run it,
   // so it lives in the address and a working configuration is a bookmark. The
   // fragment rather than a query string, and location.replace() rather than
   // history.replaceState(): a page opened straight off the disk has a null
@@ -413,13 +443,49 @@
     return false;
   }
 
+  // The two Agat-7 memory cards, as sizes in kilobytes and as the slot map the
+  // App and an .agc both speak. Sitting at the stock size says nothing: a
+  // machine that matches its own profile carries no overrides and no URL keys.
+  var MEM_CARDS = [[2, 'psrom'], [4, 'xram']];
+
+  function memSel(card) { return card === 'psrom' ? psromSel : xramSel; }
+
+  function stockKb(slot) {
+    return AGAT.Machine.PROFILES[7].slots[slot].ram >> 10;
+  }
+
+  // None of the three sizes is a choice on an Agat-9: its 128K is fixed, and it
+  // has neither of the Agat-7's memory cards.
+  function syncMemEnabled() {
+    var nine = modelSel.value === '9';
+    ramSel.disabled = psromSel.disabled = xramSel.disabled = nine;
+  }
+
+  function slotOverrides() {
+    if (modelSel.value !== '7') return null;
+    var out = {}, any = false;
+    MEM_CARDS.forEach(function (e) {
+      var kb = Number(memSel(e[1]).value);
+      if (kb === stockKb(e[0])) return;
+      out[e[0]] = kb ? { card: e[1], ram: kb * 1024 } : null;
+      any = true;
+    });
+    return any ? out : null;
+  }
+
   function saveUrl() {
     var q = [];
     // The container comes first because it is what the address is *for* once
     // there is one: the rest of the keys read as adjustments to it.
     if (agcUrl) q.push('agc=' + encodeURIComponent(agcUrl));
     q.push('model=' + modelSel.value);
-    if (modelSel.value === '7') q.push('ram=' + (Number(ramSel.value) >> 10));
+    if (modelSel.value === '7') {
+      q.push('ram=' + (Number(ramSel.value) >> 10));
+      MEM_CARDS.forEach(function (e) {
+        var kb = Number(memSel(e[1]).value);
+        if (kb !== stockKb(e[0])) q.push(e[1] + '=' + kb);
+      });
+    }
     q.push('irq=' + holdSel.value);
     // The rate belongs to the free-running models; under `raster` it comes off
     // the line counter, and 0 is "whatever the machine does" either way.
@@ -433,11 +499,17 @@
   var url = readUrl();
   var agcUrl = url.agc || '';
   var pinned = pick(modelSel, url.model);
+  // The machine's own sizes first, so an address that names none of them opens
+  // the machine as sold rather than whichever option happens to be listed first.
+  ramSel.value = String(AGAT.Machine.PROFILES[7].ram);
+  MEM_CARDS.forEach(function (e) { memSel(e[1]).value = String(stockKb(e[0])); });
   pick(ramSel, Number(url.ram) * 1024);
+  pick(psromSel, url.psrom);
+  pick(xramSel, url.xram);
   pick(holdSel, url.irq);
   pick(rateSel, url.rate);
   pick(kbdSel, url.kbd);
-  ramSel.disabled = modelSel.value === '9';
+  syncMemEnabled();
   rateSel.disabled = holdSel.value === 'raster';
 
   var app = new AGAT.App({
@@ -445,6 +517,7 @@
     onStatus: say,
     model: Number(modelSel.value),
     ramSize: Number(ramSel.value),
+    slots: slotOverrides(),
     irqModel: holdSel.value,
     subFrameHz: rateSel.disabled ? 0 : Number(rateSel.value),
     onKey: function (v, info) { if (kbView) kbView.light(info, v, true); },
@@ -468,8 +541,14 @@
     rateSel.disabled = app.irqModel === 'raster';
     // The Agat-9's 128K is not a choice, and writing it into the menu would
     // still be sitting there when the machine went back to being an Agat-7.
-    if (app.model === 7) ramSel.value = String(app.ramSize);
-    ramSel.disabled = app.model === 9;
+    if (app.model === 7) {
+      ramSel.value = String(app.ramSize);
+      MEM_CARDS.forEach(function (e) {
+        var n = AGAT.Machine.slotOf(app.slots, e[1]);
+        pick(memSel(e[1]), String(n < 0 ? 0 : (app.slots[n].ram || 0) >> 10));
+      });
+    }
+    syncMemEnabled();
     document.title = 'Agat-' + app.model + ' ' + (app.ramSize >> 10) + 'K — emulator';
     // Switching machines builds a new one, and a new one comes up in ЛАТ. The
     // button and the board have to follow it rather than keep claiming РУС.
@@ -552,14 +631,21 @@
     if (e.dataTransfer && e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
   });
 
+  // The bar picks the machine and the popup adjusts it, but both end up here:
+  // a size or a card is part of what gets built, not something set afterwards.
+  // `slotOverrides` is read before setModel because that is what rebuilds.
   function applyModel() {
+    syncMemEnabled();
     app.modelPinned = true;
+    app.slotOverrides = slotOverrides();
     app.setModel(Number(modelSel.value), Number(ramSel.value));
     syncMachineUI();
     saveUrl();
   }
   modelSel.addEventListener('change', applyModel);
   ramSel.addEventListener('change', applyModel);
+  psromSel.addEventListener('change', applyModel);
+  xramSel.addEventListener('change', applyModel);
 
   // ---- the layout, and the keyboard that draws it ----------------------------
   //
@@ -689,12 +775,15 @@
 
 
   // The bundled examples, when the page is served rather than opened directly.
-  // Each is a container and names its own machine, so there is nothing to pick
-  // here — and clicking one leaves an address that opens it again.
+  // The containers name their own machine, so there is nothing to pick here —
+  // and clicking one leaves an address that opens it again. The factory memory
+  // test is a bare disk on purpose: it asks what the machine is and then checks
+  // the answer, so a container declaring it would be answering its own question.
   var EXAMPLES = [
     ['examples/rise-out.agc', 'RISE OUT (Agat-7, 140K disk)'],
     ['examples/snake.agc', 'ПИТОНЧИК / SNAKE (Agat-7, .fil)'],
     ['examples/irqtest.agc', 'interrupt & sound test'],
+    ['examples/TESTOZU7_140.dsk', 'ТЕСТ ПАМЯТИ (factory memory test)'],
   ];
   var ex = document.getElementById('examples');
   ex.appendChild(document.createTextNode('Examples: '));

@@ -58,6 +58,78 @@ function eq(what, got, want) {
   eq('mem7 phys is window-relative', new A.Mem7(0x20000).phys(0x4123), 0x4123);
 }
 
+// --- Agat-7 ОЗУ expansion ---------------------------------------------------
+// xram7.c. The register is the slot's whole page and only seven bits of the
+// address reach it, so $C480 is another name for $C400.
+{
+  const x = new A.Xram7();
+  eq('xram 32K by default', x.size, 0x8000);
+  eq('xram starts deselected', [x.selected(), x.readReg()], [false, 0]);
+
+  x.writeReg(0xc408);
+  eq('xram bit 3 selects it', [x.selected(), x.readReg()], [true, 8]);
+  x.writeReg(0xc488);
+  eq('xram register ignores address bit 7', x.readReg(), 8);
+  x.writeReg(0xc4ff);
+  eq('xram register keeps seven bits', x.readReg(), 0x7f);
+
+  // Bank 0 is $0000, bank 1 is $4000, and with 32K fitted bank 2 wraps back
+  // onto bank 0 — the 3-bit field reaches 128K, the card does not.
+  const off = (state, a) => { x.state = state; return x.offset(a); };
+  eq('xram bank 0 @ $8000', off(0x08, 0x8000), 0);
+  eq('xram bank 0 @ $BFFF', off(0x08, 0xbfff), 0x3fff);
+  eq('xram bank 1 @ $8000', off(0x09, 0x8000), 0x4000);
+  eq('xram bank 2 wraps at 32K', off(0x0a, 0x8000), 0);
+  const big = new A.Xram7({ size: 0x20000 });
+  big.state = 0x0a;
+  eq('xram bank 2 is its own at 128K', big.offset(0x8000), 0x8000);
+
+  // Write protect answers reads and drops stores (xram7.c:44-49).
+  const w = new A.Xram7();
+  w.writeReg(0xc408);
+  w.write(0x8000, 0x5a);
+  eq('xram writes land', w.read(0x8000), 0x5a);
+  w.writeReg(0xc418);                       // bit 4: protected
+  w.write(0x8000, 0xff);
+  eq('xram write protect drops stores', w.read(0x8000), 0x5a);
+  eq('xram write protect still reads', w.writeProtected(), true);
+
+  // Reset deselects and goes back to bank 0; the chips keep what is in them.
+  w.reset();
+  eq('xram reset deselects', [w.selected(), w.state], [false, 0]);
+  eq('xram reset keeps contents', w.ram[0], 0x5a);
+}
+
+// --- what the App builds from a profile -------------------------------------
+// The page's own wiring, without a page: App resolves the profile in its
+// constructor, so a stub canvas is enough to check that the machine it would
+// build is the machine that was asked for. Nothing here runs a frame.
+{
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({ createImageData: () => ({ data: [] }), putImageData: () => {} }),
+  };
+  const mk = (opts) => new A.App(Object.assign({ canvas }, opts));
+  const cards = (app) => Object.keys(app.slots).map((n) => n + ':' + app.slots[n].card);
+
+  const stock = mk({ model: 7 });
+  eq('App stock Agat-7 base RAM', stock.ramSize, 0x8000);
+  eq('App stock Agat-7 slots', cards(stock),
+     ['2:psrom', '3:fdd140', '4:xram', '5:fdd840']);
+  eq('App stock Agat-7 writes no slot diff', stock.slotDiff(), null);
+  eq('App finds its drives', [stock.slotFor('nib140'), stock.slotFor('dsk840')], [3, 5]);
+
+  const nine = mk({ model: 9, ramSize: 0x8000 });
+  eq('App Agat-9 ignores a RAM size', nine.ramSize, 0x20000);
+  eq('App Agat-9 slots', cards(nine), ['5:fdd840', '6:fdd140']);
+
+  const big = mk({ model: 7, slots: { 4: { card: 'xram', ram: 0x20000 }, 2: null } });
+  eq('App override reaches the slots',
+     [big.slots[4].ram, big.slots[2]], [0x20000, undefined]);
+  eq('App slotDiff reports it in kilobytes',
+     big.slotDiff(), { 2: null, 4: { card: 'xram', ram: 128 } });
+}
+
 // --- image sniffing ---------------------------------------------------------
 {
   const cases = [
@@ -814,7 +886,8 @@ function eq(what, got, want) {
     const vectors = [vec(0xfffa), vec(0xfffc), vec(0xfffe)];
 
     m.psrom.writeReg(0xc2a0);              // ЭмПЗУ read-enabled, as RISE OUT
-    m.mem7.setState(9);                    // ...leaves them
+    m.xram.writeReg(0xc40b);               // ...leaves them, expansion on bank 3
+    m.mem7.setState(9);
     m.mode = 0x35;
     m.videoInts = true;
     m.cpu.nmiEdge = m.cpu.irqPending = true;
@@ -823,6 +896,7 @@ function eq(what, got, want) {
     m.reset();
 
     eq('reset frees $D000-$FFFF from the ЭмПЗУ', m.psrom.readsRam(), false);
+    eq('reset deselects the ОЗУ expansion', m.xram.selected(), false);
     eq('reset restores the ROM vectors',
        [vec(0xfffa), vec(0xfffc), vec(0xfffe)], vectors);
     eq('reset takes no pending interrupt',
@@ -830,6 +904,98 @@ function eq(what, got, want) {
     eq('reset drops the 840K drive lines', m.cards[5].portC, 0);
     eq('reset stops the 140K motor', m.cards[3].motor, 0);
     eq('reset restores the video mode', [m.mode, m.videoInts], [0, false]);
+
+    // --- the machine as sold ------------------------------------------------
+    // 32K on the board, a 32K ЭмПЗУ in slot 2 and a 32K ОЗУ expansion in slot 4:
+    // 96K in three devices, agat-emulator's own default (sysconf.c:72-77).
+    {
+      const s = H.makeMachine(ctx, roms, { model: 7 });
+      s.reset();
+      eq('stock Agat-7 base RAM is 32K', s.ramSize, 0x8000);
+      eq('stock Agat-7 fits both memory cards',
+         [s.psrom.size, s.xram.size], [0x8000, 0x8000]);
+      eq('stock Agat-7 is 96K in total',
+         (s.ramSize + s.psrom.size + s.xram.size) >> 10, 96);
+
+      // $8000-$BFFF is nothing at all until the card claims it.
+      eq('$8000 is open bus before the expansion is selected', s.read(0x8000), 0xff);
+      s.write(0x8000, 0x11);
+      eq('a store into open bus goes nowhere', s.read(0x8000), 0xff);
+
+      s.write(0xc408, 0);                  // select it, bank 0
+      s.write(0x8000, 0x22);
+      eq('the expansion answers once selected', s.read(0x8000), 0x22);
+      s.write(0xc409, 0);                  // bank 1
+      eq('another bank is another 16K', s.read(0x8000), 0);
+      s.write(0xc408, 0);
+      eq('and back again', s.read(0x8000), 0x22);
+
+      // Deselecting hands the address back. On a 32K board there is nothing
+      // behind it; on a 64K one there is base RAM, which is the case that
+      // matters — it is what agat-emulator's XRAM_RELEASE exists for.
+      s.write(0xc400, 0);
+      eq('deselecting frees $8000 again', s.read(0x8000), 0xff);
+
+      const big = H.makeMachine(ctx, roms, { model: 7, ramSize: 0x10000 });
+      big.reset();
+      big.write(0x8000, 0x33);             // base RAM, through the $C0F0 window
+      big.write(0xc408, 0);
+      big.write(0x8000, 0x44);
+      eq('the expansion covers base RAM while selected', big.read(0x8000), 0x44);
+      big.write(0xc400, 0);
+      eq('releasing gives base RAM back untouched', big.read(0x8000), 0x33);
+
+      // Neither memory card decodes $C080+16n — psrom7.c and xram7.c fill
+      // io_sel and never baseio_sel, so those pages read as nothing.
+      eq('$C0A0 is not a window into the ЭмПЗУ', s.read(0xc0a0), 0);
+      eq('$C0C0 is not a window into the expansion', s.read(0xc0c0), 0);
+    }
+
+    // --- slot overrides, and the container that carries them -----------------
+    {
+      const M = A.Machine;
+      const stock = M.resolveSlots(7, null);
+      eq('the stock Agat-7 slot map',
+         [stock[2].card, stock[3].card, stock[4].card, stock[5].card],
+         ['psrom', 'fdd140', 'xram', 'fdd840']);
+      eq('slotOf finds the 140K drive', M.slotOf(stock, 'fdd140'), 3);
+
+      const over = M.resolveSlots(7, { 4: { card: 'xram', ram: 0x20000 }, 2: null });
+      eq('an override resizes a card', over[4].ram, 0x20000);
+      eq('null empties a slot', over[2], undefined);
+      eq('and leaves the rest alone', over[5].card, 'fdd840');
+
+      const sized = M.resolveSlots(7, { 4: { ram: 0x10000 } });
+      eq('a size alone keeps the card', [sized[4].card, sized[4].ram],
+         ['xram', 0x10000]);
+
+      const built = H.makeMachine(ctx, roms, {
+        model: 7, slots: { 4: { card: 'xram', ram: 0x20000 } },
+      });
+      eq('makeMachine honours an override', built.xram.size, 0x20000);
+
+      // Round trip: build a container naming slots, read it back, and check the
+      // version rule — a file whose meaning depends on `slots` is stamped 2.
+      const src = A.agc.build({
+        title: 'slots', model: 7, ram: 32,
+        slots: { 4: { card: 'xram', ram: 128 } },
+        media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
+      });
+      const back = A.agc.parse(ctx.Uint8Array.from(Buffer.from(src)), 'slots.agc');
+      eq('a container carrying slots is version 2', back.version, 2);
+      eq('slots survive the round trip', back.machine.slots[4],
+         { card: 'xram', ram: 128 });
+
+      const plain = A.agc.build({
+        title: 'plain', model: 7, ram: 64,
+        media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
+      });
+      eq('a container without slots stays version 1',
+         A.agc.parse(ctx.Uint8Array.from(Buffer.from(plain)), 'p.agc').version, 1);
+      eq('...and carries no slots field',
+         A.agc.parse(ctx.Uint8Array.from(Buffer.from(plain)), 'p.agc').machine.slots,
+         null);
+    }
 
     // --- the raster interrupt model -----------------------------------------
     // Run the line counter through one whole frame and describe the IRQ line's

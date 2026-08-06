@@ -1,7 +1,11 @@
 // The Agat as the MS_* disks see it. Two machines, selected by `model`:
 //
-// Agat-7 — flat 64K, the 2K monitor at $F800-$FFFF, an Apple-style language
-//   card at $C080-$C08F behind $D000-$FFFF.
+// Agat-7 — 32K of base RAM and the 2K monitor at $F800-$FFFF, plus two cards
+//   that make up the machine as sold: a ЭмПЗУ in slot 2 behind $D000-$FFFF and
+//   an ОЗУ expansion in slot 4 filling $8000-$BFFF, 32K each. 64K and 128K
+//   fittings of base RAM bank $8000-$BFFF (and, at 128K, $4000-$7FFF) through
+//   $C0F0-$C0FF; at 32K there is no bank register on the board at all, and
+//   Mem7 is a no-op above $7FFF. Machine.PROFILES has the whole complement.
 //
 // Agat-9 — 128K in sixteen 8K banks. The 64K the CPU sees is eight windows,
 //   each pointed at a bank by a mapping register; the register file lives at
@@ -53,10 +57,12 @@
     this.model = opts.model === 7 ? 7 : 9;
     this.romBase = this.model === 9 ? 0xf000 : 0xf800;
 
-    // Agat-9 is always 128K. Agat-7 ships 32/64/128K and the amount is visible
-    // to software: the video mode register's page field is masked by it.
+    // Base RAM, which is not all the RAM: the Agat-7's cards bring their own and
+    // this counts none of it. The Agat-9 is always 128K. The Agat-7 was sold
+    // with 32K and takes 64K or 128K, and the amount is visible to software —
+    // the video mode register's page field is masked by it.
     this.ramSize = this.model === 9 ? 0x20000
-                 : (opts.ramSize || 0x20000);
+                 : (opts.ramSize || Machine.PROFILES[7].ram);
     this.ram = new Uint8Array(this.ramSize);
     this.map = Uint8Array.from(STARTUP_MAP);          // Agat-9 8K windows
     this.mem7 = this.model === 7 ? new AGAT.Mem7(this.ramSize) : null;
@@ -70,6 +76,7 @@
 
     this.cards = [];                       // cards[slot], see addCard()
     this.psrom = null;                     // Agat-7 ЭмПЗУ, if fitted
+    this.xram = null;                      // Agat-7 ОЗУ expansion, if fitted
 
     // Video. `mode` is the $C7xx register; `appleVideo` says whether the
     // Apple-compatible switches have taken over the display, which only ever
@@ -150,10 +157,104 @@
     this.clock = function () { return self.cpu.cycles; };
   }
 
-  // Where each machine puts its floppy controllers.
-  Machine.SLOTS = {
-    7: { fdd840: 5, fdd140: 3, psrom: 2 },
-    9: { fdd840: 5, fdd140: 6 },
+  // The two machines as they were sold: how much base RAM, and what is in every
+  // slot. One table, so App and tools/harness build the same machine instead of
+  // each keeping its own card list.
+  //
+  // The Agat-7 is 32K on the motherboard plus two 32K cards — a ЭмПЗУ in slot 2
+  // behind $D000-$FFFF and an ОЗУ expansion in slot 4 filling $8000-$BFFF. That
+  // is 96K, and it is agat-emulator's own default (sysconf.c:72-77, 143-150,
+  // 303-306): three separate 32K devices, never one setting. `ram` here is base
+  // RAM only, which is also all the video controller can ever scan.
+  Machine.PROFILES = {
+    7: {
+      ram: 0x8000,
+      slots: {
+        2: { card: 'psrom', ram: 0x8000 },
+        3: { card: 'fdd140' },
+        4: { card: 'xram', ram: 0x8000 },
+        5: { card: 'fdd840' },
+      },
+    },
+    9: {
+      ram: 0x20000,
+      slots: {
+        5: { card: 'fdd840' },
+        6: { card: 'fdd140' },
+      },
+    },
+  };
+
+  // Which slot holds which card, by name — what everything that wants "the 140K
+  // drive" asks. Derived from the profiles so there is nothing to keep in step.
+  Machine.SLOTS = (function () {
+    var out = {}, model, slots, n;
+    for (model in Machine.PROFILES) {
+      out[model] = {};
+      slots = Machine.PROFILES[model].slots;
+      for (n in slots) out[model][slots[n].card] = Number(n);
+    }
+    return out;
+  })();
+
+  // A profile's slots with overrides merged over them. An override may name a
+  // different card, a different size, or both; `null` empties the slot. Keys
+  // are slot numbers, and sizes are bytes — the .agc that carries them speaks
+  // kilobytes and converts on the way in.
+  Machine.resolveSlots = function (model, overrides) {
+    var base = Machine.PROFILES[model === 7 ? 7 : 9].slots, out = {}, n, o, was;
+    for (n in base) {
+      out[n] = { card: base[n].card };
+      if (base[n].ram) out[n].ram = base[n].ram;
+    }
+    for (n in (overrides || {})) {
+      o = overrides[n];
+      was = out[n];
+      if (!o) { delete out[n]; continue; }
+      if (!o.card && !was) continue;                 // a size for an empty slot
+      out[n] = { card: o.card || was.card };
+      // A size survives a slot being re-sized but not re-carded: 32K of ЭмПЗУ
+      // says nothing about the drive someone puts there instead.
+      if (o.ram) out[n].ram = o.ram;
+      else if (was && out[n].card === was.card && was.ram) out[n].ram = was.ram;
+    }
+    return out;
+  };
+
+  // Which slot holds the named card in a resolved map, or -1.
+  Machine.slotOf = function (slots, card) {
+    for (var n in slots) if (slots[n].card === card) return Number(n);
+    return -1;
+  };
+
+  // Populate the slots from a resolved map. `roms` carries the two floppy ROMs;
+  // the memory cards have none, their $Cn00 page being the register itself.
+  Machine.prototype.fit = function (slots, roms) {
+    roms = roms || {};
+    for (var n in slots) {
+      var spec = slots[n], card = null;
+      switch (spec.card) {
+        case 'psrom':
+          if (AGAT.Psrom7) card = new AGAT.Psrom7({ size: spec.ram });
+          break;
+        case 'xram':
+          if (AGAT.Xram7) card = new AGAT.Xram7({ size: spec.ram });
+          break;
+        case 'fdd840':
+          if (AGAT.Disk840) card = new AGAT.Disk840({ rom: roms.teac });
+          break;
+        case 'fdd140':
+          if (AGAT.Disk140) {
+            card = new AGAT.Disk140({
+              rom: this.model === 7 ? roms.shugart7 : roms.shugart9,
+            });
+          }
+          break;
+        default: break;
+      }
+      if (card) this.addCard(Number(n), card);
+    }
+    return this;
   };
 
   // Called before every instruction; cheap when interrupts are disarmed.
@@ -273,7 +374,8 @@
   Machine.prototype.addCard = function (n, card) {
     this.cards[n] = card;
     if (card && card.rom) this.slotRom.set(card.rom, n * 0x100);
-    if (card instanceof AGAT.Psrom7) this.psrom = card;
+    if (AGAT.Psrom7 && card instanceof AGAT.Psrom7) this.psrom = card;
+    if (AGAT.Xram7 && card instanceof AGAT.Xram7) this.xram = card;
     return card;
   };
 
@@ -302,6 +404,11 @@
   Machine.prototype.read = function (a) {
     if (a >= 0xc700 && a < 0xc800) return this.videoSel(a & 0xff);
     if (a < 0xc000) {
+      // A selected ОЗУ expansion owns $8000-$BFFF outright, whatever base RAM
+      // would have put there. Deselecting hands the address straight back —
+      // agat-emulator does the same thing by broadcasting XRAM_RELEASE and
+      // letting baseram reclaim the window (xram7.c:150-156, baseram.c:532-540).
+      if (this.xram && a >= 0x8000 && this.xram.selected()) return this.xram.read(a);
       var p = this.phys(a);
       return p < 0 ? 0xff : this.ram[p];             // Agat-7 open bus reads $FF
     }
@@ -328,6 +435,10 @@
   Machine.prototype.write = function (a, v) {
     if (a >= 0xc700 && a < 0xc800) { this.videoSel(a & 0xff); return; }
     if (a < 0xc000) {
+      if (this.xram && a >= 0x8000 && this.xram.selected()) {
+        this.xram.write(a, v);                       // dropped if write-protected
+        return;
+      }
       var p = this.phys(a);
       if (p >= 0) this.ram[p] = v;
       return;
@@ -383,11 +494,20 @@
       var reg = lo & 0x0f;
       var card = this.cards[slot];
       if (slot === 0) v = this.psromStatus();
-      else if (card && card.read) v = card.read(reg, this.cpu.cycles);
+      // The memory cards decode their $Cn00 page and nothing else — neither
+      // xram7.c nor psrom7.c ever fills baseio_sel — so $C0Ax and $C0Cx are open
+      // bus on an Agat-7, not a window into whichever card sits in that slot.
+      else if (card && card.read && card.ioRegs !== false) {
+        v = card.read(reg, this.cpu.cycles);
+      }
       this.note(a, v, false);
       return v;
     }
-    if (lo >= 0xf0 && this.model === 7) {                  // bank register
+    // Base RAM bank register. On a 32K board it is not fitted — agat-emulator
+    // installs it only above $8000 of RAM (baseram.c:573) — and Mem7.setState
+    // is already a no-op at that size, so the read answering $FF is what an
+    // undecoded address does either way.
+    if (lo >= 0xf0 && this.model === 7) {
       this.mem7.setState(lo & 0x0f);
       this.note(a, 0xff, false);
       return 0xff;
@@ -416,7 +536,9 @@
       var reg = lo & 0x0f;
       var card = this.cards[slot];
       if (slot === 0) this.langCard(reg, true);
-      else if (card && card.write) card.write(reg, v, this.cpu.cycles);
+      else if (card && card.write && card.ioRegs !== false) {
+        card.write(reg, v, this.cpu.cycles);
+      }
       return;
     }
     if (lo >= 0xf0 && this.model === 7) { this.mem7.setState(lo & 0x0f); return; }

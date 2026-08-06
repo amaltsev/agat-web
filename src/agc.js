@@ -12,7 +12,8 @@
 //     "author": "Andrew Maltsev",
 //     "date": "1989",
 //     "url": "https://…",
-//     "machine": { "model": 7, "ram": 64 },
+//     "machine": { "model": 7, "ram": 64,
+//                  "slots": { "4": { "card": "xram", "ram": 64 } } },
 //     "quirks":  { "irq": "raster", "rate": 0 },
 //     "keys":    { "KeyW": { "code": "^", "note": "Shoot right" },
 //                  "Space": { "note": "Jump" } },
@@ -34,7 +35,15 @@
 (function (AGAT) {
   'use strict';
 
-  var VERSION = 1;
+  // The version a container is written as, and the newest one this can read.
+  // `build` still writes `agc: 1` unless it emits something a version-1 reader
+  // would get wrong — see `formatVersion`.
+  var VERSION = 2;
+
+  // Cards a `machine.slots` entry may name. Anything else is dropped: a
+  // container from a newer emulator should run on the hardware this one has
+  // rather than fail, and the `agc:` version is what refuses when it must.
+  var CARDS = { psrom: 1, xram: 1, fdd140: 1, fdd840: 1 };
 
   // Base64 characters per line. 76 is the MIME width, and 57 bytes; being a
   // multiple of 4 it is a whole number of base64 groups, so every line decodes
@@ -147,6 +156,25 @@
 
   // Null for "not a container" — the sniffer needs that answer for every file
   // dropped on the page. A file that says `"agc"` and then fails to parse is a
+  // `machine.slots`: what this machine has that its model's stock complement
+  // does not. Keys are slot numbers 0-7, values `{card, ram}` — kilobytes, as
+  // `machine.ram` is — or `null` for a slot deliberately left empty. Returns
+  // null when there is nothing to say, so a stock machine carries no field.
+  function parseSlots(slots) {
+    if (!slots || typeof slots !== 'object') return null;
+    var out = {}, any = false, n, e, slot;
+    for (n in slots) {
+      slot = Number(n);
+      if (!(slot >= 0 && slot <= 7)) continue;
+      e = slots[n];
+      if (e === null) { out[slot] = null; any = true; continue; }
+      if (!e || !CARDS[e.card]) continue;
+      out[slot] = { card: e.card, ram: Number(e.ram) || 0 };
+      any = true;
+    }
+    return any ? out : null;
+  }
+
   // broken container rather than something else, and says so.
   function parse(bytes, name) {
     if (!looksLikeJson(bytes)) return null;
@@ -180,6 +208,7 @@
         // Kilobytes, as `ram=` in the URL is; the App wants bytes and converts.
         model: machine.model === 9 ? 9 : machine.model === 7 ? 7 : 0,
         ram: Number(machine.ram) || 0,
+        slots: parseSlots(machine.slots),
       },
       quirks: {
         irq: quirks.irq || '',
@@ -208,14 +237,25 @@
   // there is one definition of what a container looks like. Fields are added in
   // the documented order because JSON.stringify keeps insertion order, and a
   // format people are meant to hand-edit should read the same way every time.
+  // Which version to stamp a container with. Everything a version-1 reader knows
+  // still means what it meant, so a container that says nothing more is written
+  // as version 1 and older builds keep opening it. `machine.slots` is the
+  // exception: a reader that ignored it would silently run the wrong hardware,
+  // so a container that carries one is stamped 2 and refused rather than
+  // misread.
+  function formatVersion(spec) {
+    return spec.slots ? 2 : 1;
+  }
+
   function build(spec) {
-    var o = { agc: VERSION };
+    var o = { agc: formatVersion(spec) };
     if (spec.title) o.title = spec.title;
     if (spec.author) o.author = spec.author;
     if (spec.date) o.date = String(spec.date);
     if (spec.url) o.url = spec.url;
     if (spec.notes) o.notes = spec.notes;
     o.machine = { model: spec.model === 9 ? 9 : 7, ram: spec.ram || 64 };
+    if (spec.slots) o.machine.slots = spec.slots;
     o.quirks = { irq: spec.irq || 'raster', rate: spec.rate || 0 };
     if (spec.keys && Object.keys(spec.keys).length) o.keys = spec.keys;
     o.media = (spec.media || []).map(function (m) {

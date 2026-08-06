@@ -18,8 +18,16 @@
     this.image = null;
     this.running = false;
     this.model = opts.model === 9 ? 9 : 7;     // the commoner machine, and the
-    this.ramSize = this.model === 9            // one most native software
-      ? 0x20000 : (opts.ramSize || 0x10000);   // expects
+    var profile = AGAT.Machine.PROFILES[this.model];  // one most native
+    this.ramSize = this.model === 9                   // software expects
+      ? profile.ram : (opts.ramSize || profile.ram);  // (the 9 has no choice)
+
+    // What this machine has that its profile does not: slot -> {card, ram} in
+    // bytes, or null for a slot left empty. A container sets it, and so does the
+    // gear popup; like the RAM size it is a standing choice, not something a
+    // bare image dropped afterwards clears.
+    this.slotOverrides = opts.slots || null;
+    this.slots = AGAT.Machine.resolveSlots(this.model, this.slotOverrides);
 
     this.modelPinned = false;
     this.drives = {};                     // slot -> {name, kind}
@@ -80,19 +88,13 @@
         if (c && c.media) keep.push({ from: s, media: c.media });
       }
     }
-    var slots = AGAT.Machine.SLOTS[this.model];
+    this.slots = AGAT.Machine.resolveSlots(this.model, this.slotOverrides);
     this.machine = new AGAT.Machine({
       model: this.model,
       ramSize: this.ramSize,
       sysmon: this.model === 7 ? this.roms.monitor7 : this.roms.monitor9,
     });
-    if (slots.psrom && AGAT.Psrom7) this.machine.addCard(slots.psrom, new AGAT.Psrom7());
-    this.machine.addCard(slots.fdd840, new AGAT.Disk840({ rom: this.roms.teac }));
-    if (AGAT.Disk140) {
-      this.machine.addCard(slots.fdd140, new AGAT.Disk140({
-        rom: this.model === 7 ? this.roms.shugart7 : this.roms.shugart9,
-      }));
-    }
+    this.machine.fit(this.slots, this.roms);
     this.video = new AGAT.Video(
       this.model === 7 ? this.roms.font7 : this.roms.font9,
       this.roms.palette,
@@ -217,25 +219,28 @@
     return this.machine.toggleLayout();
   };
 
+  // Switching machines takes the new one's own RAM size unless told otherwise:
+  // an Agat-9's 128K is not a sensible thing to carry over to an Agat-7 just
+  // because a filename's `7a` moved the model.
   App.prototype.setModel = function (model, ramSize) {
     this.model = model === 7 ? 7 : 9;
-    this.ramSize = this.model === 9 ? 0x20000 : (ramSize || this.ramSize);
+    var profile = AGAT.Machine.PROFILES[this.model];
+    this.ramSize = this.model === 9 ? profile.ram : (ramSize || profile.ram);
     this.build();
   };
 
   // ---- media ---------------------------------------------------------------
 
   App.prototype.slotFor = function (kind) {
-    var slots = AGAT.Machine.SLOTS[this.model];
-    return kind === 'nib140' ? slots.fdd140 : slots.fdd840;
+    return AGAT.Machine.slotOf(this.slots, kind === 'nib140' ? 'fdd140' : 'fdd840');
   };
 
   // What the drive lamps show: every drive the model has, empty or not, so the
   // bar does not reflow the moment a disk is dropped into one of them.
   App.prototype.driveLamps = function () {
-    var slots = AGAT.Machine.SLOTS[this.model];
-    var now = this.machine.cpu.cycles, out = [], i;
-    var want = [[slots.fdd840, '840K'], [slots.fdd140, '140K']];
+    var S = AGAT.Machine, now = this.machine.cpu.cycles, out = [], i;
+    var want = [[S.slotOf(this.slots, 'fdd840'), '840K'],
+                [S.slotOf(this.slots, 'fdd140'), '140K']];
     for (i = 0; i < want.length; i++) {
       var slot = want[i][0], card = this.machine.cards[slot];
       if (!card || !card.lamp) continue;
@@ -359,6 +364,37 @@
 
   // ---- containers ----------------------------------------------------------
 
+  // A container's slot map, kilobytes to bytes. `null` — an emptied slot —
+  // survives as null, which is what it means.
+  function scaleSlots(slots) {
+    var out = {}, n;
+    for (n in slots) {
+      out[n] = slots[n] && { card: slots[n].card, ram: slots[n].ram * 1024 || 0 };
+    }
+    return out;
+  }
+
+  // The other direction, and only where the machine differs from its profile —
+  // a container for a stock Agat-7 should not have to spell one out.
+  App.prototype.slotDiff = function () {
+    var base = AGAT.Machine.resolveSlots(this.model, null);
+    var out = {}, any = false, n, mine, theirs;
+    for (n in base) {
+      if (!this.slots[n]) { out[n] = null; any = true; }
+    }
+    for (n in this.slots) {
+      mine = this.slots[n];
+      theirs = base[n];
+      if (theirs && theirs.card === mine.card && (theirs.ram || 0) === (mine.ram || 0)) {
+        continue;
+      }
+      out[n] = mine.ram ? { card: mine.card, ram: mine.ram >> 10 }
+                        : { card: mine.card };
+      any = true;
+    }
+    return any ? out : null;
+  };
+
   // A container names a machine, so applying one is a rebuild: the model, the
   // RAM size and both interrupt settings go in together and build() applies
   // them all at once, rather than the machine being taken apart four times.
@@ -372,7 +408,10 @@
       this.model = c.machine.model;
     }
     this.ramSize = this.model === 9 ? 0x20000
-                 : (c.machine.ram ? c.machine.ram * 1024 : this.ramSize);
+                 : (c.machine.ram ? c.machine.ram * 1024
+                                  : AGAT.Machine.PROFILES[this.model].ram);
+    // Slot sizes and slot numbers, kilobytes in the file and bytes in here.
+    this.slotOverrides = c.machine.slots ? scaleSlots(c.machine.slots) : null;
     if (c.quirks.irq) this.irqModel = c.quirks.irq;
     this.subFrameHz = c.quirks.rate || 0;
     this.build();
@@ -477,6 +516,7 @@
       notes: this.notes,
       model: this.model,
       ram: this.ramSize >> 10,
+      slots: this.slotDiff(),
       irq: this.irqModel,
       rate: this.subFrameHz,
       keys: AGAT.keyboard.remap(),

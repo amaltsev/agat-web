@@ -44,7 +44,25 @@ were wrong and the measurement is usually cheap.
 
 Settled, with evidence, and expensive to relearn:
 
-- The video controller scans **physical** RAM, never the CPU's bank windows.
+- The video controller scans **physical** RAM, never the CPU's bank windows —
+  and on the Agat-7 only the *base* RAM. Neither memory card is ever a display
+  page: `agat-emulator` calls `vid_invalidate_addr` from `baseram.c` and from
+  neither `xram7.c` nor `psrom7.c`.
+- The Agat-7 as sold is **96K in three devices**, never one setting: 32K of base
+  RAM, a 32K ЭмПЗУ in slot 2, a 32K ОЗУ expansion in slot 4. That is
+  agat-emulator's default complement (`sysconf.c:72-77`, `143-150`, `303-306`);
+  `memsizes_b` has no 96K entry. At 32K of base RAM the `$C0F0-$C0FF` bank
+  register **is not fitted** (`baseram.c:573`) and `$8000-$BFFF` belongs to the
+  expansion card or to nobody.
+- `Machine.PROFILES` is the single definition of what each machine is.
+  `App.build()` and `tools/harness.js` both go through it; do not spell a card
+  list out anywhere else.
+- `examples/TESTOZU7_140.dsk` is the factory memory test: it declares a
+  configuration and then verifies it, which beats any assertion written from the
+  same reading of the source that produced the bug. Its **исполнение is
+  0 = 32K, 1 = 64K, 2 = 128K** — it starts at 0, and a probe that starts at 1
+  concludes 32K is not a fitting. The menu is in
+  [examples/TESTOZU7_140.md](examples/TESTOZU7_140.md).
 - The glyph bit window belongs to the font: Agat-7 is `m0 = $80`, Agat-9 `$40`.
 - The raster is **312 lines of 672 clocks** of the 10.5 MHz crystal — 15625 Hz
   line, 50.08 Hz frame, 256 displayed and 56 blanked. Both interrupts come off

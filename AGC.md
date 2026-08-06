@@ -59,7 +59,7 @@ default, and a container that carries nothing but an image is a valid one.
 
 | field | |
 |---|---|
-| `agc` | format version — `1`. Its presence is what identifies the file. |
+| `agc` | format version — `1`, or `2` for a container that uses `machine.slots`. Its presence is what identifies the file. |
 | `title` | what the program is called |
 | `author` | who wrote it |
 | `date` | **text**, not a number: `"1989"`, `"circa 1985"`, `"1990-92"` |
@@ -78,10 +78,45 @@ in.
 | field | |
 |---|---|
 | `model` | `7` or `9` |
-| `ram` | **kilobytes**: `32`, `64` or `128`. Agat-7 only — the Agat-9 is always 128K. |
+| `ram` | **base RAM in kilobytes**: `32`, `64` or `128`. Agat-7 only — the Agat-9 is always 128K. |
+| `slots` | what this machine has that the model's stock complement does not. Optional; version 2. |
 
-The RAM size is not cosmetic: it masks the video mode register's page field, so
-software can tell, and a disk that expects 64K may fail on 128K.
+`ram` is base RAM on the motherboard, not the machine's total. It is not
+cosmetic either: it is the only memory the video controller scans, and it masks
+the video mode register's page field, so software can tell — a disk that expects
+64K may fail on 128K.
+
+The stock Agat-7 is **96K in three devices**: 32K of base RAM, a 32K ЭмПЗУ in
+slot 2 and a 32K ОЗУ expansion in slot 4. The Agat-9 is 128K and two drives.
+A container that wants that machine says nothing but `model` and `ram`.
+
+#### `machine.slots`
+
+Keyed by slot number, `0`-`7`. A slot not named keeps whatever the stock machine
+puts there; `null` empties it.
+
+```json
+"machine": {
+  "model": 7,
+  "ram": 64,
+  "slots": {
+    "4": { "card": "xram", "ram": 128 },
+    "2": null
+  }
+}
+```
+
+| field | |
+|---|---|
+| `card` | `"psrom"` (ЭмПЗУ), `"xram"` (ОЗУ expansion), `"fdd140"`, `"fdd840"` |
+| `ram` | **kilobytes**, for the two memory cards: `16`, `32`, `48`, `64` or `128` |
+
+Giving only `ram` resizes whatever card the stock machine already puts in that
+slot. Naming a different `card` replaces it, and the size goes with the card
+that was asked for, not the one that left.
+
+A container using this field is stamped `"agc": 2`, because an older reader that
+ignored it would silently run the wrong hardware — better refused than misread.
 
 A machine named here is treated as *chosen* — a `7a` or `9a` in a filename will
 not override it.
