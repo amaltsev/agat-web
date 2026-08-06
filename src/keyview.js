@@ -60,6 +60,16 @@
   // layout, УПР and РЕГ are the modifiers, and ПВТ, РЕД and the pad's `=` send
   // nothing the shipped table carries.
 
+  // The arrow caps are named rather than written in place, because two boards
+  // put them in two different places: here they are where the machine has them,
+  // ↑ between ПВТ and РЕД with ← ↓ → on the row below, and the winnowed board
+  // gathers them into a cluster of their own. `nav` is what says a cap belongs
+  // to that cluster.
+  var UP = C('↑', { code: 0x99, red: 1, nav: 1 });
+  var DOWN = C('↓', { code: 0x9a, red: 1, nav: 1 });
+  var LEFT = C('←', { code: 0x88, red: 1, nav: 1, gap: 0.2 });
+  var RIGHT = C('→', { code: 0x95, red: 1, nav: 1 });
+
   var AGAT_MAIN = [
     { pad: 0, keys: [
       C('СБР', { act: 'reset', red: 1 }),
@@ -67,16 +77,14 @@
       P(0x34, 0x24), P(0x35, 0x25), P(0x36, 0x26), P(0x37, 0x27),
       P(0x38, 0x28), P(0x39, 0x29), { u: 0x30, up: 'u' }, P(0x2d, 0x3d),
       C('ПВТ', { act: 'none', red: 1, w: 1.5, gap: 0.2 }),
-      C('↑', { code: 0x99, red: 1 }),
+      UP,
       C('РЕД', { act: 'none', red: 1 }),
     ] },
     { pad: 0.1, keys: [
       C('УПР', { act: 'ctrl', red: 1, w: 1.3 }),
       L(0x4a), L(0x43), L(0x55), L(0x4b), L(0x45), L(0x4e),
       L(0x47), L(0x5b), L(0x5d), L(0x5a), L(0x48), P(0x3a, 0x2a),
-      C('←', { code: 0x88, red: 1, gap: 0.2 }),
-      C('↓', { code: 0x9a, red: 1 }),
-      C('→', { code: 0x95, red: 1 }),
+      LEFT, DOWN, RIGHT,
     ] },
     { pad: 0.2, keys: [
       C('РУС', { act: 'layout', red: 1, w: 1.4 }),
@@ -179,10 +187,121 @@
              X('NumpadEnter', { cap: '⏎' })] },
   ];
 
+  // ---- the winnowed board --------------------------------------------------
+  //
+  // `used` is the machine's own board with everything the loaded container did
+  // not name shrunk to a sliver, so that the program's keys are the only ones
+  // left legible and stay where the Agat puts them. The machine's layout is
+  // what groups them: where a program's keys land on the Agat's board is what
+  // someone looking for them needs to see.
+  //
+  // It is three areas that collapse on their own — the typewriter, the arrow
+  // cluster and the numeric pad — because a program that uses none of the pad
+  // is better served by not being shown a column of slivers where the pad was,
+  // and because ↑ has to stay over ↓. On the machine ↑ is held in place by ПВТ
+  // and РЕД, which are two of the caps this board does not draw at all, so the
+  // cluster is arranged here instead.
+  //
+  // What it does not draw: СБР, УПР, РУС/LAT and РЕГ. They are the board's
+  // controls rather than the program's keys, and on the phone this view exists
+  // for they were most of what was left on the screen.
+
+  function copy(d, o) {
+    var out = {}, k;
+    for (k in d) out[k] = d[k];
+    for (k in o) out[k] = o[k];
+    return out;
+  }
+
+  // Whole or not at all: half a cross of arrows reads worse than none, and the
+  // four of them together are three caps' worth of space.
+  var USED_NAV = [
+    { pad: 1, keys: [copy(UP)] },
+    { keys: [copy(LEFT, { gap: 0 }), copy(DOWN), copy(RIGHT)] },
+  ];
+  USED_NAV.whole = true;
+
+  // A block of the machine's board, less the caps this one does not draw: the
+  // controls, the caps that send nothing at all, and the arrows the cluster
+  // above now carries.
+  function keysOnly(block) {
+    var out = [], keys, r, i, j, d;
+    for (i = 0; i < block.length; i++) {
+      r = block[i];
+      keys = [];
+      for (j = 0; j < r.keys.length; j++) {
+        d = r.keys[j];
+        if (!d.act && !d.nav) keys.push(d);
+      }
+      if (keys.length) out.push({ pad: r.pad, gapTop: r.gapTop, keys: keys });
+    }
+    return out;
+  }
+
+  var USED_MAIN = keysOnly(AGAT_MAIN);
+  var USED_PAD = keysOnly(AGAT_PAD);
+
   var VIEWS = {
     agat: [AGAT_MAIN, AGAT_PAD],
     pc: [PC_MAIN, PC_NAV, PC_PAD],
+    used: [USED_MAIN, USED_NAV, USED_PAD],
   };
+
+  // How wide a winnowed-away cap is drawn, in the same em units as the rest. Not
+  // zero: the keys that are left have to stay in the positions the board gives
+  // them, and a row that closed up over its gaps would put them somewhere the
+  // machine never had them.
+  var SLIVER = 0.5;
+
+  // Which codes the machine's own board carries on a cap of their own, and so
+  // which cap owns a code there: $88 is the ← cap and $99 the ↑ one, and a code
+  // with a cap of its own belongs to it rather than to the letter capCode would
+  // otherwise send it to. This is the same order light() takes, as a table,
+  // because the winnowed board is always the АГАТ one.
+  var CARRIED = (function () {
+    var out = [], rows = [AGAT_MAIN, AGAT_PAD], i, j, k, d;
+    for (i = 0; i < 128; i++) out.push(0);
+    for (i = 0; i < rows.length; i++) {
+      for (j = 0; j < rows[i].length; j++) {
+        for (k = 0; k < rows[i][j].keys.length; k++) {
+          d = rows[i][j].keys[k];
+          if (d.u !== undefined) out[d.u & 0x7f] = 1;
+          if (d.s !== undefined) out[d.s & 0x7f] = 1;
+          if (d.code !== undefined) out[d.code & 0x7f] = 1;
+        }
+      }
+    }
+    return out;
+  })();
+
+  // The codes a container's keys reach, moved onto the caps that own them. The
+  // value kept is the code itself, not a flag, because a cap reached this way
+  // is not always sending its own byte: `$9B` has no cap on this machine and
+  // lands on `[`, which is where УПР makes it.
+  function capsUsed(raw) {
+    var out = [], i, c;
+    if (!raw) return null;
+    for (i = 0; i < 128; i++) out.push(0);
+    for (i = 0; i < 128; i++) {
+      if (!raw[i]) continue;
+      c = CARRIED[i] ? i : capCode(i);
+      if (!out[c]) out[c] = raw[i];
+    }
+    return out;
+  }
+
+  // Which caps that board keeps: the ones carrying a code the container's keys
+  // reach, and nothing else. A cap that does something rather than sending a
+  // byte is not one of the program's keys and is not drawn.
+  // The answer is the code the cap stands for, which is what a touch on it has
+  // to send: the cap's own byte where it carries one, and the program's key
+  // where the cap is only standing in for it. 0 for a cap this board drops.
+  function keeps(d, used) {
+    if (d.act) return 0;
+    if (d.code !== undefined) return used[d.code & 0x7f] || 0;
+    if (d.u === undefined) return 0;
+    return used[d.u & 0x7f] || (d.s === undefined ? 0 : used[d.s & 0x7f]) || 0;
+  }
 
   // ---- the view ------------------------------------------------------------
 
@@ -196,6 +315,8 @@
     this.onLayout = opts.onLayout || function () {};
     this.view = '';
     this.caps = [];
+    this.blocks = [];
+    this.board = null;
     this.byCode = {};      // code -> caps carrying it, for the АГАТ board
     this.byScan = {};      // scancode -> cap, for the PC board
     this.rus = !!opts.rus;
@@ -203,7 +324,7 @@
     this.ctrl = false;
     this.stick = 0;        // modifier caps latched by pointer, not held down
     this.down = {};        // scancode -> the caps it is holding down
-    this.setView(opts.view === 'pc' ? 'pc' : 'agat');
+    this.setView(opts.view);        // setView is what knows the names
   }
 
   KeyView.prototype.setView = function (name) {
@@ -218,6 +339,7 @@
     if (this.release) this.unwatch();     // switching views rebuilds everything
     this.el.innerHTML = '';
     this.caps = [];
+    this.blocks = [];
     this.byCode = {};
     this.byScan = {};
     this.down = {};
@@ -225,6 +347,7 @@
     var board = document.createElement('div');
     board.className = 'kb-board kb-' + this.view;
     for (i = 0; i < blocks.length; i++) board.appendChild(this.block(blocks[i]));
+    this.board = board;
     this.el.appendChild(board);
 
     this.readout = document.createElement('div');
@@ -244,8 +367,11 @@
     this.refresh();
   };
 
+  // The rows and blocks are kept as well as the caps: the winnowed board hides
+  // the ones it empties, and a hidden row is not a row of nothing, it is gone.
   KeyView.prototype.block = function (rows) {
-    var wrap = document.createElement('div'), i, j, r, el;
+    var wrap = document.createElement('div');
+    var rec = { el: wrap, rows: [], whole: !!rows.whole }, i, j, r, el, row, cap;
     wrap.className = 'kb-block';
     for (i = 0; i < rows.length; i++) {
       r = rows[i];
@@ -253,9 +379,16 @@
       el.className = 'kb-row';
       if (r.pad) el.style.marginLeft = r.pad * 2.3 + 'em';
       if (r.gapTop) el.style.marginTop = r.gapTop * 0.5 + 'em';
-      for (j = 0; j < r.keys.length; j++) el.appendChild(this.cap(r.keys[j]));
+      row = { el: el, pad: r.pad || 0, caps: [] };
+      for (j = 0; j < r.keys.length; j++) {
+        cap = this.cap(r.keys[j]);
+        row.caps.push(cap);
+        el.appendChild(cap.el);
+      }
+      rec.rows.push(row);
       wrap.appendChild(el);
     }
+    this.blocks.push(rec);
     return wrap;
   };
 
@@ -266,9 +399,10 @@
     var el = document.createElement('button');
     var top = document.createElement('span');
     var bot = document.createElement('span');
+    var w = (def.w || 1) * 2.3 + 'em';
     el.type = 'button';
     el.tabIndex = -1;                 // the canvas keeps the keyboard focus
-    el.style.width = (def.w || 1) * 2.3 + 'em';
+    el.style.width = w;
     if (def.gap) el.style.marginLeft = def.gap * 2.3 + 'em';
     if (def.cap !== undefined) {
       top.className = 'kb-word';
@@ -280,11 +414,12 @@
     el.appendChild(top);
     el.appendChild(bot);
 
-    var cap = { def: def, el: el, top: top, bot: bot };
+    var cap = { def: def, el: el, top: top, bot: bot, w: w,
+                gone: false, hide: false, sends: 0 };
     this.caps.push(cap);
     el.__cap = cap;
     this.index(cap);
-    return el;
+    return cap;
   };
 
   // Which key events light this cap. On the АГАТ board a cap owns codes and any
@@ -350,13 +485,67 @@
            (names.length ? names.join(', ') : 'no host key sends this');
   };
 
+  // Which codes this program's keys reach, on the caps that own them. Null when
+  // no container has named any, and then nothing is winnowed away — a board
+  // asked to show only a program's keys, with no program loaded, is the whole
+  // keyboard rather than an empty one.
+  KeyView.prototype.used = function () {
+    return capsUsed(K.usedCodes(this.layout()));
+  };
+
+  // Which caps this board draws, decided a block at a time. A block the
+  // container never mentions is hidden whole by winnow(); a `whole` block —
+  // the arrow cluster — is all of it or none, since its caps hold each other in
+  // position and a gap in the middle of them is worse than no cluster.
+  //
+  // The winnowing is the one thing the layout changes without a keypress: a key
+  // declared as-is sends a different code in РУС than in ЛАТ, and so lands on a
+  // different cap.
+  KeyView.prototype.plan = function (used) {
+    var i, j, k, b, r, cap, any;
+    for (i = 0; i < this.blocks.length; i++) {
+      b = this.blocks[i];
+      any = 0;
+      b.thin = false;
+      for (j = 0; j < b.rows.length; j++) {
+        r = b.rows[j];
+        for (k = 0; k < r.caps.length; k++) {
+          cap = r.caps[k];
+          cap.sends = used ? keeps(cap.def, used) : 0;
+          if (cap.sends) any = 1;
+        }
+      }
+      for (j = 0; j < b.rows.length; j++) {
+        r = b.rows[j];
+        for (k = 0; k < r.caps.length; k++) {
+          cap = r.caps[k];
+          cap.hide = !!used && !(b.whole ? any : cap.sends);
+          if (cap.hide) b.thin = true;
+        }
+      }
+    }
+  };
+
   // Re-class every cap. Cheap enough to run on any change: a few hundred nodes,
   // and nothing reads layout back out of the DOM.
   KeyView.prototype.refresh = function () {
-    var i, cap, d, cls, live;
+    var used = this.view === 'used' ? this.used() : null;
+    var i, cap, d, cls, live, gone;
+    if (this.view === 'used') this.plan(used);
     for (i = 0; i < this.caps.length; i++) {
       cap = this.caps[i];
       d = cap.def;
+      gone = !!cap.hide;
+      if (gone !== cap.gone) {
+        cap.gone = gone;
+        cap.el.style.width = gone ? SLIVER + 'em' : cap.w;
+        cap.el.style.marginLeft = gone || !d.gap ? '' : d.gap * 2.3 + 'em';
+        cap.el.title = '';
+      }
+      if (gone) {
+        if (cap.el.className !== 'kb-cap gone') cap.el.className = 'kb-cap gone';
+        continue;
+      }
       cls = 'kb-cap' + (d.red ? ' red' : '');
       if (d.act === 'shift' && this.shifted()) cls += ' on';
       if (d.act === 'ctrl' && this.ctrled()) cls += ' on';
@@ -389,9 +578,76 @@
         cap.el.title = this.title(d.u) +
           (d.s === undefined ? '' : '\nРЕГ ' + this.title(d.s));
       }
+      // On the winnowed board the question is what this key does in *this*
+      // program, and the cap may be standing in for a code it does not carry.
+      if (cap.sends) cap.el.title = this.title(cap.sends);
       if (cap.el.className !== cls) cap.el.className = cls;
     }
+    // Run on the winnowed board whether or not anything was winnowed: a
+    // container being unloaded has to give the rows and the size back.
+    if (this.view === 'used') { this.winnow(); this.size(); }
     this.sync();
+  };
+
+  // A row with nothing left on it is a row of slivers, and a block of those is
+  // a numeric pad this program never mentions: both go altogether, which is
+  // most of what makes the winnowed board fit a phone.
+  //
+  // An indent is measured in cap widths, so in a block that lost caps to slivers
+  // it collapses with them: ПРОБЕЛ's four-and-a-fifth caps of indent are
+  // four-and-a-fifth slivers, which keeps it under the letters it sits under on
+  // the machine instead of nine ems out to their right. A block that kept
+  // everything keeps its indents, which is what holds ↑ over ↓ in the cluster.
+  KeyView.prototype.winnow = function () {
+    var i, j, k, b, r, live, any;
+    for (i = 0; i < this.blocks.length; i++) {
+      b = this.blocks[i];
+      any = false;
+      for (j = 0; j < b.rows.length; j++) {
+        r = b.rows[j];
+        live = false;
+        for (k = 0; k < r.caps.length; k++) if (!r.caps[k].gone) live = true;
+        r.el.style.display = live ? '' : 'none';
+        if (r.pad) r.el.style.marginLeft = r.pad * padEm(b) + 'em';
+        if (live) any = true;
+      }
+      b.el.style.display = any ? '' : 'none';
+    }
+  };
+
+  // What one unit of a block's indent is worth, in ems.
+  function padEm(b) {
+    return b.thin ? SLIVER : 2.3;
+  }
+
+  // Size the winnowed board off its own width, which is the one number the
+  // stylesheet cannot know: what is left after winnowing is whatever this
+  // container asked for. The 22px is the board's own padding and border, which
+  // do not scale with the font; the ceiling stops a four-key board from being
+  // drawn as four enormous keys. A browser without container units drops the
+  // whole declaration and keeps the rule in the stylesheet.
+  KeyView.prototype.size = function () {
+    var wide = 0, most, row, n, i, j, k, b, r, cap;
+    for (i = 0; i < this.blocks.length; i++) {
+      b = this.blocks[i];
+      if (b.el.style.display === 'none') continue;
+      most = 0;
+      for (j = 0; j < b.rows.length; j++) {
+        r = b.rows[j];
+        if (r.el.style.display === 'none') continue;
+        row = r.pad * padEm(b);
+        n = r.caps.length;
+        for (k = 0; k < n; k++) {
+          cap = r.caps[k];
+          row += cap.gone ? SLIVER : (cap.def.w || 1) * 2.3 + (cap.def.gap || 0) * 2.3;
+        }
+        row += 0.18 * (n - 1);        // the row's flex gap, between every pair
+        if (row > most) most = row;
+      }
+      wide += most + (wide ? 1.4 : 0); // and the board's, between the blocks
+    }
+    this.board.style.fontSize = wide
+      ? 'min(calc((100cqw - 22px) / ' + wide.toFixed(1) + '), 26px)' : '';
   };
 
   // A legend's three states: unreachable at all, reachable but not from this
@@ -466,6 +722,11 @@
   // Clicking a cap types it. The code goes straight into the latch rather than
   // back through the scancode table: a cap knows its own byte, and several caps
   // have no host key at all.
+  //
+  // On the winnowed board a cap sends the program's key it was kept for, which
+  // is not always its own byte: `$9B` has no cap on this machine and is drawn on
+  // `[`, where УПР makes it, and that board draws no УПР. The same goes for a
+  // key whose code is a shifted legend, since it draws no РЕГ either.
   KeyView.prototype.press = function (e) {
     var el = e.target, cap, code, d;
     while (el && !el.__cap) el = el.parentNode;
@@ -481,7 +742,9 @@
     if (d.act === 'reset') { this.app.reset(); return; }
     if (d.act === 'none') return;
 
-    if (d.scan !== undefined) {
+    if (cap.sends) {
+      code = cap.sends;
+    } else if (d.scan !== undefined) {
       code = K.codeFor(d.scan, this.layout(),
                        K.planeFor(d.ext, this.ctrled(), this.shifted()));
       if (code < 0) return;
@@ -504,12 +767,15 @@
     this.unwatch();
     this.el.innerHTML = '';
     this.caps = [];
+    this.blocks = [];
+    this.board = null;
     this.readout = null;
   };
 
   AGAT.KeyView = KeyView;
   AGAT.keyview = {
-    CHAR: CHAR, VIEWS: VIEWS, capCode: capCode,
+    CHAR: CHAR, VIEWS: VIEWS, capCode: capCode, SLIVER: SLIVER,
+    keeps: keeps, capsUsed: capsUsed, CARRIED: CARRIED,
     AGAT_MAIN: AGAT_MAIN, AGAT_PAD: AGAT_PAD,
     PC_MAIN: PC_MAIN, PC_NAV: PC_NAV, PC_PAD: PC_PAD,
   };

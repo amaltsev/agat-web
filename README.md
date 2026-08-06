@@ -44,6 +44,13 @@ out what the other layout can no longer type — РУС cannot reach `' , / ;` a
 ЛАТ cannot reach `Ю`, `Ч` or `Ъ`. Caps can be clicked, so a key your host will
 not send is still reachable. Hovering one names every host key that reaches it.
 
+**Only mapped keys** shrinks everything the loaded container does not name out
+of the way, leaving the keys the program is played with where the machine puts
+them — in three areas that collapse on their own, so an unused numeric pad
+disappears and one named arrow brings the whole cluster. It needs a `.agc` that
+says which keys those are, and on a phone it is what such a container opens
+with.
+
 Pick the **machine and RAM size** to match your disk: the Agat-7 shipped in
 three sizes and software can tell, because the RAM size masks the video mode
 register's page field. The default is an Agat-7 with 64K. A filename containing
@@ -110,18 +117,21 @@ The format is written up field by field in [AGC.md](AGC.md), and in Russian in
   "url": "https://…",
   "machine": { "model": 7, "ram": 64 },
   "quirks":  { "irq": "raster", "rate": 0 },
-  "keys":    { "KeyW": { "code": "^", "note": "Shoot right" } },
+  "keys":    { "KeyW": { "code": "^", "note": "Shoot right" },
+               "Space": { "note": "Jump" } },
   "media": [ { "name": "rise-out.dsk", "data": ["…base64…"] } ]
 }
 ```
 
-`keys` is the **keyboard remap**, and it is what makes a game with awkward
-controls playable: `^` is `$5E`, four keys away in ЛАТ and under a Shift, and
-this puts it on W in both layouts and under any modifier. A code may be written
-as the character itself, as `$5E`, or by name (`Up`, `Enter`, `Esc`, `F1`), and
-the short form `"KeyW": "^"` works where there is nothing to say about it.
+`keys` is **the keys the program is played with**, and it is what makes a game
+with awkward controls playable. An entry with a code is a remap: `^` is `$5E`,
+four keys away in ЛАТ and under a Shift, and this puts it on W in both layouts
+and under any modifier. A code may be written as the character itself, as `$5E`,
+or by name (`Up`, `Enter`, `Esc`, `F1`), and the short form `"KeyW": "^"` works
+where there is nothing to say about it. An entry with **no** code names a key
+the program uses as it already is, and changes nothing about what it sends.
 
-The `note` is the useful half. The on-screen keyboard reads the remap the same
+The `note` is the useful half. The on-screen keyboard reads the key set the same
 way it reads the shipped table, so the cap lights on a keypress and hovering `^`
 reads **W (Shoot right)** — which is the question someone in front of an
 unfamiliar game actually has.

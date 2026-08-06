@@ -7,6 +7,9 @@
 //   node tools/check.js write  <image> [cycles]  boot unlocked, then say what
 //                                                the disk was written with
 //   node tools/check.js sniff  <file...>         what the sniffer makes of each
+//   node tools/check.js keys   <.agc | KeyW=^ | Space>
+//                                                the on-screen board a key set
+//                                                leaves, drawn in the terminal
 //   node tools/check.js modules                  index.html vs tools/modules.js
 //
 // --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
@@ -69,7 +72,8 @@ if (cmd === 'sniff') {
       const c = s.agc;
       const key = (k) => {
         const v = c.keys[k], spec = v && typeof v === 'object' ? v : { code: v };
-        return k + '→' + spec.code + (spec.note ? ' (' + spec.note + ')' : '');
+        return k + (spec.code ? '→' + spec.code : '') +
+               (spec.note ? ' (' + spec.note + ')' : '');
       };
       extra += '\n         .agc "' + c.title + '"' +
                (c.author ? ' by ' + c.author : '') + (c.date ? ', ' + c.date : '') +
@@ -85,6 +89,56 @@ if (cmd === 'sniff') {
     console.log((s.kind || 'unknown').padEnd(8) + ' ' +
                 String(size).padStart(8) + '  ' + path.basename(p) + extra);
   }
+  process.exit(0);
+}
+
+// The on-screen board, drawn in the terminal. `keys` is the winnowed one — the
+// АГАТ board with everything the container did not name shrunk to a sliver — and
+// it is the cheap way to see what a container's `keys` will actually put in
+// front of a player, without a browser. KeyView touches no DOM until it is
+// built, so a stub document is enough to build it against.
+if (cmd === 'keys') {
+  const A = ctx.AGAT;
+  const el = () => ({
+    children: [], style: {}, className: '', textContent: '', title: '',
+    appendChild(c) { this.children.push(c); return c; },
+    addEventListener() {},
+    set innerHTML(v) { this.children = []; },
+    get innerHTML() { return ''; },
+  });
+  ctx.document = { createElement: el, addEventListener() {}, removeEventListener() {} };
+
+  // Either a container's keys, or a map written on the command line the way the
+  // container writes it: KeyW=^ names a remap, a bare Space declares a key.
+  const keys = {};
+  for (const a of rest) {
+    if (/=/.test(a)) { const [k, v] = a.split('='); keys[k] = v; continue; }
+    if (!/\.agc$/i.test(a)) { keys[a] = null; continue; }
+    const c = A.agc.parse(fs.readFileSync(a), path.basename(a));
+    Object.assign(keys, c.keys);
+    console.log(c.title + (c.author ? ' — ' + c.author : ''));
+  }
+  const set = A.keyboard.setRemap(Object.keys(keys).length ? keys : null);
+  console.log('keys: ' + set.ok + ', ' + set.remapped + ' remapped' +
+              (set.bad.length ? ', ignored ' + set.bad.join(', ') : ''));
+
+  const app = { machine: { kbdLatch: 0, cyrillic: !!flags.rus }, reset() {} };
+  const view = new A.KeyView(el(), app, {
+    view: flags.view === 'agat' ? 'agat' : 'used', rus: !!flags.rus,
+  });
+  for (const b of view.blocks) {
+    if (b.el.style.display === 'none') { console.log('  (block winnowed away)'); continue; }
+    for (const r of b.rows) {
+      if (r.el.style.display === 'none') continue;
+      const pad = ' '.repeat(Math.round(parseFloat(r.el.style.marginLeft) || 0));
+      console.log('  ' + pad + r.caps.map((c) => c.gone ? '·'
+        : '[' + (c.def.cap !== undefined ? c.def.cap
+                 : ctx.AGAT.keyview.CHAR[c.def.u] +
+                   (c.def.s === undefined ? '' : '/' + ctx.AGAT.keyview.CHAR[c.def.s])) +
+          ']').join(' '));
+    }
+  }
+  console.log('  board: ' + view.board.style.fontSize);
   process.exit(0);
 }
 

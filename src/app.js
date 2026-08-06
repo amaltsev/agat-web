@@ -390,7 +390,8 @@
     }
     this.onStatus(this.credit() +
                   (keys.ok ? ' — ' + keys.ok + ' key' + (keys.ok > 1 ? 's' : '') +
-                             ' remapped' : '') +
+                             (keys.remapped ? ', ' + keys.remapped + ' remapped' : '')
+                           : '') +
                   (keys.bad.length ? ' — ignored ' + keys.bad.join(', ') : ''));
     return { kind: 'agc', title: c.title, media: c.media.length };
   };

@@ -138,6 +138,17 @@
     font-size: clamp(6px, 1.5vw, 12px);
     font-size: calc((100cqw - 22px) / 59.9);
   }
+  /* The winnowed board has no fixed width to divide by — what is left of it
+     depends on the container — so keyview.js measures it and sets the font-size
+     itself. This is what that overrides, and what a board with nothing winnowed
+     away falls back to. */
+  .kb-board.kb-used { font-size: calc((100cqw - 22px) / 50.2); }
+  /* A cap the container never named: a sliver holding the place of a key, so
+     the ones that are left stay where the machine put them. */
+  .kb-cap.gone {
+    pointer-events: none; overflow: hidden; box-shadow: none; opacity: .3;
+  }
+  .kb-cap.gone > span { display: none; }
   .kb-row { display: flex; gap: .18em; margin-bottom: .18em; }
   .kb-cap {
     display: flex; flex-direction: column; justify-content: center;
@@ -210,10 +221,11 @@
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
-  <select id="kbd" title="Draw the keyboard and light the key each host keypress reaches. АГАТ is the machine's own board, PC the keys the scancode table maps.">
+  <select id="kbd" title="Draw the keyboard and light the key each host keypress reaches. АГАТ is the machine's own board, PC the keys the scancode table maps, and the third is the АГАТ board with only the keys the loaded container names.">
     <option value="">Keyboard off</option>
     <option value="agat">АГАТ keyboard</option>
     <option value="pc">PC keyboard</option>
+    <option value="used">Only mapped keys</option>
   </select>
   <button id="gear" title="Interrupt model, interrupt rate and volume" aria-expanded="false">⚙</button>
   <span class="lamps" id="lamps"></span>
@@ -484,9 +496,10 @@
   function afterLoad() {
     screen.classList.remove('empty');
     syncMachineUI();
-    // A container may have brought a remap with it, and the board draws which
-    // host key reaches which code.
+    // A container may have brought a key set with it: the board draws which
+    // host key reaches which code, and the menu offers to draw only those.
     if (kbView) kbView.refresh();
+    syncKbd(true);
     // The address has to stop naming a container the moment something else is
     // loaded, or a bookmark taken afterwards reopens the wrong program.
     saveUrl();
@@ -581,7 +594,38 @@
     }
     kbView.setLayout(app.machine.cyrillic);
   }
-  kbdSel.addEventListener('change', function () { applyKbd(); saveUrl(); });
+  kbdSel.addEventListener('change', function () {
+    kbdChosen = true;
+    applyKbd();
+    saveUrl();
+  });
+
+  // The winnowed board is drawn from the container's `keys`, so the option is
+  // dead until something is loaded that names any — and a board already showing
+  // it when that stops being true goes back to the whole keyboard rather than
+  // to a board with nothing winnowed off it.
+  //
+  // On a handheld there is no keyboard to press, and a container that says which
+  // keys its program uses is the one case where a board of exactly those keys
+  // can be opened without guessing. It is a default, not a decision: once the
+  // menu has been touched, what it says stands.
+  var usedOpt = kbdSel.querySelector('option[value="used"]');
+  var kbdChosen = !!url.kbd;
+  var handheld = !!(window.matchMedia &&
+    window.matchMedia('(pointer: coarse) and (max-width: 900px)').matches);
+
+  // `loaded` is false only while a container the address names is still on its
+  // way: the menu must not fall back off a board that file is about to fill.
+  function syncKbd(loaded) {
+    var have = AGAT.keyboard.keyCount() > 0;
+    usedOpt.disabled = !have;
+    if (!loaded) return;
+    if (!have && kbdSel.value === 'used') kbdSel.value = 'agat';
+    else if (have && handheld && !kbdChosen) kbdSel.value = 'used';
+    else return;
+    applyKbd();
+    saveUrl();
+  }
 
   // Whether the section is open is chrome rather than machine state, so it does
   // not go in the address: a bookmark carries the interrupt settings themselves.
@@ -784,6 +828,7 @@
 
   app.init().then(function () {
     applyKbd();
+    syncKbd(!agcUrl);
     if (agcUrl) loadUrl(agcUrl).then(applyUrlOverrides);
     say('ready — drop a file, or press Reset for the monitor');
     setInterval(function () { if (app.running) say(app.describe()); }, 500);

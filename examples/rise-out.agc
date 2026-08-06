@@ -13,8 +13,15 @@
     "rate": 0
   },
   "keys": {
-    "KeyW": { "code": "^", "note": "Shoot right" },
-    "KeyQ": { "code": "Q", "note": "Shoot left" }
+    "ArrowUp": { },
+    "ArrowDown": { },
+    "ArrowLeft": { },
+    "ArrowRight": { },
+    "KeyW": { "note": "Shoot right", "code": "^" },
+    "KeyQ": { "note": "Shoot left", "code": "Q" },
+    "KeyK": { "note": "Suicide", "code": "K" },
+    "Space": { "note": "Menu: Select" },
+    "Escape": { "note": "Menu: Back" }
   },
   "media": [
     {

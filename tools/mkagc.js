@@ -11,8 +11,10 @@
 //   --ram=32|64|128       Agat-7 RAM, in K
 //   --irq=raster|held|pulse
 //   --rate=HZ             sub-frame rate for the two free-running models
-//   --key=CODE:VALUE[:NOTE]   remap, repeatable, the note saying what the key
-//                             does: --key=KeyW:^:Shoot right
+//   --key=KEY[:CODE[:NOTE]]   a key the program uses, repeatable, the note
+//                             saying what it does: --key=KeyW:^:Shoot right.
+//                             With no code the key is declared as it already
+//                             is: --key=Space::Jump
 //   --patch=AT:HEX        patch, repeatable: --patch=45312:A96085
 //   --diff=FILE           derive the patches by comparing FILE with the image
 //   --width=N             base64 line width, a multiple of 4
@@ -46,21 +48,24 @@ const A = ctx.AGAT;
 // disk that has been written to, so --diff and a save produce the same records.
 const diff = A.agc.diff;
 
-// CODE:VALUE:NOTE, split on the first two colons — a value is `^`, `$5E` or a
-// name and never contains one, so only the note can.
+// KEY:VALUE:NOTE, split on the first two colons — a value is `^`, `$5E` or a
+// name and never contains one, so only the note can. No value at all declares
+// the key as it already is: `--key=Space` and `--key=Space::Jump` both say the
+// program uses Space and leave what it sends alone.
 const keys = {};
 for (const k of flags.key || []) {
   const at = k.indexOf(':');
-  if (at < 0) { console.error('--key wants CODE:VALUE, got ' + k); process.exit(2); }
-  const code = k.slice(0, at), rest = k.slice(at + 1);
+  const key = at < 0 ? k : k.slice(0, at);
+  const rest = at < 0 ? '' : k.slice(at + 1);
   const cut = rest.indexOf(':');
   const value = cut < 0 ? rest : rest.slice(0, cut);
   const note = cut < 0 ? '' : rest.slice(cut + 1);
-  if (A.keyboard.resolveCode(value) < 0) {
+  if (value && A.keyboard.resolveCode(value) < 0) {
     console.error('--key=' + k + ': ' + value + ' is not a code — try $5E, ^, or Up');
     process.exit(2);
   }
-  keys[code] = note ? { code: value, note: note } : value;
+  keys[key] = value ? (note ? { code: value, note: note } : value)
+                    : (note ? { note: note } : null);
 }
 
 const explicit = (flags.patch || []).map((p) => {

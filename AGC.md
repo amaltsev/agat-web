@@ -102,7 +102,7 @@ This matters for anything that sequences sound on the interrupt count, which is
 most Agat music: the pitch and the tempo come straight off this setting, and
 `held` and `raster` are an octave apart.
 
-### `keys` — the keyboard remap
+### `keys` — the keys the program uses
 
 The Agat's keyboard is not your keyboard. A program that reads `^` is asking
 for `$5E`, which in ЛАТ needs <kbd>Shift</kbd>+<kbd>6</kbd> and in РУС is on
@@ -111,17 +111,28 @@ for `$5E`, which in ЛАТ needs <kbd>Shift</kbd>+<kbd>6</kbd> and in РУС is 
 ```json
 "keys": {
   "KeyW": { "code": "^", "note": "Shoot right" },
-  "KeyA": "←"
+  "KeyA": "←",
+  "Space": { "note": "Jump" },
+  "ArrowUp": null
 }
 ```
 
 The key on the left is a browser
 [`KeyboardEvent.code`](https://developer.mozilla.org/docs/Web/API/UI_Events/Keyboard_event_code_values)
 — `KeyW`, `Digit1`, `ArrowUp`, `Space` — which names a **physical key**, not a
-character, so a remap is the same on any host layout.
+character, so a remap is the same on any host layout. Every name this emulator
+accepts, and what each of them sends unmapped, is in
+[What each key sends](#what-each-key-sends).
 
-The value is either the code to send, or `{ "code": …, "note": … }`. A code may
-be written:
+The value is either the code to send, or `{ "code": …, "note": … }`, or — with
+no code at all — a declaration that the program uses the key **as it already
+is**. `"Space": { "note": "Jump" }` and a bare `"ArrowUp": null` change nothing
+about what those keys send; they say that these are among the program's keys,
+which is what the on-screen board's **Only mapped keys** view is drawn from. A
+game whose controls need no remapping still has controls, and this is how it
+names them.
+
+A code may be written:
 
 | form | example |
 |---|---|
@@ -141,8 +152,20 @@ loaded, so remap keys the program does not otherwise need.
 
 The `note` says what the key *does*. It is the half worth writing: the on-screen
 keyboard shows it, so hovering `^` reads **`W (Shoot right)`** rather than
-leaving someone to work it out, and a later "only the keys this game uses" mode
-will be built from these.
+leaving someone to work it out.
+
+Naming every key a program uses, remapped or not, is what the **Only mapped
+keys** board needs: the machine's caps, with every one no listed key reaches
+shrunk to a sliver, so the keys that are left keep the positions the Agat gives
+them. It is drawn as three areas that collapse on their own — the typewriter,
+the arrows and the numeric pad — so a program that uses none of the pad is not
+shown one, and naming a single arrow brings the whole cluster. The board's own
+controls (СБР, УПР, РУС/LAT, РЕГ) are not drawn: they are not the program's
+keys, and on a phone they were most of the screen.
+
+The menu offers this board only for a container that names keys, and on a
+handheld it is what such a container opens with.
+`node tools/check.js keys <file.agc>` draws it in a terminal.
 
 ### `media`
 
@@ -241,6 +264,124 @@ node tools/check.js sniff game.agc    # what it says it is
 node tools/check.js boot  game.agc    # boot it and report where it got to
 node tools/shot.js        game.agc    # boot it and write a PNG
 ```
+
+---
+
+## What each key sends
+
+Every name below is accepted on the left of `keys`; anything else is ignored,
+and the status line says which. The columns are what the key sends **when it is
+not remapped** — which is what a remap costs you, and what a key declared as-is
+will go on sending.
+
+A letter's two halves are one byte in two character sets: РЕГ adds exactly `$20`
+across the block, which moves ASCII `@A-Z[\]^_` into the Agat's Cyrillic band in
+KOI-7 N2 order. That is why both legends fit on one cap, and why `Ч` is РУС
+<kbd>X</kbd> and nothing at all in ЛАТ.
+
+Codes with no glyph are given in hex, written the way `keys` takes them. `—` is
+a key the table maps to nothing: `Insert`, `Delete` and `F4`-`F12` are free to
+take over, since nothing is lost. `Backspace` and `ArrowLeft` both send `$88`,
+which is the machine having one `←`.
+
+**Letters — these follow ЛАТ/РУС and РЕГ**
+
+| `code` | ЛАТ | ЛАТ+РЕГ | РУС | РУС+РЕГ |
+|---|---|---|---|---|
+| `KeyQ` | `Q` | `Я` | `J` | `Й` |
+| `KeyW` | `W` | `В` | `C` | `Ц` |
+| `KeyE` | `E` | `Е` | `U` | `У` |
+| `KeyR` | `R` | `Р` | `K` | `К` |
+| `KeyT` | `T` | `Т` | `E` | `Е` |
+| `KeyY` | `Y` | `Ы` | `N` | `Н` |
+| `KeyU` | `U` | `У` | `G` | `Г` |
+| `KeyI` | `I` | `И` | `[` | `Ш` |
+| `KeyO` | `O` | `О` | `]` | `Щ` |
+| `KeyP` | `P` | `П` | `Z` | `З` |
+| `KeyA` | `A` | `А` | `F` | `Ф` |
+| `KeyS` | `S` | `С` | `Y` | `Ы` |
+| `KeyD` | `D` | `Д` | `W` | `В` |
+| `KeyF` | `F` | `Ф` | `A` | `А` |
+| `KeyG` | `G` | `Г` | `P` | `П` |
+| `KeyH` | `H` | `Х` | `R` | `Р` |
+| `KeyJ` | `J` | `Й` | `O` | `О` |
+| `KeyK` | `K` | `К` | `L` | `Л` |
+| `KeyL` | `L` | `Л` | `D` | `Д` |
+| `KeyZ` | `Z` | `З` | `Q` | `Я` |
+| `KeyX` | `X` | `Ь` | `^` | `Ч` |
+| `KeyC` | `C` | `Ц` | `S` | `С` |
+| `KeyV` | `V` | `Ж` | `M` | `М` |
+| `KeyB` | `B` | `Б` | `I` | `И` |
+| `KeyN` | `N` | `Н` | `T` | `Т` |
+| `KeyM` | `M` | `М` | `X` | `Ь` |
+
+**Digits and punctuation — these follow ЛАТ/РУС and РЕГ**
+
+| `code` | ЛАТ | ЛАТ+РЕГ | РУС | РУС+РЕГ |
+|---|---|---|---|---|
+| `Digit1` | `1` | `!` | `1` | `!` |
+| `Digit2` | `2` | `@` | `2` | `"` |
+| `Digit3` | `3` | `#` | `3` | `#` |
+| `Digit4` | `4` | `¤` | `4` | `;` |
+| `Digit5` | `5` | `%` | `5` | `%` |
+| `Digit6` | `6` | `^` | `6` | `:` |
+| `Digit7` | `7` | `&` | `7` | `?` |
+| `Digit8` | `8` | `*` | `8` | `*` |
+| `Digit9` | `9` | `(` | `9` | `(` |
+| `Digit0` | `0` | `)` | `0` | `)` |
+| `Minus` | `-` | `_` | `-` | `-` |
+| `Equal` | `=` | `+` | `=` | `+` |
+| `BracketLeft` | `[` | `Ш` | `H` | `Х` |
+| `BracketRight` | `]` | `Щ` | `_` | `Ъ` |
+| `Semicolon` | `;` | `:` | `V` | `Ж` |
+| `Quote` | `'` | `"` | `\` | `Э` |
+| `Backquote` | `@` | `^` | `@` | `^` |
+| `Backslash` | `\` | `Э` | `\` | `Э` |
+| `Comma` | `,` | `<` | `B` | `Б` |
+| `Period` | `.` | `>` | `@` | `Ю` |
+| `Slash` | `/` | `?` | `.` | `,` |
+
+**Editing — one code, whatever the layout**
+
+| `code` | sends | `code` | sends |
+|---|---|---|---|
+| `Escape` | Esc $9B | `Enter` | ↵ $8D |
+| `Backspace` | ← $88 | `Space` | space $20 |
+| `Tab` | Tab $89 |  |  |
+
+**Arrows and the nav cluster — one code, whatever the layout**
+
+| `code` | sends | `code` | sends |
+|---|---|---|---|
+| `ArrowUp` | ↑ $99 | `End` | $8A |
+| `ArrowLeft` | ← $88 | `PageUp` | ↑ $99 |
+| `ArrowRight` | → $95 | `PageDown` | ↓ $9A |
+| `ArrowDown` | ↓ $9A | `Insert` | — |
+| `Home` | $8B | `Delete` | — |
+
+**Function keys — one code, whatever the layout**
+
+| `code` | sends | `code` | sends |
+|---|---|---|---|
+| `F1` | F1 $84 | `F7` | — |
+| `F2` | F2 $85 | `F8` | — |
+| `F3` | F3 $86 | `F9` | — |
+| `F4` | — | `F10` | — |
+| `F5` | — | `F11` | — |
+| `F6` | — | `F12` | — |
+
+**The numeric pad — one code, whatever the layout**
+
+| `code` | sends | `code` | sends |
+|---|---|---|---|
+| `NumpadMultiply` | `*` | `NumpadAdd` | `+` |
+| `Numpad7` | $90 | `Numpad1` | $9D |
+| `Numpad8` | $91 | `Numpad2` | $9E |
+| `Numpad9` | $92 | `Numpad3` | $9F |
+| `NumpadSubtract` | `-` | `Numpad0` | $81 |
+| `Numpad4` | $93 | `NumpadDecimal` | $82 |
+| `Numpad5` | $94 | `NumpadEnter` | $83 |
+| `Numpad6` | $9C | `NumpadDivide` | `/` |
 
 ---
 

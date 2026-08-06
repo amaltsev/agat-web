@@ -171,7 +171,7 @@
     return -1;
   }
 
-  // ---- the remap -----------------------------------------------------------
+  // ---- the key set ---------------------------------------------------------
   //
   // A container can put a code on a host key: `"KeyW": "^"` for a game that
   // reads $5E. It is a layer in front of KEYMAP rather than an edit to it, and
@@ -187,38 +187,102 @@
   // unfamiliar game, and it reaches the on-screen board's tooltips through the
   // same route index as everything else.
   //
+  // An entry with no code at all — `"Space": { "note": "Jump" }`, or a bare
+  // `"Space": null` — declares a key the program uses *as it already is*. It
+  // sends what the table has under it, exactly as it would with no container
+  // loaded; all it adds is that the key is one of this program's, which is what
+  // the "only mapped keys" board is drawn from. Without it a game whose keys
+  // need no remapping could only join that board by being remapped to itself,
+  // and a remap takes the key over in every plane, which is not the same thing.
+  //
   // Kept by scancode, `scan + (ext ? 256 : 0)` as KEYNAME is, so the one lookup
   // in codeFor() covers the keyboard and the on-screen board at once.
 
-  var REMAP = null;         // scancode -> code
+  var REMAP = null;         // scancode -> code, the keys given one
+  var USED = null;          // scancode -> true, every key the container names
   var NOTES = null;         // scancode -> what the key does
+  var COUNT = 0;            // how many of them there are
   var REMAP_SRC = null;     // the map as it was given, for writing back out
 
   function setRemap(map) {
-    var bad = [], ok = 0, key, scan, code, ext, spec;
+    var bad = [], ok = 0, on = 0, key, scan, code, ext, spec, k;
     ROUTES = null;                 // the backwards index is built from both
     REMAP = null;
+    USED = null;
     NOTES = null;
+    COUNT = 0;
     REMAP_SRC = null;
-    if (!map) return { ok: 0, bad: bad };
+    if (!map) return { ok: 0, remapped: 0, bad: bad };
     REMAP = {};
+    USED = {};
     NOTES = {};
     for (key in map) {
       spec = map[key];
-      if (!spec || typeof spec !== 'object') spec = { code: spec };
+      if (spec === null || spec === undefined) spec = {};
+      else if (typeof spec !== 'object') spec = { code: spec };
       ext = Object.prototype.hasOwnProperty.call(EXT_SCAN, key);
       scan = ext ? EXT_SCAN[key] : SCAN[key];
-      code = resolveCode(spec.code);
-      if (scan === undefined || code < 0) { bad.push(key + ' → ' + spec.code); continue; }
-      REMAP[scan + (ext ? 256 : 0)] = code;
-      NOTES[scan + (ext ? 256 : 0)] = spec.note || '';
+      // A key that is not a key is named on its own; a key given a code that
+      // cannot be read is named with the code, since that is the half at fault.
+      if (scan === undefined) {
+        bad.push(key + (spec.code ? ' → ' + spec.code : ''));
+        continue;
+      }
+      k = scan + (ext ? 256 : 0);
+      // No code is a declaration rather than a remap, so the table under the
+      // key is left alone.
+      if (spec.code !== undefined && spec.code !== null && spec.code !== '') {
+        code = resolveCode(spec.code);
+        if (code < 0) { bad.push(key + ' → ' + spec.code); continue; }
+        REMAP[k] = code;
+        on++;
+      }
+      USED[k] = true;
+      NOTES[k] = spec.note || '';
       ok++;
     }
+    COUNT = ok;
     REMAP_SRC = map;
-    return { ok: ok, bad: bad };
+    return { ok: ok, remapped: on, bad: bad };
   }
 
   function remap() { return REMAP_SRC; }
+
+  // How many keys the container named, which is what tells a board with an
+  // "only mapped keys" view whether it has anything to draw.
+  function keyCount() { return COUNT; }
+
+  // Which codes those keys reach, as a table of 128 indexed by the code's low
+  // seven bits and holding the code itself — the set the "only mapped keys"
+  // board keeps. A remapped key reaches its code from every plane at once. A key
+  // declared as-is reaches whatever the table has under it in this layout,
+  // unshifted and shifted, which is the pair of legends its cap carries; the
+  // control plane is left out, because a cap the program only reaches under УПР
+  // is not a cap it is asking anyone to find. Null when no keys were named at
+  // all, which the board reads as "keep everything".
+  //
+  // The whole code and not a flag, because `$9B` and `$1B` share an index and a
+  // board drawing one of them has to know which it was given.
+  function usedCodes(layout) {
+    if (!COUNT) return null;
+    var out = [], key, k, scan, mod, v, i;
+    for (i = 0; i < 128; i++) out.push(0);
+    for (key in USED) {
+      k = Number(key);
+      scan = k & 255;
+      if (REMAP[k] !== undefined) { out[REMAP[k] & 0x7f] = REMAP[k]; continue; }
+      if (k >= 256) {
+        v = KEYMAP[((layout * 4 + EXT) << 7) | scan];
+        if (v) out[v & 0x7f] = v;
+        continue;
+      }
+      for (mod = NORMAL; mod <= SHIFT; mod++) {
+        v = KEYMAP[((layout * 4 + mod) << 7) | scan];
+        if (v && !out[v & 0x7f]) out[v & 0x7f] = v;
+      }
+    }
+    return out;
+  }
 
   // Which plane a scancode is read from, given the modifiers.
   function planeFor(ext, ctrl, shift) {
@@ -264,22 +328,27 @@
   var ROUTES = null;
 
   function buildRoutes() {
-    var i, layout, mod, scan, v, key, ext;
+    var i, layout, mod, scan, v, key, ext, k, r;
     ROUTES = [];
     for (i = 0; i < 128; i++) ROUTES.push([]);
     for (layout = 0; layout < 2; layout++) {
       for (mod = 0; mod < 4; mod++) {
         for (scan = 0; scan < 128; scan++) {
           v = KEYMAP[((layout * 4 + mod) << 7) | scan];
-          if (!v || !KEYNAME[scan + (mod === EXT ? 256 : 0)]) continue;
+          k = scan + (mod === EXT ? 256 : 0);
+          if (!v || !KEYNAME[k]) continue;
           // The two EXT planes are the same plane: an arrow key does not care
           // which layout is up, and listing it twice would only say so twice.
           if (mod === EXT && layout !== LAT) continue;
           // A remapped key no longer reaches what the table has under it, and
           // the board has to grey those legends out rather than keep offering
           // a key that now sends something else.
-          if (REMAP && REMAP[scan + (mod === EXT ? 256 : 0)] !== undefined) continue;
-          ROUTES[v & 0x7f].push({ layout: layout, mod: mod, scan: scan });
+          if (REMAP && REMAP[k] !== undefined) continue;
+          r = { layout: layout, mod: mod, scan: scan };
+          // A key the container declared without remapping it still has a job,
+          // and the job is the half worth reading out.
+          if (NOTES && NOTES[k]) r.note = NOTES[k];
+          ROUTES[v & 0x7f].push(r);
         }
       }
     }
@@ -334,16 +403,19 @@
   // "W (Shoot right)" where the container said what the key is for. A remap
   // carries no layout because it ignores both, and is marked either way, so
   // that a key which only reaches this code because a container put it there is
-  // not mistaken for something the machine's own table does.
+  // not mistaken for something the machine's own table does. A key the
+  // container only declared is a route the table already had, so it keeps its
+  // layout and modifier and gains the note: "ЛАТ Space (Jump)".
   function routeName(r) {
     if (r.remap) {
       return keyName(r.scan, r.ext ? EXT : NORMAL) +
              ' (' + (r.note || 'remap') + ')';
     }
-    if (r.mod === EXT) return keyName(r.scan, EXT);
+    var note = r.note ? ' (' + r.note + ')' : '';
+    if (r.mod === EXT) return keyName(r.scan, EXT) + note;
     return (r.layout === RUS ? 'РУС ' : 'ЛАТ ') +
            (r.mod === SHIFT ? 'Shift+' : r.mod === CTRL ? 'Ctrl+' : '') +
-           keyName(r.scan, r.mod);
+           keyName(r.scan, r.mod) + note;
   }
 
   // Attach to a DOM element. `target` gets the listeners, `machine` receives
@@ -400,6 +472,7 @@
     decode: decode, codeFor: codeFor, scanOf: scanOf, planeFor: planeFor,
     routesTo: routesTo, routeName: routeName, keyName: keyName,
     setRemap: setRemap, remap: remap, resolveCode: resolveCode,
+    keyCount: keyCount, usedCodes: usedCodes,
     KEYMAP: KEYMAP, SCAN: SCAN, EXT_SCAN: EXT_SCAN, CHAR: CHAR,
     LAT: LAT, RUS: RUS, NORMAL: NORMAL, SHIFT: SHIFT, CTRL: CTRL, EXT: EXT,
   };

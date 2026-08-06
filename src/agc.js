@@ -2,9 +2,9 @@
 //
 // One JSON file holding everything needed to run an old program: the image, any
 // patches to it, a title, the machine it wants, the interrupt quirks it was
-// tuned for, and a keyboard remap. A disk on its own says none of that — the
-// model comes from a `7a` in the filename, the interrupt model from a menu, and
-// which host key sends the byte the game reads is a puzzle.
+// tuned for, and the keys it is played with. A disk on its own says none of
+// that — the model comes from a `7a` in the filename, the interrupt model from
+// a menu, and which host key sends the byte the game reads is a puzzle.
 //
 //   {
 //     "agc": 1,
@@ -14,7 +14,8 @@
 //     "url": "https://…",
 //     "machine": { "model": 7, "ram": 64 },
 //     "quirks":  { "irq": "raster", "rate": 0 },
-//     "keys":    { "KeyW": { "code": "^", "note": "Shoot right" } },
+//     "keys":    { "KeyW": { "code": "^", "note": "Shoot right" },
+//                  "Space": { "note": "Jump" } },
 //     "media": [ { "name": "rise-out.dsk", "data": ["…", "…"] } ]
 //   }
 //

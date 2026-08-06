@@ -66,7 +66,7 @@ Load order matters only in that a module's dependencies must already be on
 | `video.js` | painters and `render()` |
 | `font.js` | glyph blitting; keeps `{font, m0}` together |
 | `keyboard.js` | browser `code` → scancode → Agat keymap, and the same table read backwards |
-| `keyview.js` | the on-screen keyboard: two boards over that one table |
+| `keyview.js` | the on-screen keyboard: three boards over that one table |
 | `audio.js` | `$C030` edges → PCM |
 | `unpack.js` | embedded ROM decompression |
 | `fil.js` | `.fil` loading |
@@ -354,7 +354,7 @@ recording thousands of speaker edges.
 
 ---
 
-## The keyboard, and the two boards that draw it
+## The keyboard, and the boards that draw it
 
 `keyboard.js` maps forwards: browser `code` → PC/AT scancode → a byte, through
 agat-emulator's shipped `[layout][modifier][scancode]` table. Every question a
@@ -391,6 +391,12 @@ The long form carries what the key is *for* —
 the board's tooltip answers the question someone actually has rather than the
 one the index was built to answer.
 
+An entry with **no code** — `"Space": { "note": "Jump" }` — declares a key the
+program uses as it already is. It adds nothing to `REMAP` and changes nothing
+`codeFor()` returns; it only puts the key in the set the container named, and
+its note on the routes the table already had. Both kinds together are the key
+set, and `keyCount()` and `usedCodes(layout)` are what a board asks about it.
+
 That is one `if` at the top of `codeFor()`, and it is deliberately the *only*
 place, because everything else already runs through there: the keypress path,
 and the PC board's per-cap "what does this send right now" line. The other
@@ -413,6 +419,53 @@ through the scancode table: a cap knows its own byte, and several caps have no
 host key at all. `tools/vectors.js` asserts the transcription both ways — no
 code a host key sends is without a cap, no cap is unreachable, and every cap
 drawn dead really is.
+
+### The winnowed board
+
+A third view, `used`, keeps the machine's own caps but not the machine's own
+board. Every cap the container's keys do not reach shrinks to a half-em sliver,
+and it is drawn as **three areas that collapse independently** — the typewriter,
+the arrow cluster and the numeric pad — each hidden outright when nothing in it
+is named. A program that never touches the pad gets no column of slivers where
+the pad was.
+
+The cluster is the reason the areas exist. On the machine ↑ sits between ПВТ and
+РЕД with ← ↓ → below, and those two caps are what hold it over ↓ — but they are
+caps this board does not draw, so collapsing them dragged ↑ halfway across the
+row. `USED_NAV` arranges the four arrows itself, and is marked `whole`: one arrow
+in the key set brings all four, because a cluster missing one of its arms reads
+worse than no cluster. `USED_MAIN` and `USED_PAD` are the machine's own blocks
+with the caps this view never draws filtered out.
+
+**It draws no controls.** СБР, УПР, РУС/LAT, РЕГ and the caps that send nothing
+are the board's own furniture rather than the program's keys, and on a phone they
+were most of what was on the screen.
+
+`usedCodes(layout)` says which codes the key set reaches — a remap's own code,
+and for a key declared as-is whatever the table has under it in this layout,
+unshifted and shifted. It returns the codes themselves rather than flags, because
+`capsUsed` then moves each onto the cap that owns it, the same order `light()`
+takes: a code with a cap of its own goes there, the rest fall back to `capCode`.
+So `$88` lands on `←`, and `$8B` on `К` where УПР makes it.
+
+That fallback is why a kept cap remembers what it stands for. `$9B` — Esc — has
+no cap on this machine at all and is drawn on `[`; with no УПР to hold, a touch
+on that cap has to send `$9B` rather than the `[` it is painted with, so `plan()`
+records the code on the cap and `press()` and the tooltip use it. The same
+applies to a key whose code is a shifted legend, since there is no РЕГ either.
+
+An indent is measured in cap widths, so in a block that lost caps to slivers it
+collapses with them — ПРОБЕЛ stays under the letters instead of nine ems to their
+right — while a block that kept everything keeps its indents, which is what holds
+↑ over ↓. The board is then sized off its own measured width in ems, the one
+number the stylesheet cannot know: what is left depends on the container.
+
+The winnowing is redone on every `refresh()`, since a key declared as-is is a
+different cap in ЛАТ than in РУС. With no container loaded there is nothing to
+winnow by and every cap it has is drawn; the menu greys the option out until
+something names keys, and on a handheld a container that names them opens with
+it. `node tools/check.js keys <file.agc>` draws the same board in a terminal,
+against a stub `document` — which is what makes it testable at all.
 
 ---
 

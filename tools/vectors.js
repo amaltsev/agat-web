@@ -529,6 +529,60 @@ function eq(what, got, want) {
      [...drawn].filter((s) => !want.has(s)).map(hex), []);
 }
 
+// --- the `keys` reference table, in both docs -------------------------------
+// AGC.md and AGC.ru.md list every name `keys` accepts and what each sends when
+// it is not remapped. A hundred rows of transcription in two languages is
+// exactly the kind of thing that rots quietly, so read them back and put every
+// cell through resolveCode — the same reader a container's own codes go
+// through — against the shipped table.
+{
+  const K = A.keyboard;
+  const docs = ['AGC.md', 'AGC.ru.md'].map(
+    (f) => [f, fs.readFileSync(path.join(H.ROOT, f), 'utf8')]);
+
+  // The four-plane tables put one key on a row and four cells after it; the
+  // tables for keys that send one code whatever the layout put two keys on a
+  // row to keep them short. Both start with a name in backticks, and only the
+  // cell after a name is read: what a row says about РУС is a layout this
+  // cannot see from here.
+  const isKey = (s) => /^`\w+`$/.test(s) &&
+                       (s.slice(1, -1) in K.SCAN || s.slice(1, -1) in K.EXT_SCAN);
+  function rows(text) {
+    const out = new Map();
+    for (const line of text.split('\n')) {
+      if (line.slice(0, 1) !== '|') continue;
+      const cells = line.split('|').slice(1, -1).map((s) => s.trim());
+      for (let i = 0; i < cells.length - 1; i++) {
+        if (isKey(cells[i])) out.set(cells[i].slice(1, -1), cells[i + 1]);
+      }
+    }
+    return out;
+  }
+  // `Esc $9B` names the code and then gives it; a glyph is given in backticks.
+  const cell = (v) => v.split(/\s+/).pop().replace(/`/g, '');
+
+  const named = docs.map(([f, text]) => [f, rows(text)]);
+  eq('both AGC docs list the same keys',
+     [...named[0][1].keys()].filter((k) => !named[1][1].has(k)), []);
+  eq('every key the tables map is listed',
+     [...Object.keys(K.SCAN), ...Object.keys(K.EXT_SCAN)]
+       .filter((k) => !named[0][1].has(k)), []);
+
+  for (const [file, table] of named) {
+    const wrong = [];
+    for (const [name, text] of table) {
+      const ext = name in K.EXT_SCAN;
+      const scan = ext ? K.EXT_SCAN[name] : K.SCAN[name];
+      const raw = K.KEYMAP[((K.LAT * 4 + (ext ? K.EXT : K.NORMAL)) << 7) | scan];
+      const c = cell(text);
+      const got = c === '—' ? 0 : K.resolveCode(c);
+      const ok = /^\$/.test(c) ? got === raw : (got & 0x7f) === (raw & 0x7f);
+      if (!ok) wrong.push(name + ' says ' + c);
+    }
+    eq(file + ' says what the table sends', wrong, []);
+  }
+}
+
 // --- .agc containers --------------------------------------------------------
 // The format is the only thing here a person is expected to hand-edit, so what
 // is pinned is what a hand-written file may rely on: the line shape, that a
@@ -630,6 +684,95 @@ function eq(what, got, want) {
   eq('dropping the remap restores the table',
      [names(0x57), K.codeFor(0x11, 0, 0), K.codeFor(0x48, 0, 3)],
      ['ЛАТ W, РУС D', 0xd7, 0x99]);
+}
+
+// --- keys declared without a code -------------------------------------------
+// An entry with no code says "the program uses this key as it is". It must be
+// exactly as inert as no entry at all — the whole point is that a game whose
+// keys need no remapping can still name them — while still counting as one of
+// this program's keys, which is what the winnowed board is drawn from.
+{
+  const K = A.keyboard, V = A.keyview;
+  const names = (c) => K.routesTo(c).map(K.routeName).join(', ');
+
+  const r = K.setRemap({
+    Space: { note: 'Jump' }, ArrowUp: null, KeyW: { code: '^', note: 'Shoot' },
+    KeyQQ: null,
+  });
+  eq('a declared key counts, without counting as a remap',
+     [r.ok, r.remapped, r.bad], [3, 1, ['KeyQQ']]);
+  eq('and sends exactly what the table always had',
+     [K.codeFor(0x39, 0, 0), K.codeFor(0x39, 1, 1), K.codeFor(0x48, 0, 3)],
+     [0xa0, 0xa0, 0x99]);
+  // The note rides on the routes the table already had, in every plane the key
+  // has one: it says what the key is for, and the key is the same key shifted.
+  eq('a declared key keeps its layout and gains its note', names(0x20),
+     'ЛАТ Space (Jump), ЛАТ Shift+Space (Jump), ЛАТ Ctrl+Space (Jump), ' +
+     'РУС Space (Jump), РУС Shift+Space (Jump), РУС Ctrl+Space (Jump)');
+  eq('a declaration with nothing to say adds nothing', names(0x99),
+     'ЛАТ Ctrl+Y, ↑, PgUp, РУС Ctrl+Y');
+
+  // Which caps the "only mapped keys" board keeps, block by block. Space is its
+  // own cap, ↑ is the machine's own arrow, and W is remapped to $5E, so the cap
+  // kept for it is the ^/Ч one — where the code lands on the Agat's board, not
+  // where the finger goes.
+  const name = (d) => d.cap !== undefined ? d.cap
+    : hex(d.u) + ' ' + V.CHAR[d.u] + (d.s === undefined ? '' : '/' + V.CHAR[d.s]);
+  const kept = (layout) => {
+    const used = V.capsUsed(K.usedCodes(layout));
+    return V.VIEWS.used.map((rows) => {
+      const whole = rows.some((row) => row.keys.some((d) => V.keeps(d, used)));
+      const out = [];
+      for (const row of rows) {
+        for (const d of row.keys) {
+          if (rows.whole ? !whole : !V.keeps(d, used)) continue;
+          out.push(name(d));
+        }
+      }
+      return out;
+    });
+  };
+  eq('the winnowed board keeps the codes the keys reach, and no others',
+     kept(K.LAT), [['$5E ^/Ч', 'ПРОБЕЛ'], ['↑', '←', '↓', '→'], []]);
+  eq('a remapped cap is the same one in either layout', kept(K.RUS),
+     [['$5E ^/Ч', 'ПРОБЕЛ'], ['↑', '←', '↓', '→'], []]);
+
+  // The arrow cluster is whole or nothing: on the machine ↑ is held over ↓ by
+  // ПВТ and РЕД, which this board does not draw, so a cluster missing one of its
+  // four would be a hole rather than a shape.
+  K.setRemap({ ArrowLeft: null });
+  eq('one arrow brings the whole cluster', kept(K.LAT)[1], ['↑', '←', '↓', '→']);
+  K.setRemap({ KeyA: { note: 'Left' } });
+  eq('and no arrow brings none of it', kept(K.LAT)[1], []);
+
+  // A key declared as-is is a different cap in the other layout, because that
+  // is what the machine does with it: the board has to be re-winnowed on ЛАТ/РУС
+  // rather than worked out once. A is the A/А cap in ЛАТ and the F/Ф cap in РУС,
+  // which is JCUKEN putting Ф where the finger already is.
+  eq('a declared key follows the layout to another cap',
+     [kept(K.LAT)[0], kept(K.RUS)[0]], [['$41 A/А'], ['$46 F/Ф']]);
+
+  // The controls are the board's, not the program's, and the winnowed board does
+  // not draw them at all — on a phone they were most of what was on the screen.
+  eq('the winnowed board has no controls and no dead caps',
+     V.VIEWS.used.reduce((n, rows) => n +
+       rows.reduce((m, row) => m + row.keys.filter((d) => d.act).length, 0), 0), 0);
+
+  // What a touch on a kept cap sends. Esc has no cap of its own on this machine
+  // — it is УПР+`[` — so it is drawn on `[`, and that cap has to send $9B rather
+  // than the `[` it is painted with, since this board draws no УПР either.
+  K.setRemap({ Escape: { note: 'Menu: Back' } });
+  {
+    const used = V.capsUsed(K.usedCodes(K.LAT));
+    const cap = V.VIEWS.used[0].reduce((f, row) =>
+      f || row.keys.filter((d) => V.keeps(d, used))[0], null);
+    eq('a cap standing in for a code sends that code, not its own legend',
+       [name(cap), hex(V.keeps(cap, used))], ['$5B [/Ш', '$9B']);
+  }
+
+  K.setRemap(null);
+  eq('with no container there is nothing to winnow by', K.usedCodes(K.LAT), null);
+  eq('and no keys to count', K.keyCount(), 0);
 }
 
 // --- .fil -------------------------------------------------------------------
