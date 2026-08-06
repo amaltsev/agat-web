@@ -36,6 +36,13 @@ Keys go through the Agat's own scancode table, so **ЛАТ/РУС** switches to 
 JCUKEN layout and Cyrillic comes from where a key sits, not from what your host
 keyboard types.
 
+**Keyboard** draws that mapping instead of leaving you to guess it: the Agat's
+own board, or the PC keys the table maps, with the cap your keypress reaches lit
+up and `$C000` shown underneath. Switching ЛАТ/РУС moves the lit cap and greys
+out what the other layout can no longer type — РУС cannot reach `' , / ;` and
+ЛАТ cannot reach `Ю`, `Ч` or `Ъ`. Caps can be clicked, so a key your host will
+not send is still reachable. Hovering one names every host key that reaches it.
+
 Pick the **machine and RAM size** to match your disk: the Agat-7 shipped in
 three sizes and software can tell, because the RAM size masks the video mode
 register's page field. The default is an Agat-7 with 64K. A filename containing

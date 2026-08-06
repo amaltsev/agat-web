@@ -64,7 +64,8 @@ Load order matters only in that a module's dependencies must already be on
 | `disk140.js` | 140K Shugart controller |
 | `video.js` | painters and `render()` |
 | `font.js` | glyph blitting; keeps `{font, m0}` together |
-| `keyboard.js` | browser `code` → scancode → Agat keymap |
+| `keyboard.js` | browser `code` → scancode → Agat keymap, and the same table read backwards |
+| `keyview.js` | the on-screen keyboard: two boards over that one table |
 | `audio.js` | `$C030` edges → PCM |
 | `unpack.js` | embedded ROM decompression |
 | `fil.js` | `.fil` loading |
@@ -286,6 +287,48 @@ The `AudioContext` needs a user gesture, and it must be **any** gesture —
 `pointerdown` or `keydown` anywhere on the document. Wiring it only to the canvas
 and the keyboard meant a program that wants neither ran silently while happily
 recording thousands of speaker edges.
+
+---
+
+## The keyboard, and the two boards that draw it
+
+`keyboard.js` maps forwards: browser `code` → PC/AT scancode → a byte, through
+agat-emulator's shipped `[layout][modifier][scancode]` table. Every question a
+*person* has runs the other way — this game wants `^`, which key is that? — so
+the table is also indexed by the byte it produces. `routesTo(code)` returns
+every `{layout, mod, scan}` that reaches a code, and `routeName` says it out
+loud: `"ЛАТ Shift+6, РУС X"`.
+
+That index is the whole basis of `keyview.js`, and it is why there is no second
+hand-written map to keep in step.
+
+**A cap is a code, not a scancode.** The machine's caps are dual-legend, `Й`
+over `J`, `Ю` over `@`, `Ч` over `^`, because `$40-$5F` is ASCII `@A-Z[\]^_`
+and, plus `$20`, the Agat-7 font's Cyrillic in KOI-7 N2 order — and РЕГ adds
+exactly `$20` across the whole letter block. So the АГАТ board indexes its caps
+`byCode` and lights whichever cap owns the byte a keypress produced. Two
+consequences fall straight out and are the point of the thing:
+
+- **The lit cap moves when ЛАТ/РУС is switched.** Host `Q` reaches `Я` in ЛАТ
+  and `Й` in РУС, because those are different bytes.
+- **Caps grey out per layout.** A legend is `near` if some host key reaches it
+  now, `far` if only the other layout does, `dead` if none ever does. РУС
+  cannot type `' , / ;`; ЛАТ cannot type `Ю`, `Ч` or `Ъ`.
+
+`capCode` handles the one case the index cannot: УПР sends `$81-$9F`, which is
+the letter's own code less `$40`, so a Ctrl'd byte is shown on the letter it was
+made from.
+
+The PC board is the same caps over `byScan`, where the mapping is exact and
+there is nothing to look up; each cap carries its own name and, under it, the
+byte it would send right now. `F4-F12` are drawn and come out dead, which is the
+Agat having only F1, F2 and F3.
+
+Clicking a cap puts its code straight into the latch rather than going back
+through the scancode table: a cap knows its own byte, and several caps have no
+host key at all. `tools/vectors.js` asserts the transcription both ways — no
+code a host key sends is without a cap, no cap is unreachable, and every cap
+drawn dead really is.
 
 ---
 

@@ -28,6 +28,12 @@
     this.irqModel = opts.irqModel || 'raster';  // 'raster' | 'held' | 'pulse'
     this.soundLog = null;
     this.onStatus = opts.onStatus || function () {};
+    // What the on-screen keyboard watches: the byte a host key produced, the
+    // key coming back up, and a modifier being held — which changes every cap
+    // on the board without producing a byte of its own.
+    this.onKey = opts.onKey || function () {};
+    this.onKeyUp = opts.onKeyUp || function () {};
+    this.onMods = opts.onMods || function () {};
     this.frame = this.frame.bind(this);
   }
 
@@ -37,7 +43,12 @@
       self.roms = roms;
       self.build();
       AGAT.attachKeyboard(window, self, {
-        onKey: function () { self.speaker.start(); self.speaker.resume(); },
+        onKey: function (v, info) {
+          self.speaker.start(); self.speaker.resume();
+          self.onKey(v, info);
+        },
+        onKeyUp: function (info) { self.onKeyUp(info); },
+        onMods: function (m) { self.onMods(m); },
       });
     });
   };

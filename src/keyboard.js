@@ -13,6 +13,11 @@
 // The table below is the shipped keyb/default.bin from agat-emulator, emitted
 // verbatim; the RUS planes are a JCUKEN layout, so Cyrillic comes from where
 // the key *is*, not from what the host keyboard thinks it types.
+//
+// The same table is also indexed backwards here, by the byte produced, because
+// that is the direction every actual question runs in: a game wants ^, and the
+// person at the keyboard needs to know which key sends one. `keyview.js` draws
+// that answer; `routesTo` is where it comes from.
 (function (AGAT) {
   'use strict';
 
@@ -124,35 +129,163 @@
     Insert: 0x52, Delete: 0x53, NumpadEnter: 0x1c, NumpadDivide: 0x35,
   };
 
-  // Returns the byte to put in $C000, or -1 for "not a key this machine has".
-  function decode(e, layout) {
-    var ext = Object.prototype.hasOwnProperty.call(EXT_SCAN, e.code);
-    var scan = ext ? EXT_SCAN[e.code] : SCAN[e.code];
-    if (scan === undefined) return -1;
-    var mod = ext ? EXT : e.ctrlKey ? CTRL : e.shiftKey ? SHIFT : NORMAL;
+  // Which plane a scancode is read from, given the modifiers.
+  function planeFor(ext, ctrl, shift) {
+    return ext ? EXT : ctrl ? CTRL : shift ? SHIFT : NORMAL;
+  }
+
+  // The table lookup itself. Returns the byte to put in $C000, or -1 for
+  // "nothing here" — the planes are sparse, and a hole means the machine has
+  // no key that sends anything from this one.
+  function codeFor(scan, layout, mod) {
     var v = KEYMAP[((layout * 4 + mod) << 7) | scan];
     return v ? (v | 0x80) : -1;
   }
 
+  // Which scancode a browser event is, and whether it is one of the E0-prefixed
+  // keys. Null for a key the table does not carry at all.
+  function scanOf(e) {
+    var ext = Object.prototype.hasOwnProperty.call(EXT_SCAN, e.code);
+    var scan = ext ? EXT_SCAN[e.code] : SCAN[e.code];
+    if (scan === undefined) return null;
+    return { scan: scan, ext: ext, code: e.code };
+  }
+
+  // Returns the byte to put in $C000, or -1 for "not a key this machine has".
+  function decode(e, layout) {
+    var s = scanOf(e);
+    if (!s) return -1;
+    return codeFor(s.scan, layout, planeFor(s.ext, e.ctrlKey, e.shiftKey));
+  }
+
+  // ---- reading the table backwards -----------------------------------------
+  //
+  // Forwards — key to byte — is what the machine needs. Every question a person
+  // has is the other way round: the game wants ^, which key is that? So index
+  // the whole table once by the byte it produces. This is also what makes the
+  // on-screen keyboard's caps light up without a second hand-written map: a cap
+  // owns a code, and the code knows its keys.
+
+  var ROUTES = null;
+
+  function buildRoutes() {
+    var i, layout, mod, scan, v;
+    ROUTES = [];
+    for (i = 0; i < 128; i++) ROUTES.push([]);
+    for (layout = 0; layout < 2; layout++) {
+      for (mod = 0; mod < 4; mod++) {
+        for (scan = 0; scan < 128; scan++) {
+          v = KEYMAP[((layout * 4 + mod) << 7) | scan];
+          if (!v || !KEYNAME[scan + (mod === EXT ? 256 : 0)]) continue;
+          // The two EXT planes are the same plane: an arrow key does not care
+          // which layout is up, and listing it twice would only say so twice.
+          if (mod === EXT && layout !== LAT) continue;
+          ROUTES[v & 0x7f].push({ layout: layout, mod: mod, scan: scan });
+        }
+      }
+    }
+  }
+
+  // Every way to reach a code, as {layout, mod, scan}. The code is masked to 7
+  // bits: bit 7 is the strobe the machine sets, not part of the character.
+  function routesTo(code) {
+    if (!ROUTES) buildRoutes();
+    return ROUTES[code & 0x7f];
+  }
+
+  // Host key names for those routes, so a tooltip can say "ЛАТ Shift+6" rather
+  // than "$07 plane 1". Only keys the tables carry appear; a scancode that is
+  // in KEYMAP but that no browser key reaches is not a route at all.
+  var KEYNAME = (function () {
+    var out = {}, k;
+    var PRETTY = {
+      Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+      Semicolon: ';', Quote: "'", Backquote: '`', Backslash: '\\',
+      Comma: ',', Period: '.', Slash: '/', Space: 'Space', Enter: 'Enter',
+      Tab: 'Tab', Escape: 'Esc', Backspace: 'Bksp',
+      Insert: 'Ins', Delete: 'Del', PageUp: 'PgUp', PageDown: 'PgDn',
+      ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+      NumpadMultiply: 'Num *', NumpadAdd: 'Num +', NumpadSubtract: 'Num -',
+      NumpadDivide: 'Num /', NumpadDecimal: 'Num .', NumpadEnter: 'Num Enter',
+    };
+    function name(k) {
+      if (PRETTY[k]) return PRETTY[k];
+      if (k.indexOf('Key') === 0) return k.slice(3);
+      if (k.indexOf('Digit') === 0) return k.slice(5);
+      if (k.indexOf('Numpad') === 0) return 'Num ' + k.slice(6);
+      return k;
+    }
+    for (k in SCAN) out[SCAN[k]] = name(k);
+    for (k in EXT_SCAN) out[EXT_SCAN[k] + 256] = name(k);
+    return out;
+  })();
+
+  function keyName(scan, mod) {
+    return KEYNAME[scan + (mod === EXT ? 256 : 0)] || '$' + scan.toString(16);
+  }
+
+  // A route, said out loud: "ЛАТ Shift+6", "РУС X", "↑".
+  function routeName(r) {
+    if (r.mod === EXT) return keyName(r.scan, EXT);
+    return (r.layout === RUS ? 'РУС ' : 'ЛАТ ') +
+           (r.mod === SHIFT ? 'Shift+' : r.mod === CTRL ? 'Ctrl+' : '') +
+           keyName(r.scan, r.mod);
+  }
+
   // Attach to a DOM element. `target` gets the listeners, `machine` receives
   // the decoded byte. Returns a detach function.
+  //
+  // The optional callbacks are what the on-screen keyboard watches: which key
+  // went down and came back up, and whether a modifier is being held — a
+  // modifier changes every cap on the board without producing a byte of its own.
   AGAT.attachKeyboard = function (el, machine, opts) {
     opts = opts || {};
+    var shift = false, ctrl = false;
+
+    function mods(e) {
+      if (!opts.onMods || (e.shiftKey === shift && e.ctrlKey === ctrl)) return;
+      shift = e.shiftKey; ctrl = e.ctrlKey;
+      opts.onMods({ shift: shift, ctrl: ctrl });
+    }
     function onKeyDown(e) {
+      mods(e);
       if (e.metaKey || e.altKey) return;
       var m = machine.machine || machine;      // accept an App or a Machine
-      var v = decode(e, m.cyrillic ? RUS : LAT);
+      var s = scanOf(e);
+      if (!s) return;
+      var v = codeFor(s.scan, m.cyrillic ? RUS : LAT,
+                      planeFor(s.ext, e.ctrlKey, e.shiftKey));
       if (v < 0) return;
       m.kbdLatch = v & 0xff;
-      if (opts.onKey) opts.onKey(v);
+      if (opts.onKey) opts.onKey(v, s);
       e.preventDefault();
     }
+    function onKeyUp(e) {
+      mods(e);
+      var s = scanOf(e);
+      if (s && opts.onKeyUp) opts.onKeyUp(s);
+    }
+    // Leaving the window is a key-up nobody sends: without this a cap stays
+    // lit, and a Shift released elsewhere leaves the board in the wrong plane.
+    function onBlur() {
+      shift = ctrl = false;
+      if (opts.onMods) opts.onMods({ shift: false, ctrl: false });
+      if (opts.onKeyUp) opts.onKeyUp(null);
+    }
     el.addEventListener('keydown', onKeyDown);
-    return function () { el.removeEventListener('keydown', onKeyDown); };
+    el.addEventListener('keyup', onKeyUp);
+    el.addEventListener('blur', onBlur);
+    return function () {
+      el.removeEventListener('keydown', onKeyDown);
+      el.removeEventListener('keyup', onKeyUp);
+      el.removeEventListener('blur', onBlur);
+    };
   };
 
   AGAT.keyboard = {
-    decode: decode, KEYMAP: KEYMAP, SCAN: SCAN, EXT_SCAN: EXT_SCAN,
+    decode: decode, codeFor: codeFor, scanOf: scanOf, planeFor: planeFor,
+    routesTo: routesTo, routeName: routeName, keyName: keyName,
+    KEYMAP: KEYMAP, SCAN: SCAN, EXT_SCAN: EXT_SCAN,
     LAT: LAT, RUS: RUS, NORMAL: NORMAL, SHIFT: SHIFT, CTRL: CTRL, EXT: EXT,
   };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

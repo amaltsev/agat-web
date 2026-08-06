@@ -18,6 +18,7 @@ const MODULES = [
   'src/video.js',
   'src/font.js',
   'src/keyboard.js',
+  'src/keyview.js',
   'src/audio.js',
   'src/unpack.js',
   'src/fil.js',

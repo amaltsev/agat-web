@@ -67,6 +67,62 @@
   }
   .lamp.on i { background: #6a2a24; }
   .lamp.busy i { background: #ff5f52; box-shadow: 0 0 7px #ff5f5299; }
+  /* The on-screen keyboard. Sized in `em` throughout so the whole board scales
+     with one font-size, which is what makes it fit a phone as well as a page:
+     every cap width in keyview.js is a multiple of the same unit. */
+  #keyboard {
+    width: min(94vw, var(--page)); margin-top: 12px;
+    container-type: inline-size;
+  }
+  #keyboard:empty { display: none; }
+  .kb-board {
+    display: flex; gap: 1.4em; justify-content: center; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 10px; font-size: clamp(7px, 1.85vw, 15px);
+    touch-action: none; user-select: none;
+  }
+  /* Then size the unit off the container rather than the viewport, so the board
+     fills the width it has been given instead of landing wherever a fraction of
+     the window happens to fall — on a phone that was leaving a third of the
+     screen empty on either side. The divisors are the two boards' measured
+     widths in ems; the 22px is this rule's own padding and border, which do not
+     scale with the font. A browser without container units drops the calc and
+     keeps the clamp above it. */
+  .kb-board.kb-agat { font-size: calc((100cqw - 22px) / 50.2); }
+  /* The PC board is a fifth wider — a function row, a nav cluster and a numeric
+     pad the machine never had. */
+  .kb-board.kb-pc {
+    font-size: clamp(6px, 1.5vw, 12px);
+    font-size: calc((100cqw - 22px) / 59.9);
+  }
+  .kb-row { display: flex; gap: .18em; margin-bottom: .18em; }
+  .kb-cap {
+    display: flex; flex-direction: column; justify-content: center;
+    align-items: center; height: 2.3em; padding: 0; gap: 0;
+    background: #cfcabf; border: 1px solid #0000; border-radius: .25em;
+    color: #2a2a28; font: inherit; line-height: 1.05; cursor: pointer;
+    box-shadow: inset 0 -.18em 0 #0000001f;
+  }
+  /* Red, as the machine's function keys are, and as the drive lamps are: the
+     page's accent blue on a keycap would read as a button rather than a key. */
+  .kb-cap.red { background: #d4453a; color: #fff; }
+  .kb-cap:hover { outline: 1px solid var(--accent); }
+  .kb-cap.down, .kb-cap.on { background: var(--accent); color: #10131a; }
+  .kb-cap.dead { opacity: .4; cursor: default; }
+  .kb-word { font-size: .82em; padding: 0 .2em; }
+  .kb-half, .kb-sends { font-size: 1.05em; }
+  /* Three states a legend can be in, and they are the point of the board:
+     `dead` is a code no host key ever sends, `far` one that needs the other
+     layout, `near` one this layout reaches. `lit` is the half the current
+     register would actually send. */
+  .kb-half.dead, .kb-sends.dead, .kb-word.dead { opacity: .25; }
+  .kb-half.far, .kb-word.far { opacity: .42; }
+  .kb-half.near { opacity: .62; }
+  .kb-half.lit, .kb-sends.lit { opacity: 1; font-weight: 700; }
+  .kb-readout {
+    color: var(--dim); font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-align: center; margin-top: 6px;
+  }
   #status {
     color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
     margin-left: auto; text-align: right; max-width: 46ch;
@@ -110,6 +166,11 @@
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
+  <select id="kbd" title="Draw the keyboard and light the key each host keypress reaches. АГАТ is the machine's own board, PC the keys the scancode table maps.">
+    <option value="">Keyboard off</option>
+    <option value="agat">АГАТ keyboard</option>
+    <option value="pc">PC keyboard</option>
+  </select>
   <select id="irq" disabled title="Sub-frame interrupt rate. Software that sequences sound on the interrupt count hears this as pitch and tempo.">
     <option value="0">IRQ 1000 Hz</option>
     <option value="500">IRQ 500 Hz</option>
@@ -125,6 +186,8 @@
   <span id="status">loading…</span>
 </div>
 
+<div id="keyboard"></div>
+
 <div class="help">
   <p>
     Click the screen and type. <kbd>Return</kbd>, <kbd>Esc</kbd>, arrows and
@@ -136,6 +199,15 @@
     the machine's own monitor, which is where you land with no disk in.
   </p>
   <table>
+    <tr><td><b>Keyboard</b></td><td>
+      Draws the mapping rather than leaving you to guess it — the Agat's own
+      board, or the PC keys the table maps — with the cap your keypress reaches
+      lit and <code>$C000</code> shown underneath. Switching <b>ЛАТ/РУС</b>
+      moves the lit cap and greys out what the other layout can no longer type:
+      РУС cannot reach <code>' , / ;</code> and ЛАТ cannot reach Ю, Ч or Ъ. Caps
+      can be clicked, so a key your host will not send is still reachable, and
+      hovering one names every host key that reaches it.
+    </td></tr>
     <tr><td><b>Takes</b></td><td>
       <code>.aim</code> tagged track images, <code>.dsk</code> sector images and
       <code>.nib</code> nibble images — 140K and 840K of each — plus
@@ -155,8 +227,9 @@
       until you choose one yourself.
     </td></tr>
     <tr><td><b>Bookmarks</b></td><td>
-      The machine, its RAM size and both interrupt settings ride in the address,
-      so a configuration that runs a program properly can be kept or passed on.
+      The machine, its RAM size, both interrupt settings and which keyboard is
+      up ride in the address, so a configuration that runs a program properly
+      can be kept or passed on.
     </td></tr>
   </table>
   <p id="examples"></p>
@@ -186,6 +259,7 @@
 <script src="src/video.js"></script>
 <script src="src/font.js"></script>
 <script src="src/keyboard.js"></script>
+<script src="src/keyview.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/unpack.js"></script>
 <script src="src/fil.js"></script>
@@ -198,6 +272,10 @@
   var ramSel = document.getElementById('ram');
   var rateSel = document.getElementById('irq');
   var holdSel = document.getElementById('hold');
+  var kbdSel = document.getElementById('kbd');
+  var layoutBtn = document.getElementById('layout');
+  var keyboardEl = document.getElementById('keyboard');
+  var kbView = null;
 
   // ---- the settings, in the URL ---------------------------------------------
   //
@@ -239,6 +317,9 @@
     // The rate belongs to the free-running models; under `raster` it comes off
     // the line counter, and 0 is "whatever the machine does" either way.
     if (holdSel.value !== 'raster' && rateSel.value !== '0') q.push('rate=' + rateSel.value);
+    // Which board is up is part of a working configuration too: a bookmark for
+    // a game whose keys are a puzzle should open with the keyboard showing.
+    if (kbdSel.value) q.push('kbd=' + kbdSel.value);
     location.replace('#' + q.join('&'));
   }
 
@@ -247,6 +328,7 @@
   pick(ramSel, Number(url.ram) * 1024);
   pick(holdSel, url.irq);
   pick(rateSel, url.rate);
+  pick(kbdSel, url.kbd);
   ramSel.disabled = modelSel.value === '9';
   rateSel.disabled = holdSel.value === 'raster';
 
@@ -257,6 +339,9 @@
     ramSize: Number(ramSel.value),
     irqModel: holdSel.value,
     subFrameHz: rateSel.disabled ? 0 : Number(rateSel.value),
+    onKey: function (v, info) { if (kbView) kbView.light(info, v, true); },
+    onKeyUp: function (info) { if (kbView) kbView.light(info, 0, false); },
+    onMods: function (m) { if (kbView) kbView.setMods(m); },
   });
   // A machine named in the URL was chosen as deliberately as one picked from
   // the menu, so a dropped file's 7a/9a hint does not overrule it either.
@@ -273,6 +358,9 @@
     if (app.model === 7) ramSel.value = String(app.ramSize);
     ramSel.disabled = app.model === 9;
     document.title = 'Agat-' + app.model + ' ' + (app.ramSize >> 10) + 'K — emulator';
+    // Switching machines builds a new one, and a new one comes up in ЛАТ. The
+    // button and the board have to follow it rather than keep claiming РУС.
+    syncLayout();
   }
   syncMachineUI();
 
@@ -334,10 +422,40 @@
   modelSel.addEventListener('change', applyModel);
   ramSel.addEventListener('change', applyModel);
 
-  var layoutBtn = document.getElementById('layout');
-  layoutBtn.addEventListener('click', function () {
-    layoutBtn.textContent = app.toggleLayout() ? 'РУС' : 'ЛАТ';
-  });
+  // ---- the layout, and the keyboard that draws it ----------------------------
+  //
+  // ЛАТ/РУС can be switched from the bar or from a cap on the board, and the
+  // two must never disagree — software reads which is live at $C063, and a
+  // button claiming the other one would be worse than no button.
+
+  function syncLayout() {
+    if (!app.machine) return;         // the first call lands before init() builds one
+    var rus = app.machine.cyrillic;
+    layoutBtn.textContent = rus ? 'РУС' : 'ЛАТ';
+    if (kbView) kbView.setLayout(rus);
+  }
+  function toggleLayout() {
+    app.toggleLayout();
+    syncLayout();
+  }
+  layoutBtn.addEventListener('click', toggleLayout);
+
+  function applyKbd() {
+    var want = kbdSel.value;
+    if (!want) {
+      if (kbView) { kbView.destroy(); kbView = null; }
+      return;
+    }
+    if (!kbView) {
+      kbView = new AGAT.KeyView(keyboardEl, app, {
+        view: want, rus: app.machine.cyrillic, onLayout: toggleLayout,
+      });
+    } else {
+      kbView.setView(want);
+    }
+    kbView.setLayout(app.machine.cyrillic);
+  }
+  kbdSel.addEventListener('change', function () { applyKbd(); saveUrl(); });
 
   rateSel.addEventListener('change', function (e) {
     var hz = Number(e.target.value);
@@ -433,6 +551,9 @@
       if (lampEls[i].className !== cls) lampEls[i].className = cls;
       if (lampEls[i].title !== title) lampEls[i].title = title;
     }
+    // $C000 changes on a keypress and is cleared by the program that reads it,
+    // so the readout has to be polled rather than pushed.
+    if (kbView) kbView.sync();
   }
 
   // A handle for the browser console: agat.machine, agat.video, agat.drives.
@@ -443,6 +564,7 @@
   });
 
   app.init().then(function () {
+    applyKbd();
     say('ready — drop a file, or press Reset for the monitor');
     setInterval(function () { if (app.running) say(app.describe()); }, 500);
     // The lamps run five times faster than the status line: at 500 ms a drive

@@ -180,6 +180,117 @@ function eq(what, got, want) {
   }
 }
 
+// --- the keyboard, and the two boards that draw it --------------------------
+// The АГАТ board is a transcription of a photograph, and a transcription is
+// exactly the kind of thing that is wrong in one place and looks right. These
+// check it against the shipped scancode table rather than against the eye: a
+// cap that carries a code nothing sends, or a code with no cap, fails here.
+{
+  const K = A.keyboard, V = A.keyview;
+
+  // The split of decode() into a pure lookup has to change nothing.
+  {
+    const back = {};
+    for (const name in K.SCAN) back[K.SCAN[name]] = name;
+    let same = true;
+    for (let layout = 0; layout < 2; layout++) {
+      for (const scan in back) {
+        for (const mod of [0, 1, 2]) {
+          const e = { code: back[scan], shiftKey: mod === 1, ctrlKey: mod === 2 };
+          if (K.decode(e, layout) !== K.codeFor(Number(scan), layout, mod)) same = false;
+        }
+      }
+    }
+    eq('codeFor and decode agree everywhere', same, true);
+  }
+
+  // Which host keys reach a code. The three below are the ones worth pinning:
+  // Ч and Ю are unreachable in ЛАТ, and ¤ needs a shift the cap does not show.
+  const hex = (v) => '$' + v.toString(16).toUpperCase();
+  const names = (c) => K.routesTo(c).map(K.routeName).join(', ');
+  eq('Ч ($5E) comes from РУС X', names(0x5e),
+     'ЛАТ Shift+6, ЛАТ Shift+`, РУС X, РУС Shift+`');
+  eq('Ю ($40) comes from РУС .', names(0x40), 'ЛАТ `, ЛАТ Shift+2, РУС `, РУС .');
+  eq('¤ ($24) comes from ЛАТ Shift+4', names(0x24), 'ЛАТ Shift+4');
+  {
+    const stranded = [];
+    for (let c = 0x20; c < 0x80; c++) if (!K.routesTo(c).length) stranded.push(hex(c));
+    eq('every printable code has some host key', stranded, []);
+  }
+
+  // Every legend on the АГАТ board, and every code any plane can produce.
+  const caps = new Set();
+  let letters = 0, badLetter = 0;
+  for (const rows of [V.AGAT_MAIN, V.AGAT_PAD]) {
+    for (const r of rows) {
+      for (const d of r.keys) {
+        for (const k of ['u', 's', 'code']) {
+          if (d[k] !== undefined) caps.add(d[k] & 0x7f);
+        }
+        // A letter cap's two legends are one byte in two character sets, and
+        // РЕГ moves between them by exactly $20. That is what lets both fit.
+        if (d.u >= 0x40 && d.u <= 0x5f && d.s !== undefined) {
+          letters++;
+          if (d.s !== d.u + 0x20) badLetter++;
+        }
+      }
+    }
+  }
+  eq('the letter block is all 32 caps', letters, 32);
+  eq('every letter cap is shifted by $20', badLetter, 0);
+
+  const produced = new Set();
+  for (let layout = 0; layout < 2; layout++) {
+    for (let mod = 0; mod < 4; mod++) {
+      for (let scan = 0; scan < 128; scan++) {
+        const v = K.KEYMAP[((layout * 4 + mod) << 7) | scan];
+        if (v && K.routesTo(v).length) produced.add(v & 0x7f);
+      }
+    }
+  }
+  const orphan = [...produced].filter((c) => !caps.has(c) && !caps.has(V.capCode(c)));
+  eq('every code a host key sends lands on a cap', orphan.map(hex), []);
+  const unsent = [...caps].filter((c) => !K.routesTo(c).length);
+  eq('every АГАТ cap is reachable from the host', unsent.map(hex), []);
+
+  // Caps drawn dead really are dead: ПВТ, РЕД and the pad's `=` are painted on
+  // the machine and send nothing the shipped table carries.
+  let dead = 0, wrongDead = 0;
+  for (const rows of [V.AGAT_MAIN, V.AGAT_PAD]) {
+    for (const r of rows) {
+      for (const d of r.keys) {
+        if (d.act !== 'none') continue;
+        dead++;
+        if (d.u !== undefined || d.code !== undefined) wrongDead++;
+      }
+    }
+  }
+  eq('three caps send nothing', dead, 3);
+  eq('no dead cap secretly carries a code', wrongDead, 0);
+
+  // The PC board is the other half of the answer, so it has to be all of it.
+  const drawn = new Set();
+  let twice = 0;
+  for (const rows of [V.PC_MAIN, V.PC_NAV, V.PC_PAD]) {
+    for (const r of rows) {
+      for (const d of r.keys) {
+        if (d.scan === undefined) continue;
+        const key = d.scan + (d.ext ? 256 : 0);
+        if (drawn.has(key)) twice++;
+        drawn.add(key);
+      }
+    }
+  }
+  const want = new Set();
+  for (const n in K.SCAN) want.add(K.SCAN[n]);
+  for (const n in K.EXT_SCAN) want.add(K.EXT_SCAN[n] + 256);
+  eq('the PC board draws no key twice', twice, 0);
+  eq('the PC board draws every mapped scancode',
+     [...want].filter((s) => !drawn.has(s)).map(hex), []);
+  eq('the PC board draws nothing the table does not map',
+     [...drawn].filter((s) => !want.has(s)).map(hex), []);
+}
+
 // --- .fil -------------------------------------------------------------------
 {
   const fil = path.join(H.ROOT, 'examples', 'snake.fil');

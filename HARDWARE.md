@@ -299,6 +299,40 @@ what the host keyboard types. `$C000` is the latch, `$C010` clears the strobe.
 Software reads which layout is live at `$C063`: `$FF`/`$7F` masked `$C0` on the
 Agat-9, `$FF` on the Agat-7.
 
+### The keyboard itself
+
+The board drawn by `keyview.js` is transcribed from a photograph of the
+machine's Клавиатура, [kbd15.jpg][kbd] at agatcomp.ru. Reading it against the
+scancode table settles several things that are not obvious from the table alone:
+
+- **The caps are dual-legend, Cyrillic over Latin** — `Й/J`, `Ц/C`, `Ш/[`,
+  `Ю/@`, `Ч/^`, `Э/\`. Those are one byte read in two character sets: `$40-$5F`
+  is ASCII `@A-Z[\]^_`, and the Agat-7's font carries upper-case Cyrillic in
+  KOI-7 N2 order at `$60-$7F`. **РЕГ adds exactly `$20`** across the whole
+  letter block, which is what lets both legends live on one cap. Away from the
+  letters the shift is `$10`: `;`/`+`, `-`/`=`, `:`/`*`, `,`/`<`.
+- The Agat-9's font puts lower-case Latin at `$60-$7F` and its Cyrillic at
+  `$C0-$DF`, so the *same* keypress draws a different glyph on the two
+  machines.
+- **The board has F1, F2 and F3 and no more**, and the table has codes at
+  exactly scancodes `$3B $3C $3D` (`$84 $85 $86`) and nothing for F4-F12.
+- **There is no Esc, Tab or Backspace cap.** `←` is the backspace, and both the
+  host's Backspace and its ArrowLeft reach it, because both are `$88`.
+- The digit row is the ГОСТ one — `;/+ 1/! 2/" 3/# 4/¤ 5/% 6/& 7/' 8/( 9/) 0
+  -/=` — and its legends check out against the character generator: what the
+  `4` cap calls `¤` really is what the Agat-7 font draws at `$24`, where ASCII
+  has `$`.
+- **`ПВТ` and `РЕД` send nothing** the shipped table carries, and neither does
+  the pad's `=`.
+- The numeric pad runs `1 2 3 / 4 5 6 / 7 8 9 / 0 . =`, inverted from a PC's,
+  and every cap on it sends a control code in `$81-$9F` rather than a digit.
+
+Which host key reaches a given cap therefore **changes with the layout**: `РУС
+normal` reaches `$40 $5E $5F` (`Ю Ч Ъ`), which `ЛАТ normal` cannot, and `ЛАТ
+normal` reaches `$27 $2C $2F $3B` (`' , / ;`), which `РУС` cannot.
+
+[kbd]: https://www.agatcomp.ru/agat/Hardware/Key_Joy/KeyClassic/kbd15.jpg
+
 ---
 
 ## Floppies
