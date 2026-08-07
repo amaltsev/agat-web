@@ -12,6 +12,13 @@
     "irq": "raster",
     "rate": 0
   },
+  "keys": {
+    "ArrowUp": { },
+    "ArrowDown": { },
+    "ArrowLeft": { },
+    "ArrowRight": { },
+    "Space": { }
+  },
   "media": [
     {
       "name": "snake.fil",
