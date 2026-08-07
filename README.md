@@ -147,10 +147,11 @@ unfamiliar game actually has.
 `media[].data` is plain base64 in short lines, and the payload is the image
 **as it was found**. Anything changed goes in `media[].patches` as
 `{ "at": 45312, "hex": "A9 60 85 84" }`, applied after decoding — so a container
-carries a pristine copy of what it came from and the change stays legible. What
-a program writes to an unlocked disk is saved the same way: the written track is
-read back into the sectors it was built from, so a saved game costs a patch and
-not a second copy of the disk.
+carries a pristine copy of what it came from and a small change stays legible.
+A patch past 32 bytes is base64 like the payload instead. What a program writes
+to an unlocked disk is saved the same way: the written track is read back into
+the sectors it was built from, so a saved game costs a patch and not a second
+copy of the disk.
 
 `title`, `author`, `date`, `url` and `notes` are for the record — often the
 container is the only place left that says who wrote a program and when.

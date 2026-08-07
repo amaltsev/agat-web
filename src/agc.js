@@ -25,8 +25,12 @@
 //
 // Two encodings, on purpose. The payload is bulk and gets base64, split into
 // short lines so a container is a file a diff can show rather than one endless
-// token. A patch is a handful of bytes that someone will want to *read* before
-// running the file, so it gets hex: `{ "at": 45312, "hex": "A9 60 85 84" }`.
+// token. A patch of a few bytes is something someone will want to *read* before
+// running the file, so it gets hex: `{ "at": 45312, "hex": "A9 60 85 84" }`. A
+// patch that is a rewritten disk sector is not read by eye and would be three
+// times the size in hex, so past `HEX_MAX` it takes the payload's base64,
+// wrapped the same way: `{ "at": 45312, "data": ["…", "…"] }`. Either form is
+// accepted wherever a patch is; giving both is an error.
 //
 // The payload is the image as it was found, byte for byte; patches are the diff
 // and are applied after decoding. That way a container carries a pristine copy
@@ -49,6 +53,11 @@
   // multiple of 4 it is a whole number of base64 groups, so every line decodes
   // on its own and none of them carries padding but the last.
   var LINE = 76;
+
+  // Bytes of patch that still read as bytes. Above this a record is a rewritten
+  // sector rather than a poke, so it goes to base64: hex would be three times
+  // the size of something nobody reads by eye anyway.
+  var HEX_MAX = 32;
 
   function encode64(bytes, width) {
     width = width || LINE;
@@ -95,6 +104,26 @@
     return s.join(' ');
   }
 
+  // What one patch record says to write. Both keys at once is refused rather
+  // than resolved: a container is often hand-edited, and a file that says two
+  // things should not have one of them quietly win.
+  function patchBytes(p) {
+    var hasHex = p.hex !== undefined, hasData = p.data !== undefined;
+    if (hasHex && hasData) {
+      throw new Error('patch at ' + p.at + ' gives both hex and data');
+    }
+    if (hasData) {
+      try {
+        return decode64(p.data);
+      } catch (e) {
+        // atob's own text names neither the patch nor what was wrong with it.
+        throw new Error('patch at ' + p.at + ': the data is not valid base64');
+      }
+    }
+    if (!hasHex) throw new Error('patch at ' + p.at + ' gives neither hex nor data');
+    return fromHex(p.hex);
+  }
+
   // A patched copy. The source is left alone because the container keeps it:
   // saving a container that was loaded from one has to write back the image it
   // was given, not the image it ran.
@@ -103,7 +132,7 @@
     var out = new Uint8Array(bytes), i, j, at, b;
     for (i = 0; i < patches.length; i++) {
       at = patches[i].at;
-      b = fromHex(patches[i].hex);
+      b = patchBytes(patches[i]);
       if (!(at >= 0) || at + b.length > out.length) {
         throw new Error('patch at ' + at + ' (' + b.length +
                         ' bytes) falls outside a ' + out.length + '-byte image');
@@ -125,21 +154,29 @@
   // Where two images differ, as patch records. Runs are joined across gaps of
   // up to 8 identical bytes, because a patch that reads as one change should be
   // one record: three separate `at`s for `A9 60 EA EA 85 84` helps nobody.
-  function diff(orig, mod) {
+  // `width` is the base64 line width for the records that get base64, and
+  // defaults to the payload's.
+  function diff(orig, mod, width) {
     if (orig.length !== mod.length) {
       throw new Error('cannot diff a ' + mod.length + '-byte image against a ' +
                       orig.length + '-byte one — patches are byte-for-byte');
+    }
+    function record(at, end) {
+      var bytes = mod.subarray(at, end);
+      return bytes.length > HEX_MAX
+        ? { at: at, data: encode64(bytes, width) }
+        : { at: at, hex: toHex(bytes) };
     }
     var out = [], at = -1, last = -1, i;
     for (i = 0; i < orig.length; i++) {
       if (orig[i] === mod[i]) continue;
       if (at < 0 || i - last > 8) {
-        if (at >= 0) out.push({ at: at, hex: toHex(mod.subarray(at, last + 1)) });
+        if (at >= 0) out.push(record(at, last + 1));
         at = i;
       }
       last = i;
     }
-    if (at >= 0) out.push({ at: at, hex: toHex(mod.subarray(at, last + 1)) });
+    if (at >= 0) out.push(record(at, last + 1));
     return out;
   }
 
@@ -253,20 +290,30 @@
     return out;
   }
 
+  function hasBase64Patch(media) {
+    var i, p, j;
+    for (i = 0; i < (media || []).length; i++) {
+      p = media[i].patches || [];
+      for (j = 0; j < p.length; j++) if (p[j].data !== undefined) return true;
+    }
+    return false;
+  }
+
+  // Which version to stamp a container with. Everything a version-1 reader knows
+  // still means what it meant, so a container that says nothing more is written
+  // as version 1 and older builds keep opening it. Two things are the
+  // exceptions: `machine.slots`, which a reader that ignored it would answer by
+  // silently running the wrong hardware, and a base64 patch, which a version-1
+  // reader would answer by complaining that undefined is not hex. Both are
+  // stamped 2 and refused rather than misread.
+  function formatVersion(spec) {
+    return spec.slots || hasBase64Patch(spec.media) ? 2 : 1;
+  }
+
   // The writer both `tools/mkagc.js` and the page's Save button go through, so
   // there is one definition of what a container looks like. Fields are added in
   // the documented order because JSON.stringify keeps insertion order, and a
   // format people are meant to hand-edit should read the same way every time.
-  // Which version to stamp a container with. Everything a version-1 reader knows
-  // still means what it meant, so a container that says nothing more is written
-  // as version 1 and older builds keep opening it. `machine.slots` is the
-  // exception: a reader that ignored it would silently run the wrong hardware,
-  // so a container that carries one is stamped 2 and refused rather than
-  // misread.
-  function formatVersion(spec) {
-    return spec.slots ? 2 : 1;
-  }
-
   function build(spec) {
     var o = { agc: formatVersion(spec) };
     if (spec.title) o.title = spec.title;
@@ -290,7 +337,8 @@
   AGAT.agc = {
     parse: parse, build: build,
     encode64: encode64, decode64: decode64,
-    fromHex: fromHex, toHex: toHex, applyPatches: applyPatches, diff: diff,
-    VERSION: VERSION, LINE: LINE,
+    fromHex: fromHex, toHex: toHex, patchBytes: patchBytes,
+    applyPatches: applyPatches, diff: diff,
+    VERSION: VERSION, LINE: LINE, HEX_MAX: HEX_MAX,
   };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

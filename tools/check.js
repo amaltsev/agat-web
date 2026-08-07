@@ -246,7 +246,7 @@ H.loadRoms(ctx).then((roms) => {
                    ? back.patches.length + ' patch' + (back.patches.length === 1 ? '' : 'es')
                    : 'as nibbles — a track would not decode back to sectors'));
     for (const p of back.patches.slice(0, 24)) {
-      const n = p.hex.replace(/[\s,]+/g, '').length / 2;
+      const n = ctx.AGAT.agc.patchBytes(p).length;
       const where = sniffed.kind === 'dsk140'
         ? '  T' + Math.floor((p.at - off) / 4096) +
           ' S' + Math.floor(((p.at - off) % 4096) / 256) : '';

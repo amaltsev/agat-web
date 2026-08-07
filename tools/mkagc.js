@@ -88,7 +88,8 @@ try {
     if (flags.diff) {
       if (i > 0) throw new Error('--diff applies to one image, and this is ' + f);
       patches = patches.concat(
-        diff(bytes, new ctx.Uint8Array(fs.readFileSync(flags.diff))));
+        diff(bytes, new ctx.Uint8Array(fs.readFileSync(flags.diff)),
+             Number(flags.width) || 0));
     }
     // The patches have to apply to what is being packed, or the container is
     // broken in a way only whoever loads it would find out.

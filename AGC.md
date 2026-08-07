@@ -59,7 +59,7 @@ default, and a container that carries nothing but an image is a valid one.
 
 | field | |
 |---|---|
-| `agc` | format version — `1`, or `2` for a container that uses `machine.slots`. Its presence is what identifies the file. |
+| `agc` | format version — `1`, or `2` for a container that uses `machine.slots` or a base64 patch. Its presence is what identifies the file. |
 | `title` | what the program is called |
 | `author` | who wrote it |
 | `date` | **text**, not a number: `"1989"`, `"circa 1985"`, `"1990-92"` |
@@ -211,7 +211,7 @@ poked straight into memory.
 |---|---|
 | `name` | the original filename. The **format is detected by size, not by this** — Agat images in the wild are routinely misnamed. |
 | `data` | base64, as an array of lines |
-| `patches` | changes to apply after decoding, in order |
+| `patches` | changes to apply after decoding, in order; hex or base64 |
 
 `data` is plain base64 — not compressed, so a container stays a text file that
 ordinary tools can look inside. Lines are 76 characters, which is 57 bytes and a
@@ -224,12 +224,19 @@ Anything the emulator takes, a container carries: `.aim`, `.dsk` and `.nib` at
 ### `patches`
 
 ```json
-"patches": [ { "at": 45312, "hex": "A9 60 85 84" } ]
+"patches": [ { "at": 45312, "hex": "A9 60 85 84" },
+             { "at": 46080, "data": ["…", "…"] } ]
 ```
 
-`at` is a byte offset into the decoded payload and `hex` the bytes to write —
-whitespace and commas allowed, so bytes can be grouped the way they mean
-something.
+`at` is a byte offset into the decoded payload, and the bytes to write are
+either `hex` — whitespace and commas allowed, so they can be grouped the way
+they mean something — or `data`, base64 in the same wrapped form as a payload.
+A reader takes both. A record that gives both at once is an error, not a
+preference to resolve.
+
+The writer picks by size: up to 32 bytes hex, above that base64. A poke stays
+something to read; a rewritten sector, which nobody reads by eye, does not cost
+three characters a byte.
 
 The payload stays **the image exactly as it was found**, and changes live here.
 That is the whole point of the split: a container carries a pristine copy of
@@ -240,8 +247,8 @@ result.
 **What a program writes to a disk is saved the same way.** A 140K drive that has
 been unlocked writes to the nibble stream in memory; saving reads each written
 track back into the 16 sectors it was built from and records the difference
-here. A game that keeps a high score costs a patch of a few hundred bytes, not a
-second copy of the disk, and it stays as readable as any other patch.
+here. A game that keeps a high score costs a patch of a few hundred bytes — one
+base64 block, by the size rule above — rather than a second copy of the disk.
 
 A track that will not read back as sectors — a disk formatted some other way, a
 write caught half done — has no sector image for a patch to be the difference
@@ -431,6 +438,8 @@ which is the machine having one `←`.
   will eventually eat someone's notes.
 - `ram` is in kilobytes and `date` is a string. Both are the kind of thing that
   is easy to guess wrong in a second implementation.
+- A patch carries `hex` or `data`, never both. Read either; refuse a record that
+  gives the two.
 
 The reference implementation is [`src/agc.js`](src/agc.js) — about 200 lines,
 no dependencies, and the same file reads and writes.

@@ -353,6 +353,17 @@ function eq(what, got, want) {
         JSON.stringify(back.patches)],
        [0, true]);
 
+    // Out through the container and back in, which is the whole of what the
+    // Save button does. A sector is past `HEX_MAX`, so the record is base64 and
+    // the file is stamped 2 — a version-1 reader could not have applied it.
+    const file = A.agc.build({ media: [{ name: back.name, bytes: back.bytes,
+                                         patches: back.patches }] });
+    const re = A.agc.parse(Buffer.from(file, 'utf8'), 'rise-out.agc');
+    eq('a saved container reopens with the write in it',
+       [JSON.parse(file).agc, Object.keys(back.patches[0]).join('+'),
+        Buffer.compare(Buffer.from(re.media[0].payload), Buffer.from(want256))],
+       [2, 'at+data', 0]);
+
     // A track that will not decode has no sector image to be a patch against.
     // One data-field prologue struck out is enough to lose that sector.
     const t10 = media.trackBase(10);
@@ -706,6 +717,58 @@ function eq(what, got, want) {
     catch (e) { return 'threw'; }
   })(), 'threw');
 
+  // The two encodings a patch may be written in. A hand-written file uses hex;
+  // a rewritten sector arrives as base64, and both have to mean the same thing.
+  {
+    const two = A.agc.encode64(new ctx.Uint8Array([0xaa, 0xbb]));
+    const at2 = (p) => [...A.agc.applyPatches(bytes, [p])].slice(1, 5);
+    const want = [bytes[1], 0xaa, 0xbb, bytes[4]];
+    eq('a base64 patch writes the same bytes as a hex one',
+       [at2({ at: 2, hex: 'AA BB' }), at2({ at: 2, data: two }),
+        at2({ at: 2, data: two.join('\n') })],
+       [want, want, want]);
+    const threw = (p) => {
+      try { A.agc.applyPatches(bytes, [p]); return 'no throw'; }
+      catch (e) { return e.message; }
+    };
+    eq('a patch that says both encodings is refused',
+       threw({ at: 2, hex: 'AABB', data: two }),
+       'patch at 2 gives both hex and data');
+    eq('a patch that says neither is refused',
+       threw({ at: 2 }), 'patch at 2 gives neither hex nor data');
+    eq('base64 that will not decode says which patch',
+       threw({ at: 2, data: 'not base64!!' }),
+       'patch at 2: the data is not valid base64');
+  }
+
+  // Which encoding the differ reaches for. The boundary is the whole rule, and
+  // it is what keeps a poke readable while a written sector stays small.
+  {
+    const changed = (n) => {
+      const mod = new ctx.Uint8Array(bytes);
+      for (let i = 0; i < n; i++) mod[10 + i] = ~bytes[10 + i] & 0xff;
+      return mod;
+    };
+    const small = changed(32), big = changed(33);
+    eq('a patch that can be read stays hex', A.agc.diff(bytes, small),
+       [{ at: 10, hex: A.agc.toHex(small.subarray(10, 42)) }]);
+    eq('a patch too big to read goes to base64 lines',
+       A.agc.diff(bytes, big), [{ at: 10, data: A.agc.encode64(big.subarray(10, 43)) }]);
+    eq('either way the patch says what changed',
+       [[...A.agc.applyPatches(bytes, A.agc.diff(bytes, small))],
+        [...A.agc.applyPatches(bytes, A.agc.diff(bytes, big))]],
+       [[...small], [...big]]);
+    eq('the differ wraps base64 to the width it is given',
+       A.agc.diff(bytes, big, 8)[0].data.map((l) => l.length), [8, 8, 8, 8, 8, 4]);
+    // A version-1 reader has no idea what `data` means and would say only that
+    // undefined is not hex, so a container carrying one is stamped 2.
+    const stamp = (patches) => JSON.parse(
+      A.agc.build({ media: [{ name: 'x.dsk', bytes: bytes, patches: patches }] })).agc;
+    eq('a base64 patch is what stamps a container agc 2',
+       [stamp([]), stamp(A.agc.diff(bytes, small)), stamp(A.agc.diff(bytes, big))],
+       [1, 1, 2]);
+  }
+
   // What a broken container says is the whole of what the page can show, so it
   // has to name the file to open and the entry inside it to look at. Written
   // out by hand rather than built, because a file that will not read is not one
@@ -724,6 +787,10 @@ function eq(what, got, want) {
                     patches: [{ at: 199, hex: 'AABB' }] })),
        'RISE.agc: media 0 (side2.dsk): patch at 199 (2 bytes) falls outside a ' +
        '200-byte image');
+    eq('a patch that will not decode names the file and the entry',
+       why(broken({ name: 'side2.dsk', data: A.agc.encode64(bytes),
+                    patches: [{ at: 4, data: 'not base64!!' }] })),
+       'RISE.agc: media 0 (side2.dsk): patch at 4: the data is not valid base64');
     eq('an entry with nothing in it is named the same way',
        why(broken({ name: 'game.dsk' })),
        'RISE.agc: media 0 (game.dsk) has no data');
