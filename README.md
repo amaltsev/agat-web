@@ -52,7 +52,7 @@ says which keys those are, and on a phone it is what such a container opens
 with.
 
 The bar picks the **machine**; the ⚙ popup has its memory. The default Agat-7 is
-the machine as sold — 96K in three separate devices: 32K of base RAM, a 32K
+the standard machine — 96K in three separate devices: 32K of base RAM, a 32K
 ЭмПЗУ card in slot 2 and a 32K ОЗУ expansion in slot 4. Base RAM is the one to
 set to match your disk, because it is the only memory the video controller scans
 and its size masks the video mode register's page field, so software can tell.

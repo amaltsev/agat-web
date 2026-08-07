@@ -1,9 +1,10 @@
 // The Agat as the MS_* disks see it. Two machines, selected by `model`:
 //
-// Agat-7 — 32K of base RAM and the 2K monitor at $F800-$FFFF, plus two cards
-//   that make up the machine as sold: a ЭмПЗУ in slot 2 behind $D000-$FFFF and
-//   an ОЗУ expansion in slot 4 filling $8000-$BFFF, 32K each. 64K and 128K
-//   fittings of base RAM bank $8000-$BFFF (and, at 128K, $4000-$7FFF) through
+// Agat-7 — 32K of base RAM and the 2K monitor at $F800-$FFFF, plus the two
+//   cards that make up the standard machine: a ЭмПЗУ in slot 2 behind
+//   $D000-$FFFF and an ОЗУ expansion in slot 4 filling $8000-$BFFF, 32K each.
+//   64K and 128K fittings of base RAM bank $8000-$BFFF (and, at 128K,
+//   $4000-$7FFF) through
 //   $C0F0-$C0FF; at 32K there is no bank register on the board at all, and
 //   Mem7 is a no-op above $7FFF. Machine.PROFILES has the whole complement.
 //
@@ -58,8 +59,8 @@
     this.romBase = this.model === 9 ? 0xf000 : 0xf800;
 
     // Base RAM, which is not all the RAM: the Agat-7's cards bring their own and
-    // this counts none of it. The Agat-9 is always 128K. The Agat-7 was sold
-    // with 32K and takes 64K or 128K, and the amount is visible to software —
+    // this counts none of it. The Agat-9 is always 128K. The Agat-7 has 32K as
+    // standard and takes 64K or 128K, and the amount is visible to software —
     // the video mode register's page field is masked by it.
     this.ramSize = this.model === 9 ? 0x20000
                  : (opts.ramSize || Machine.PROFILES[7].ram);
@@ -157,9 +158,9 @@
     this.clock = function () { return self.cpu.cycles; };
   }
 
-  // The two machines as they were sold: how much base RAM, and what is in every
-  // slot. One table, so App and tools/harness build the same machine instead of
-  // each keeping its own card list.
+  // The two machines in their standard configuration: how much base RAM, and
+  // what is in every slot. One table, so App and tools/harness build the same
+  // machine instead of each keeping its own card list.
   //
   // The Agat-7 is 32K on the motherboard plus two 32K cards — a ЭмПЗУ in slot 2
   // behind $D000-$FFFF and an ОЗУ expansion in slot 4 filling $8000-$BFFF. That

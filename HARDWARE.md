@@ -43,7 +43,7 @@ The Agat-9 is the only one of the two with the Apple-compatible video modes.
 
 ### Agat-7
 
-The machine as sold is **96K in three separate devices**, not one setting:
+The standard machine is **96K in three separate devices**, not one setting:
 32K of base RAM on the motherboard, a 32K ЭмПЗУ card in slot 2 and a 32K ОЗУ
 expansion in slot 4. That is agat-emulator's own default complement
 (`sysconf.c:72-77`, `143-150`, `303-306`), and `memsizes_b` (`sysconf.c:28-50`)

@@ -580,7 +580,7 @@ the bug.
 moved gets attributed. When the base RAM default went
 from 64K to 32K, `--ram=64` reproduced the old table exactly — so the diff was
 the default and not the emulator, and the three images that lost their picture
-are three images that want more memory than the machine was sold with.
+are three images that want more memory than the standard machine has.
 
 ### Two traps worth knowing about
 

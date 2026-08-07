@@ -24,7 +24,8 @@
 
   function Psrom7(opts) {
     opts = opts || {};
-    // 32K as sold, and as agat-emulator fits it by default (sysconf.c:143-146).
+    // 32K as standard, and as agat-emulator fits it by default
+    // (sysconf.c:143-146).
     // The 3-bit bank field reaches 128K, which is the most an override can ask
     // for; below that the top banks alias.
     this.size = opts.size || 0x8000;

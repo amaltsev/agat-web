@@ -48,7 +48,7 @@ Settled, with evidence, and expensive to relearn:
   and on the Agat-7 only the *base* RAM. Neither memory card is ever a display
   page: `agat-emulator` calls `vid_invalidate_addr` from `baseram.c` and from
   neither `xram7.c` nor `psrom7.c`.
-- The Agat-7 as sold is **96K in three devices**, never one setting: 32K of base
+- The standard Agat-7 is **96K in three devices**, never one setting: 32K of base
   RAM, a 32K ЭмПЗУ in slot 2, a 32K ОЗУ expansion in slot 4. That is
   agat-emulator's default complement (`sysconf.c:72-77`, `143-150`, `303-306`);
   `memsizes_b` has no 96K entry. At 32K of base RAM the `$C0F0-$C0FF` bank

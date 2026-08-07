@@ -905,7 +905,7 @@ function eq(what, got, want) {
     eq('reset stops the 140K motor', m.cards[3].motor, 0);
     eq('reset restores the video mode', [m.mode, m.videoInts], [0, false]);
 
-    // --- the machine as sold ------------------------------------------------
+    // --- the standard machine -----------------------------------------------
     // 32K on the board, a 32K ЭмПЗУ in slot 2 and a 32K ОЗУ expansion in slot 4:
     // 96K in three devices, agat-emulator's own default (sysconf.c:72-77).
     {
