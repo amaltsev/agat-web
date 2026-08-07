@@ -287,9 +287,10 @@ Drop it on the page, or use **Open…**, or name it in the address:
     index.html#agc=examples/rise-out.agc
 
 The address form fetches the file, so it needs a served page — `fetch` is
-blocked on `file://`, where **Open…** is the way in. A container is applied
-first and the address's other keys after it, so `#agc=…&model=9` tries the
-program on the other machine without editing the file.
+blocked on `file://`, where **Open…** is the way in. The address's other keys go
+into the machine the container builds rather than on top of it, so
+`#agc=…&model=9` tries the program on the other machine without editing the
+file, and the other machine is the one it boots on.
 
 Every command-line tool takes a container wherever it takes an image, and runs
 it on the machine the container names:

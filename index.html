@@ -412,8 +412,10 @@
   //
   // The file itself is not in the URL, but `agc=` names one that can carry it:
   // a container holds the image and the machine together, so a link to one is a
-  // link to a program that runs. A container is applied first and these keys
-  // after it, so a hand-edited `model=9` still wins over what it says.
+  // link to a program that runs. These keys go into the machine the container
+  // builds rather than being applied on top of it afterwards, so a hand-edited
+  // `model=9` still wins over what the container says and the program boots on
+  // the machine that results.
 
   function readUrl() {
     var out = {};
@@ -611,8 +613,10 @@
   }
 
   // Fetch a container the address names. Served pages only — fetch is blocked
-  // on file://, where Open… is the way in.
-  function loadUrl(path) {
+  // on file://, where Open… is the way in. `over` is what the rest of the
+  // address said, for the load to build its machine with; a container reached
+  // any other way is not the one the address describes and gets none.
+  function loadUrl(path, over) {
     unlockAudio();
     unstick();
     // Fetching and reading fail for unrelated reasons, so each says its own
@@ -626,7 +630,7 @@
     }, function (e) {
       throw new Error(path + ': ' + e.message + ' — on file:// use Open…');
     }).then(function (b) {
-      app.load(new Uint8Array(b), path.split('/').pop());
+      app.load(new Uint8Array(b), path.split('/').pop(), null, over);
       afterLoad();
     }).catch(function (e) { say(e.message, true); });
   }
@@ -938,22 +942,29 @@
 
   // A container names a machine, and the address may disagree with it on
   // purpose — that is how a program gets tried on the other model, or under
-  // another interrupt setting, without editing the file. So the container is
-  // applied first and whatever the fragment actually carried is applied over it.
-  function applyUrlOverrides() {
-    if (url.model && pick(modelSel, url.model)) {
-      if (url.ram) pick(ramSel, Number(url.ram) * 1024);
-      applyModel();
-    }
-    if (url.irq && pick(holdSel, url.irq)) app.setIrqModel(holdSel.value);
-    if (url.rate && pick(rateSel, url.rate)) app.setSubFrameHz(Number(rateSel.value));
-    rateSel.disabled = holdSel.value === 'raster';
+  // another interrupt setting, without editing the file. What the fragment
+  // carried goes into the load, so the container builds one machine with the
+  // disagreement already in it and the program boots on that. Read before the
+  // fetch, while the controls still hold the address's values: a container that
+  // has landed has already put its own into them.
+  //
+  // Through pick() for its answer rather than the values themselves, so a key
+  // no control offers is ignored instead of overriding the container with a
+  // default. `psrom`/`xram` are the Agat-7's, and so is slotOverrides().
+  function urlOverrides() {
+    var o = {};
+    if (url.model && pick(modelSel, url.model)) o.model = Number(modelSel.value);
+    if (url.ram && pick(ramSel, Number(url.ram) * 1024)) o.ramSize = Number(ramSel.value);
+    if (url.psrom !== undefined || url.xram !== undefined) o.slots = slotOverrides();
+    if (url.irq && pick(holdSel, url.irq)) o.irqModel = holdSel.value;
+    if (url.rate && pick(rateSel, url.rate)) o.subFrameHz = Number(rateSel.value);
+    return o;
   }
 
   app.init().then(function () {
     applyKbd();
     syncKbd(!agcUrl);
-    if (agcUrl) loadUrl(agcUrl).then(applyUrlOverrides);
+    if (agcUrl) loadUrl(agcUrl, urlOverrides());
     say('ready — drop a file, or press Reset for the monitor');
     setInterval(function () { if (app.running) say(app.describe()); }, 500);
     // The lamps run five times faster than the status line: at 500 ms a drive

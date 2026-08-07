@@ -101,9 +101,9 @@ treated as chosen, so a `7a`/`9a` filename does not override it.
 
     index.html#agc=examples/rise-out.agc
 
-A container is fetched, so this needs a served page. It is applied first and the
-other keys after it, so `#agc=…&model=9` still tries the program on the other
-machine.
+A container is fetched, so this needs a served page. The other keys go into the
+machine it builds rather than on top of it, so `#agc=…&model=9` tries the
+program on the other machine and it is the other machine the program boots on.
 
 ## `.agc` — the Agat Container
 

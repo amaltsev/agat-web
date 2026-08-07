@@ -310,14 +310,18 @@
   // the bytes as they were packed and the patches applied to them, so a
   // container that is loaded and saved again writes back what it carried
   // rather than the patched image it ran.
-  App.prototype.load = function (bytes, name, from) {
+  //
+  // `over` is what beats a container about the machine — the page hands it what
+  // the address said. It reaches the container branch and nowhere else, and
+  // never travels with `from`: a container inside a container is refused.
+  App.prototype.load = function (bytes, name, from, over) {
     var s = AGAT.sniff(bytes, name);
     if (!s.kind) {
       throw new Error(name + ': not a recognised Agat image (' + bytes.length + ' bytes)');
     }
     if (s.kind === 'agc') {
       if (from) throw new Error(name + ': a container inside a container');
-      return this.applyAgc(s.agc);
+      return this.applyAgc(s.agc, over);
     }
     // A file dropped on its own belongs to no container, and the last one's
     // title and remap are about a different program: a game's movement keys
@@ -398,22 +402,35 @@
   // A container names a machine, so applying one is a rebuild: the model, the
   // RAM size and both interrupt settings go in together and build() applies
   // them all at once, rather than the machine being taken apart four times.
-  App.prototype.applyAgc = function (c) {
+  //
+  // `over` is whatever overrules the container — {model, ramSize, slots,
+  // irqModel, subFrameHz}, in this object's own units, each key honoured only
+  // if it is there. It belongs here, before the build, rather than in a second
+  // one afterwards: build() resets the CPU and boots nothing, so a rebuild once
+  // the media has loaded leaves the machine in the monitor with the disk still
+  // in the drive.
+  App.prototype.applyAgc = function (c, over) {
+    over = over || {};
     // A container describes a whole machine, so the drives start empty: a disk
     // left in another drive is not part of what it says, and build() would
     // otherwise carry it across into the machine the container asked for.
     this.ejectAll();
-    if (c.machine.model) {
+    var model = over.model || c.machine.model;
+    if (model) {
       this.modelPinned = true;         // as deliberate as a machine off the menu
-      this.model = c.machine.model;
+      this.model = model;
     }
     this.ramSize = this.model === 9 ? 0x20000
-                 : (c.machine.ram ? c.machine.ram * 1024
-                                  : AGAT.Machine.PROFILES[this.model].ram);
+                 : (over.ramSize || (c.machine.ram ? c.machine.ram * 1024
+                                     : AGAT.Machine.PROFILES[this.model].ram));
     // Slot sizes and slot numbers, kilobytes in the file and bytes in here.
-    this.slotOverrides = c.machine.slots ? scaleSlots(c.machine.slots) : null;
-    if (c.quirks.irq) this.irqModel = c.quirks.irq;
-    this.subFrameHz = c.quirks.rate || 0;
+    // Asked for by name rather than by truth, because a `null` here is the
+    // profile's own cards and has to survive as that.
+    this.slotOverrides = 'slots' in over ? over.slots
+                       : (c.machine.slots ? scaleSlots(c.machine.slots) : null);
+    if (over.irqModel || c.quirks.irq) this.irqModel = over.irqModel || c.quirks.irq;
+    this.subFrameHz = over.subFrameHz !== undefined ? over.subFrameHz
+                                                   : (c.quirks.rate || 0);
     this.build();
 
     var keys = AGAT.keyboard.setRemap(c.keys);

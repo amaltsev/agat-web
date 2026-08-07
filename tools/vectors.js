@@ -1026,6 +1026,65 @@ function eq(what, got, want) {
          null);
     }
 
+    // --- a container, and what the address says over it ----------------------
+    // The page loads a container the URL names and hands it whatever else the
+    // fragment carried. The two go in together, because applying them apart is
+    // a second build() — and build() resets the CPU without booting anything,
+    // which is a machine sitting in the monitor with its disk still in the
+    // drive. bootSlot leaves pc at $C000 + slot*256 and a reset does not, so pc
+    // alone says which of the two the medium got.
+    {
+      const canvas = {
+        width: 0, height: 0,
+        getContext: () => ({ createImageData: () => ({ data: [] }),
+                             putImageData: () => {} }),
+      };
+      ctx.requestAnimationFrame = () => {};   // App.start() wants one; no frame runs
+      const agc = (spec) => ctx.Uint8Array.from(Buffer.from(A.agc.build(
+        Object.assign({ media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }] },
+                      spec))));
+      const load = (bytes, over) => {
+        const app = new A.App({ canvas, model: 7, onStatus: () => {} });
+        app.roms = roms;
+        app.build();
+        app.load(bytes, 'x.agc', null, over);
+        return app;
+      };
+      // What examples/rise-out.agc says, and the address the page writes for it.
+      const stock = agc({ model: 7, ram: 64, irq: 'raster' });
+
+      const plain = load(stock);
+      eq('a container builds the machine it names',
+         [plain.model, plain.ramSize, plain.irqModel, plain.subFrameHz],
+         [7, 0x10000, 'raster', 0]);
+      eq('...and boots its medium', [plain.drives[3].name, plain.machine.cpu.pc],
+         ['x.dsk', 0xc300]);
+
+      const same = load(stock, { model: 7, ramSize: 0x10000, irqModel: 'raster' });
+      eq('an address agreeing with the container changes nothing',
+         [same.model, same.ramSize, same.irqModel], [7, 0x10000, 'raster']);
+      eq('...and still leaves the medium booting', same.machine.cpu.pc, 0xc300);
+
+      const other = load(stock, { ramSize: 0x20000, irqModel: 'pulse',
+                                  subFrameHz: 1000, slots: { 2: null } });
+      eq('an address disagreeing with it wins',
+         [other.ramSize, other.irqModel, other.subFrameHz, other.slots[2]],
+         [0x20000, 'pulse', 1000, undefined]);
+      eq('...on the machine the medium boots on', other.machine.cpu.pc, 0xc300);
+
+      const nine = load(stock, { model: 9 });
+      eq('an address may name the other machine',
+         [nine.model, nine.ramSize], [9, 0x20000]);
+      eq('...where the 140K drive is slot 6', nine.machine.cpu.pc, 0xc600);
+
+      // `null` is the profile's own cards, and has to outrank a container that
+      // names some — which is not the same as saying nothing at all.
+      const carded = agc({ model: 7, ram: 64, slots: { 4: { card: 'xram', ram: 128 } } });
+      eq('a container sizes its cards', load(carded).slots[4].ram, 0x20000);
+      eq('an address of stock sizes puts them back',
+         load(carded, { slots: null }).slots[4].ram, 0x8000);
+    }
+
     // --- the raster interrupt model -----------------------------------------
     // Run the line counter through one whole frame and describe the IRQ line's
     // shape, which is what the oscilloscope traces on agatcomp measure: the
