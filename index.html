@@ -173,7 +173,9 @@
   }
   #status {
     color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-    margin-left: auto; text-align: right; max-width: 46ch;
+    /* Wide enough for the longest line the run loop builds: a container title,
+       the machine, its RAM, the video mode and two drives. */
+    margin-left: auto; text-align: right; max-width: 60ch;
   }
   #status.err { color: #ff9c8a; }
   .help {
@@ -558,9 +560,13 @@
     document.addEventListener(t, unlockAudio);
   });
 
+  // The run loop says the same line twice a second, and most of the time it is
+  // the line already shown; write only what differs, so a repaint means the
+  // machine changed.
   function say(msg, isError) {
-    statusEl.textContent = msg;
-    statusEl.className = isError ? 'err' : '';
+    var cls = isError ? 'err' : '';
+    if (statusEl.textContent !== msg) statusEl.textContent = msg;
+    if (statusEl.className !== cls) statusEl.className = cls;
   }
 
   function afterLoad() {
