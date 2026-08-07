@@ -698,10 +698,39 @@ function eq(what, got, want) {
      [bytes[1], 0xaa, 0xbb, bytes[4]]);
   eq('patching leaves the packed copy alone',
      [c.media[0].bytes[2], c.media[0].bytes[3]], [bytes[2], bytes[3]]);
+  // Unprefixed, because `applyPatches` is also called on its own — by
+  // `tools/mkagc.js` and by the Save button — where there is no container to
+  // name. The container's own reader is what adds the name; see below.
   eq('a patch off the end is refused', (() => {
     try { A.agc.applyPatches(bytes, [{ at: 199, hex: 'AABB' }]); return 'no'; }
     catch (e) { return 'threw'; }
   })(), 'threw');
+
+  // What a broken container says is the whole of what the page can show, so it
+  // has to name the file to open and the entry inside it to look at. Written
+  // out by hand rather than built, because a file that will not read is not one
+  // the writer would have produced.
+  {
+    const broken = (m) => Buffer.from(JSON.stringify({ agc: 2, media: [m] }), 'utf8');
+    const why = (b) => {
+      try { A.agc.parse(b, 'RISE.agc'); return 'no throw'; }
+      catch (e) { return e.message; }
+    };
+    eq('an entry that will not decode names the file and the entry',
+       why(broken({ name: 'game.dsk', data: 'not base64!!' })),
+       'RISE.agc: media 0 (game.dsk): the data is not valid base64');
+    eq('a patch off the end names the file and the entry',
+       why(broken({ name: 'side2.dsk', data: A.agc.encode64(bytes),
+                    patches: [{ at: 199, hex: 'AABB' }] })),
+       'RISE.agc: media 0 (side2.dsk): patch at 199 (2 bytes) falls outside a ' +
+       '200-byte image');
+    eq('an entry with nothing in it is named the same way',
+       why(broken({ name: 'game.dsk' })),
+       'RISE.agc: media 0 (game.dsk) has no data');
+    eq('an unnamed entry is still placed by its number',
+       why(broken({ data: 'not base64!!' })),
+       'RISE.agc: media 0: the data is not valid base64');
+  }
 
   eq('a disk is not a container', A.agc.parse(bytes, 'x.dsk'), null);
   eq('other JSON is not a container',

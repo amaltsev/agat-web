@@ -113,6 +113,15 @@
     return out;
   }
 
+  // Which entry of which container, said so a reader can act on it: the file to
+  // open, and the media entry inside it to look at. `applyPatches` and the
+  // base64 decoder are given bytes and nothing else, so what they throw is true
+  // but unplaceable; every throw out of the media loop wears this.
+  function mediaLabel(name, i, m) {
+    return (name || '.agc') + ': media ' + i +
+           (m && m.name ? ' (' + m.name + ')' : '');
+  }
+
   // Where two images differ, as patch records. Runs are joined across gaps of
   // up to 8 identical bytes, because a patch that reads as one change should be
   // one record: three separate `at`s for `A9 60 EA EA 85 84` helps nobody.
@@ -218,16 +227,27 @@
       media: [],
     };
 
-    var list = c.media || [], i, m;
+    var list = c.media || [], i, m, raw, payload;
     for (i = 0; i < list.length; i++) {
       m = list[i];
-      if (!m || !m.data) throw new Error((name || '.agc') + ': media ' + i + ' has no data');
-      var raw = decode64(m.data);
+      if (!m || !m.data) throw new Error(mediaLabel(name, i, m) + ' has no data');
+      try {
+        raw = decode64(m.data);
+      } catch (e) {
+        // atob's own text names neither the file nor the entry, and says
+        // nothing else worth keeping.
+        throw new Error(mediaLabel(name, i, m) + ': the data is not valid base64');
+      }
+      try {
+        payload = applyPatches(raw, m.patches);      // what the machine runs
+      } catch (e) {
+        throw new Error(mediaLabel(name, i, m) + ': ' + e.message);
+      }
       out.media.push({
         name: m.name || (out.title || 'image'),
         bytes: raw,                                  // as packed, before patches
         patches: m.patches || [],
-        payload: applyPatches(raw, m.patches),       // what the machine runs
+        payload: payload,
       });
     }
     return out;

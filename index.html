@@ -563,11 +563,23 @@
   // The run loop says the same line twice a second, and most of the time it is
   // the line already shown; write only what differs, so a repaint means the
   // machine changed.
+  //
+  // An error holds the line against that traffic. A failed load leaves the
+  // machine running, so describe() reaches the line inside the tick and the
+  // reason is gone before it can be read. The line stays red until the next
+  // load, or until the user touches a control — which says it has been read.
+  // A later error replaces an earlier one; ordinary traffic does not.
+  var stuck = false;
+
   function say(msg, isError) {
+    if (stuck && !isError) return;
+    stuck = !!isError;
     var cls = isError ? 'err' : '';
     if (statusEl.textContent !== msg) statusEl.textContent = msg;
     if (statusEl.className !== cls) statusEl.className = cls;
   }
+
+  function unstick() { stuck = false; }
 
   function afterLoad() {
     screen.classList.remove('empty');
@@ -588,6 +600,10 @@
       chain = chain.then(function () {
         // A file opened by hand is not the one the address names.
         agcUrl = '';
+        // Released here rather than once the load has worked: the load posts
+        // its own line from inside — a container's credit, or which slot a disk
+        // is booting from — and a held error would swallow it.
+        unstick();
         return app.readFile(f).then(afterLoad);
       }).catch(function (e) { say(e.message, true); });
     });
@@ -598,15 +614,21 @@
   // on file://, where Open… is the way in.
   function loadUrl(path) {
     unlockAudio();
+    unstick();
+    // Fetching and reading fail for unrelated reasons, so each says its own
+    // piece. A file that never arrived is named here, and is the only case
+    // Open… is an answer to; a file that arrived and would not read has named
+    // itself already, down to the media entry, and pointing at Open… would
+    // send the reader back for the same bytes.
     return fetch(path).then(function (r) {
-      if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+      if (!r.ok) throw new Error(path + ': ' + r.status + ' ' + r.statusText);
       return r.arrayBuffer();
+    }, function (e) {
+      throw new Error(path + ': ' + e.message + ' — on file:// use Open…');
     }).then(function (b) {
       app.load(new Uint8Array(b), path.split('/').pop());
       afterLoad();
-    }).catch(function (e) {
-      say(path + ': ' + e.message + ' — on file:// use Open…', true);
-    });
+    }).catch(function (e) { say(e.message, true); });
   }
 
   document.getElementById('file').addEventListener('change', function (e) {
@@ -894,8 +916,24 @@
   // A handle for the browser console: agat.machine, agat.video, agat.drives.
   window.agat = app;
 
+  // A control touched after an error is an acknowledgement: the run loop can
+  // have the line back. One listener rather than a call in every handler, in
+  // the capture phase so the handler's own message is the one that lands and
+  // not the one refused.
+  ['click', 'change'].forEach(function (t) {
+    document.addEventListener(t, unstick, true);
+  });
+
   window.addEventListener('error', function (e) {
     say(e.message + ' @' + String(e.filename).split('/').pop() + ':' + e.lineno, true);
+  });
+
+  // The same trap for the half of the code that is promises. Without it a
+  // rejection outside the load paths' own catches is reported to the console
+  // and nowhere the user is looking.
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    say((r && r.message) || String(r), true);
   });
 
   // A container names a machine, and the address may disagree with it on

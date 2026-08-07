@@ -65,7 +65,14 @@
   };
 
   Speaker.prototype.resume = function () {
-    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    // A resume the browser refuses is not a failure worth reporting: the
+    // context stays suspended and the next gesture tries again, which is what
+    // every gesture is wired to. Answered here so it cannot reach the page as
+    // an unhandled rejection.
+    if (this.ctx && this.ctx.state === 'suspended') {
+      var p = this.ctx.resume();
+      if (p && p.catch) p.catch(function () {});
+    }
   };
 
   Speaker.prototype.setVolume = function (v) {
