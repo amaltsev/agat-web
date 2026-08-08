@@ -15,6 +15,13 @@ The reference throughout is **Agat Emulator** by NOP
 (<https://sourceforge.net/projects/agatemulator/>, GPLv2) and **AgatF** by
 Ravodin & co.
 
+Where those two disagree with the factory documentation — **ФгЗ.032.002 ТО4/ТО5,
+Техническое описание, часть 1** — the manual wins on what the machine *was*, and
+the emulators on what it *did*, because they were written against hardware that
+still ran. ТО4 is typed on a typewriter and has its own errors, several of them
+noted below; a claim from it that nothing else corroborates is a lead, not a
+fact.
+
 ---
 
 ## The two machines
@@ -43,17 +50,48 @@ The Agat-9 is the only one of the two with the Apple-compatible video modes.
 
 ### Agat-7
 
-The standard machine is **96K in three separate devices**, not one setting:
-32K of base RAM on the motherboard, a 32K ЭмПЗУ card in slot 2 and a 32K ОЗУ
-expansion in slot 4. That is agat-emulator's own default complement
-(`sysconf.c:72-77`, `143-150`, `303-306`), and `memsizes_b` (`sysconf.c:28-50`)
-has no 96K entry at all — the figure is these three added up. `Machine.PROFILES`
-carries the whole thing.
+The standard machine is **128K in three separate devices**, not one setting:
+64K of base RAM on the motherboard, a 32K ЭмПЗУ card in slot 2 and a 32K ОЗУ
+expansion in slot 4. `memsizes_b` (`sysconf.c:28-50`) has no 128K-in-one-device
+entry for this — the figure is these three added up. `Machine.PROFILES` carries
+the whole thing.
+
+The cards are agat-emulator's own default complement (`sysconf.c:72-77`,
+`143-150`). The 64K is the factory manual's rather than agat-emulator's, which
+starts from 32K (`sysconf.c:303-306`):
+
+- ФгЗ.032.002 ТО4 табл.1 lists блок системный ФгЗ.038.650 as **"ОЗУ — 64К
+  байт"** — that is the delivered system block.
+- §2.1 gives RAM as "мин — 32К байт; макс — 256К" — 32K is the floor, not the
+  standard.
+- Табл.8 enumerates screen pages ЭС 0-7, and ЭС 4-7 are the two switchable
+  arrays at `$8000-$BFFF`. A 32K board has no such pages.
+- The stock monitor ROM carries a bank-select service at `$F85E`
+  (`AND #$07 / LDA $F869,Y / STA $C0F0,Y`) with an eight-entry table, which on a
+  32K board has nothing to talk to.
+
+One line in the same manual argues the other way — page 40's "4ЭС и 16ЭПС —
+АГАТ-7, АГАТ-8", which implies 32K of ООП and contradicts табл.8 three pages
+earlier. It is a one-item list under "в зависимости от исполнения", so it reads
+as a truncation.
+
+agat-emulator's 32K is a choice in its configuration dialog, and copying it here
+was the one place this project copied a default rather than a behaviour. The
+symptom was software that simply expects RAM at `$8000` — the ОЗУ card powers up
+deselected and is not what it finds there.
 
 Base RAM is 32/64/128K in **16K** banks through three windows (`$0000`, `$4000`,
 `$8000`), with the bank register at `$C0F0-$C0FF` — also taking its value from
 the low nibble of the address, on reads as well as writes. Decode tables are
 transcribed verbatim from `baseram.c:475-502`.
+
+**The bank register sits inside the `$C080+16n` slot range and must be decoded
+before it.** The Agat-7 has six I/O slots, not seven: табл.9 gives X1-X7 the
+`D̅S̅` pages `$C090-$C0EF` and the `I̅/̅O̅S̅` pages `$C100-$C600`, and the board
+spends what would be the seventh slot's page on this register. Testing
+`lo >= 0x80` first hands `$C0F0-$C0FF` to an empty slot 7, which pins
+`$8000-$BFFF` to one array and is what the factory test's `ОШИБКА ВКЛЮЧЕНИЯ
+БАНКА` reports.
 
 **At 32K there is no bank register on the board.** agat-emulator installs it
 only above `$8000` of RAM (`baseram.c:573`), so `$C0F0-$C0FF` is an undecoded
@@ -105,9 +143,11 @@ wrong emulator. Its **исполнение** is the fitting — `0` = 32K, `1` =
 `2` = 128K — and the stock machine passes all three of its branches:
 
 ```sh
-node tools/shot.js examples/TESTOZU7_140.dsk 101  --model=7   # ОЗУ,    base RAM 32K
-node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7   # ДОПОЗУ, slot 4, 32K
-node tools/shot.js examples/TESTOZU7_140.dsk 4201 --model=7   # ПЗУ,    slot 2, 32K
+node tools/shot.js examples/TESTOZU7_140.dsk 111  --model=7            # ОЗУ,    base RAM 64K
+node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7            # ДОПОЗУ, slot 4, 32K
+node tools/shot.js examples/TESTOZU7_140.dsk 4201 --model=7            # ПЗУ,    slot 2, 32K
+node tools/shot.js examples/TESTOZU7_140.dsk 101  --model=7 --ram=32   # ОЗУ,    base RAM 32K
+node tools/shot.js examples/TESTOZU7_140.dsk 121  --model=7 --ram=128  # ОЗУ,    base RAM 128K
 ```
 
 A clean run shows the pass counter advancing with no error lines. Declaring one
@@ -115,18 +155,21 @@ size and giving the emulator another — `--xram=16` against исполнени�
 it report mismatches, which is how you confirm the test is really reaching the
 card and not agreeing with itself.
 
-**Base RAM above 32K does not pass**: `--ram=64` with исполнение 1, and
-`--ram=128` with исполнение 2, both report errors under `БАНК F0`. This predates
-the expansion card — it reproduces on the commit before it was added — and is
-not yet explained.
+All three base RAM fittings pass. `--ram=64` with исполнение 1 used to report
+`ОШИБКА ВКЛЮЧЕНИЯ БАНКА =F1(F0)`, which is the bank register being decoded after
+the slot range and swallowed by the empty slot 7 — see the `$C0F0` note above.
 
 The full menu, transcribed from the 1986 factory manual, is in
 [examples/TESTOZU7_140.md](examples/TESTOZU7_140.md).
 
 ### ОЗУ expansion (Agat-7, slot 4)
 
-The card that fills `$8000-$BFFF`, which base RAM on a 32K board does not reach.
-Ported from `xram7.c`.
+The card that can take `$8000-$BFFF` over from base RAM, and the only thing that
+reaches it at all on a 32K board. Ported from `xram7.c`.
+
+It powers up **deselected** — ТО4 §3.4.4, "после включения питания всегда
+происходит автоматическая установка нулевого слова состояния" — so it is never
+what a program finds at `$8000-$BFFF` at reset.
 
 Its control register is the slot's **whole `$Cn00-$CnFF` page** and takes its
 value from the address, like the ЭмПЗУ's — but only **seven** bits of it

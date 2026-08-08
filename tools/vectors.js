@@ -113,7 +113,7 @@ function eq(what, got, want) {
   const cards = (app) => Object.keys(app.slots).map((n) => n + ':' + app.slots[n].card);
 
   const stock = mk({ model: 7 });
-  eq('App stock Agat-7 base RAM', stock.ramSize, 0x8000);
+  eq('App stock Agat-7 base RAM', stock.ramSize, 0x10000);
   eq('App stock Agat-7 slots', cards(stock),
      ['2:psrom', '3:fdd140', '4:xram', '5:fdd840']);
   eq('App stock Agat-7 writes no slot diff', stock.slotDiff(), null);
@@ -1114,44 +1114,67 @@ function eq(what, got, want) {
     eq('reset restores the video mode', [m.mode, m.videoInts], [0, false]);
 
     // --- the standard machine -----------------------------------------------
-    // 32K on the board, a 32K ЭмПЗУ in slot 2 and a 32K ОЗУ expansion in slot 4:
-    // 96K in three devices, agat-emulator's own default (sysconf.c:72-77).
+    // 64K on the board (ТО4 табл.1: блок системный ФгЗ.038.650, "ОЗУ — 64К
+    // байт"), a 32K ЭмПЗУ in slot 2 and a 32K ОЗУ expansion in slot 4: 128K in
+    // three devices, with agat-emulator's card complement (sysconf.c:72-77).
     {
       const s = H.makeMachine(ctx, roms, { model: 7 });
       s.reset();
-      eq('stock Agat-7 base RAM is 32K', s.ramSize, 0x8000);
+      eq('stock Agat-7 base RAM is 64K', s.ramSize, 0x10000);
       eq('stock Agat-7 fits both memory cards',
          [s.psrom.size, s.xram.size], [0x8000, 0x8000]);
-      eq('stock Agat-7 is 96K in total',
-         (s.ramSize + s.psrom.size + s.xram.size) >> 10, 96);
+      eq('stock Agat-7 is 128K in total',
+         (s.ramSize + s.psrom.size + s.xram.size) >> 10, 128);
 
-      // $8000-$BFFF is nothing at all until the card claims it.
-      eq('$8000 is open bus before the expansion is selected', s.read(0x8000), 0xff);
-      s.write(0x8000, 0x11);
-      eq('a store into open bus goes nowhere', s.read(0x8000), 0xff);
+      // The expansion boots deselected — ТО4 §3.4.4, "после включения питания
+      // всегда происходит автоматическая установка нулевого слова состояния" —
+      // so $8000-$BFFF is base RAM until something claims it.
+      s.write(0x8000, 0x33);
+      eq('$8000 is base RAM before the expansion is selected', s.read(0x8000), 0x33);
 
       s.write(0xc408, 0);                  // select it, bank 0
-      s.write(0x8000, 0x22);
-      eq('the expansion answers once selected', s.read(0x8000), 0x22);
+      s.write(0x8000, 0x44);
+      eq('the expansion covers base RAM while selected', s.read(0x8000), 0x44);
       s.write(0xc409, 0);                  // bank 1
       eq('another bank is another 16K', s.read(0x8000), 0);
       s.write(0xc408, 0);
-      eq('and back again', s.read(0x8000), 0x22);
+      eq('and back again', s.read(0x8000), 0x44);
 
-      // Deselecting hands the address back. On a 32K board there is nothing
-      // behind it; on a 64K one there is base RAM, which is the case that
-      // matters — it is what agat-emulator's XRAM_RELEASE exists for.
+      // Deselecting hands the address straight back — it is what
+      // agat-emulator's XRAM_RELEASE exists for.
       s.write(0xc400, 0);
-      eq('deselecting frees $8000 again', s.read(0x8000), 0xff);
+      eq('releasing gives base RAM back untouched', s.read(0x8000), 0x33);
 
-      const big = H.makeMachine(ctx, roms, { model: 7, ramSize: 0x10000 });
-      big.reset();
-      big.write(0x8000, 0x33);             // base RAM, through the $C0F0 window
-      big.write(0xc408, 0);
-      big.write(0x8000, 0x44);
-      eq('the expansion covers base RAM while selected', big.read(0x8000), 0x44);
-      big.write(0xc400, 0);
-      eq('releasing gives base RAM back untouched', big.read(0x8000), 0x33);
+      // $C0F0-$C0FF is the base RAM bank register, and it lands inside the
+      // $C080+16n slot range: the Agat-7 has six I/O slots, and the seventh
+      // slot's page is this instead (ТО4 табл.9). Decoded after the slot range
+      // it would be swallowed by the empty slot 7, and $8000-$BFFF would be
+      // pinned to one array — which is what the factory memory test's
+      // "ОШИБКА ВКЛЮЧЕНИЯ БАНКА" catches.
+      s.write(0xc0f1, 0);
+      eq('the second switchable array is a different 16K', s.read(0x8000), 0);
+      s.write(0x8000, 0x55);
+      s.write(0xc0f0, 0);
+      eq('and the first one is still there', s.read(0x8000), 0x33);
+      s.read(0xc0f1);                      // a read switches too: the value is the address
+      eq('reading the bank register switches as well', s.read(0x8000), 0x55);
+      s.read(0xc0f0);
+
+      // The 32K board is a fitting the manual allows and the emulator still
+      // takes: two arrays, no bank register, and nothing behind $8000-$BFFF
+      // until the expansion claims it.
+      const small = H.makeMachine(ctx, roms, { model: 7, ramSize: 0x8000 });
+      small.reset();
+      small.write(0xc0f1, 0);
+      eq('a 32K board has no bank register to switch', small.mem7.map[2], 0x8000);
+      eq('$8000 is open bus on a 32K board', small.read(0x8000), 0xff);
+      small.write(0x8000, 0x11);
+      eq('a store into open bus goes nowhere', small.read(0x8000), 0xff);
+      small.write(0xc408, 0);
+      small.write(0x8000, 0x22);
+      eq('the expansion still answers there', small.read(0x8000), 0x22);
+      small.write(0xc400, 0);
+      eq('and deselecting leaves nothing behind it', small.read(0x8000), 0xff);
 
       // Neither memory card decodes $C080+16n — psrom7.c and xram7.c fill
       // io_sel and never baseio_sel, so those pages read as nothing.

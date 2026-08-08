@@ -60,7 +60,7 @@ says which of your keys reaches it and moves with ЛАТ/РУС. Both come from 
 container's [`controls`](AGC.md#controls--what-the-program-reads-and-what-for).
 
 The bar picks the **machine**; the ⚙ popup has its memory. The default Agat-7 is
-the standard machine — 96K in three separate devices: 32K of base RAM, a 32K
+the standard machine — 128K in three separate devices: 64K of base RAM, a 32K
 ЭмПЗУ card in slot 2 and a 32K ОЗУ expansion in slot 4. Base RAM is the one to
 set to match your disk, because it is the only memory the video controller scans
 and its size masks the video mode register's page field, so software can tell.
@@ -194,9 +194,10 @@ file use **Open…** instead.
 `examples/TESTOZU7_140.dsk` is the **factory memory test**, which asks you to
 declare the machine's memory and then verifies that it really is that — so it is
 the one thing here that can tell a wrong card from a wrong emulator. The stock
-Agat-7 passes all three of its branches. Its menu, transcribed from the 1986
-manual, is in [examples/TESTOZU7_140.md](examples/TESTOZU7_140.md); the short
-version is that **исполнение starts at 0**, where `0` is 32K.
+Agat-7 passes all three of its branches, and base RAM passes at all three
+fittings. Its menu, transcribed from the 1986 manual, is in
+[examples/TESTOZU7_140.md](examples/TESTOZU7_140.md); the short version is that
+**исполнение starts at 0**, where `0` is 32K — so the stock 64K board is `1`.
 
 `examples/irqtest.dsk` is an interrupt and sound test, and it is meant to be run
 under **other** emulators too — it is a bootable 140K disk because every Agat

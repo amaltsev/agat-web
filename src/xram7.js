@@ -1,7 +1,11 @@
-// Agat-7 ОЗУ expansion — the slot card that fills $8000-$BFFF. Base RAM on the
-// standard machine stops at $7FFF; this card supplies the 16K above it, one
-// bank at a time out of its own 32K, and the stock machine is 32K base + this +
-// a 32K ЭмПЗУ, which is the 96K everyone remembers.
+// Agat-7 ОЗУ expansion — the slot card that can take $8000-$BFFF over from base
+// RAM, one 16K bank at a time out of its own 32K. On a 32K board it is the only
+// thing that reaches those addresses at all. The stock machine here is 64K base
+// + this + a 32K ЭмПЗУ.
+//
+// It powers up deselected (ТО4 §3.4.4: "после включения питания всегда
+// происходит автоматическая установка нулевого слова состояния"), so it is
+// never what a program finds at $8000-$BFFF at reset.
 //
 // Ported from agat-emulator xram7.c. The control register is the slot's whole
 // $Cn00-$CnFF page and, like the ЭмПЗУ next door, takes its value from the

@@ -48,12 +48,24 @@ Settled, with evidence, and expensive to relearn:
   and on the Agat-7 only the *base* RAM. Neither memory card is ever a display
   page: `agat-emulator` calls `vid_invalidate_addr` from `baseram.c` and from
   neither `xram7.c` nor `psrom7.c`.
-- The standard Agat-7 is **96K in three devices**, never one setting: 32K of base
-  RAM, a 32K ЭмПЗУ in slot 2, a 32K ОЗУ expansion in slot 4. That is
-  agat-emulator's default complement (`sysconf.c:72-77`, `143-150`, `303-306`);
-  `memsizes_b` has no 96K entry. At 32K of base RAM the `$C0F0-$C0FF` bank
-  register **is not fitted** (`baseram.c:573`) and `$8000-$BFFF` belongs to the
-  expansion card or to nobody.
+- The standard Agat-7 is **128K in three devices**, never one setting: 64K of
+  base RAM, a 32K ЭмПЗУ in slot 2, a 32K ОЗУ expansion in slot 4. The cards are
+  agat-emulator's default complement (`sysconf.c:72-77`, `143-150`); the 64K is
+  the factory manual's, ФгЗ.032.002 ТО4 табл.1 — блок системный ФгЗ.038.650,
+  "ОЗУ — 64К байт" — against agat-emulator's own 32K, which is a choice in its
+  configuration dialog (`sysconf.c:303-306`) rather than a fitting ТО4
+  describes. §2.1 gives 32K as the *minimum*.
+- The Agat-7 has **six I/O slots, not seven**: ТО4 табл.9 gives X1-X7 the pages
+  `$C100-$C600` and `$C090-$C0EF`, and the board spends the seventh slot's
+  `$C080+16n` page on the base RAM bank register at `$C0F0-$C0FF` instead. That
+  register has to be decoded *before* the slot range or an empty slot 7 eats it.
+  At 32K of base RAM it **is not fitted** (`baseram.c:573`) and `$8000-$BFFF`
+  belongs to the expansion card or to nobody.
+- The ОЗУ expansion powers up **deselected** (ТО4 §3.4.4: "после включения
+  питания всегда происходит автоматическая установка нулевого слова состояния"),
+  so it is never what a program finds at `$8000-$BFFF` at reset. Software that
+  simply expects RAM there wants base RAM, which is why 32K of it is the wrong
+  default and not a card-selection bug to be papered over.
 - `Machine.PROFILES` is the single definition of what each machine is.
   `App.build()` and `tools/harness.js` both go through it; do not spell a card
   list out anywhere else.
@@ -61,7 +73,8 @@ Settled, with evidence, and expensive to relearn:
   configuration and then verifies it, which beats any assertion written from the
   same reading of the source that produced the bug. Its **исполнение is
   0 = 32K, 1 = 64K, 2 = 128K** — it starts at 0, and a probe that starts at 1
-  concludes 32K is not a fitting. The menu is in
+  concludes 32K is not a fitting. It is what caught the bank register being
+  swallowed by slot 7: `ОШИБКА ВКЛЮЧЕНИЯ БАНКА =F1(F0)`. The menu is in
   [examples/TESTOZU7_140.md](examples/TESTOZU7_140.md).
 - The glyph bit window belongs to the font: Agat-7 is `m0 = $80`, Agat-9 `$40`.
 - The raster is **312 lines of 672 clocks** of the 10.5 MHz crystal — 15625 Hz
@@ -97,6 +110,12 @@ Nearly every hardware detail is transcribed from **Agat Emulator** by NOP
 (GPLv2) and **AgatF** by Ravodin & co. Where a transcription is subtle, the
 comment names the source file. Keep doing that — it turns disagreements into
 lookups.
+
+The factory documentation — **ФгЗ.032.002 ТО4/ТО5**, part 1 — is the other
+source, and the one to reach for when the question is what the machine *was*
+rather than what it *did*: fittings, slot assignments, power-on states. It is
+typed on a typewriter and contradicts itself in places, so cite the табл. or §
+and say when something else disagrees.
 
 The bundled ROMs are theirs, not ours; see [ROMS.md](ROMS.md). The emulator is
 MIT. `examples/` holds two of Андрей Мальцев's own games, included with his

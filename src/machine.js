@@ -1,12 +1,12 @@
 // The Agat as the MS_* disks see it. Two machines, selected by `model`:
 //
-// Agat-7 — 32K of base RAM and the 2K monitor at $F800-$FFFF, plus the two
+// Agat-7 — 64K of base RAM and the 2K monitor at $F800-$FFFF, plus the two
 //   cards that make up the standard machine: a ЭмПЗУ in slot 2 behind
-//   $D000-$FFFF and an ОЗУ expansion in slot 4 filling $8000-$BFFF, 32K each.
-//   64K and 128K fittings of base RAM bank $8000-$BFFF (and, at 128K,
-//   $4000-$7FFF) through
-//   $C0F0-$C0FF; at 32K there is no bank register on the board at all, and
-//   Mem7 is a no-op above $7FFF. Machine.PROFILES has the whole complement.
+//   $D000-$FFFF and an ОЗУ expansion in slot 4 that can take $8000-$BFFF over
+//   from base RAM, 32K each. The 64K and 128K fittings of base RAM bank
+//   $8000-$BFFF (and, at 128K, $4000-$7FFF) through $C0F0-$C0FF; the 32K
+//   fitting has no bank register on the board at all, and Mem7 is a no-op above
+//   $7FFF. Machine.PROFILES has the whole complement.
 //
 // Agat-9 — 128K in sixteen 8K banks. The 64K the CPU sees is eight windows,
 //   each pointed at a bank by a mapping register; the register file lives at
@@ -59,8 +59,8 @@
     this.romBase = this.model === 9 ? 0xf000 : 0xf800;
 
     // Base RAM, which is not all the RAM: the Agat-7's cards bring their own and
-    // this counts none of it. The Agat-9 is always 128K. The Agat-7 has 32K as
-    // standard and takes 64K or 128K, and the amount is visible to software —
+    // this counts none of it. The Agat-9 is always 128K. The Agat-7 has 64K as
+    // standard and takes 32K or 128K, and the amount is visible to software —
     // the video mode register's page field is masked by it.
     this.ramSize = this.model === 9 ? 0x20000
                  : (opts.ramSize || Machine.PROFILES[7].ram);
@@ -162,14 +162,24 @@
   // what is in every slot. One table, so App and tools/harness build the same
   // machine instead of each keeping its own card list.
   //
-  // The Agat-7 is 32K on the motherboard plus two 32K cards — a ЭмПЗУ in slot 2
-  // behind $D000-$FFFF and an ОЗУ expansion in slot 4 filling $8000-$BFFF. That
-  // is 96K, and it is agat-emulator's own default (sysconf.c:72-77, 143-150,
-  // 303-306): three separate 32K devices, never one setting. `ram` here is base
-  // RAM only, which is also all the video controller can ever scan.
+  // The Agat-7 is 64K on the motherboard plus two 32K cards — a ЭмПЗУ in slot 2
+  // behind $D000-$FFFF and an ОЗУ expansion in slot 4 that can take
+  // $8000-$BFFF over from base RAM. That is 128K, in three separate devices
+  // rather than one setting.
+  //
+  // 64K is the base RAM of the delivered machine: ФгЗ.032.002 ТО4 табл.1 gives
+  // блок системный ФгЗ.038.650 as "ОЗУ — 64К байт", §2.1 gives 32K as the
+  // minimum rather than the standard, and табл.8 enumerates screen pages ЭС 0-7,
+  // of which ЭС 4-7 exist only on a board with the two switchable arrays. The
+  // 32K default agat-emulator starts from (sysconf.c:303-306) is a choice in its
+  // configuration dialog, not a fitting the manual describes; its card
+  // complement (sysconf.c:72-77, 143-150) is what we follow here.
+  //
+  // `ram` is base RAM only, which is also all the video controller can ever
+  // scan.
   Machine.PROFILES = {
     7: {
-      ram: 0x8000,
+      ram: 0x10000,
       slots: {
         2: { card: 'psrom', ram: 0x8000 },
         3: { card: 'fdd140' },
@@ -490,6 +500,21 @@
   Machine.prototype.ioRead = function (a) {
     var lo = a & 0xff;
     var v = 0;
+    // Base RAM bank register, which is $C0F0-$C0FF and so sits inside the
+    // $C080+16n slot range — the Agat-7 has six I/O slots, not seven, and the
+    // board spends the seventh slot's page on this instead (ТО4 табл.9: X1-X7
+    // get $C090-$C0EF, and $C0F0 is the ООП switch). It has to be decoded
+    // before the slot range or the empty slot 7 swallows it.
+    //
+    // On a 32K board it is not fitted — agat-emulator installs it only above
+    // $8000 of RAM (baseram.c:573) — and Mem7.setState is already a no-op at
+    // that size, so the read answering $FF is what an undecoded address does
+    // either way.
+    if (lo >= 0xf0 && this.model === 7) {
+      this.mem7.setState(lo & 0x0f);
+      this.note(a, 0xff, false);
+      return 0xff;
+    }
     if (lo >= 0x80) {
       var slot = (lo >> 4) - 8;
       var reg = lo & 0x0f;
@@ -503,15 +528,6 @@
       }
       this.note(a, v, false);
       return v;
-    }
-    // Base RAM bank register. On a 32K board it is not fitted — agat-emulator
-    // installs it only above $8000 of RAM (baseram.c:573) — and Mem7.setState
-    // is already a no-op at that size, so the read answering $FF is what an
-    // undecoded address does either way.
-    if (lo >= 0xf0 && this.model === 7) {
-      this.mem7.setState(lo & 0x0f);
-      this.note(a, 0xff, false);
-      return 0xff;
     }
     if (lo === 0x19) { v = this.inVblank ? 0x80 : 0x00; this.note(a, v, false); return v; }
     switch (lo & 0xf0) {
@@ -532,6 +548,7 @@
   Machine.prototype.ioWrite = function (a, v) {
     var lo = a & 0xff;
     this.note(a, v, true);
+    if (lo >= 0xf0 && this.model === 7) { this.mem7.setState(lo & 0x0f); return; }
     if (lo >= 0x80) {
       var slot = (lo >> 4) - 8;
       var reg = lo & 0x0f;
@@ -542,7 +559,6 @@
       }
       return;
     }
-    if (lo >= 0xf0 && this.model === 7) { this.mem7.setState(lo & 0x0f); return; }
     switch (lo & 0xf0) {
       case 0x10: this.kbdLatch &= 0x7f; break;
       case 0x20: if (this.model === 9) this.setVideoInts(false); break;

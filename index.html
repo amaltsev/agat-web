@@ -375,10 +375,12 @@
     </td></tr>
     <tr><td><b>Machine</b></td><td>
       The Agat-9 is 128K in 8K banks, and nothing about it is adjustable. The
-      standard Agat-7 is three separate 32K devices — 32K of base RAM in 16K
-      banks, a ЭмПЗУ card in slot 2 behind <code>$D000-$FFFF</code>, and an ОЗУ
-      expansion in slot 4 filling <code>$8000-$BFFF</code> — which is the 96K
-      machine most software was written for. Only the base RAM is scanned by the
+      standard Agat-7 is three separate devices — 64K of base RAM in 16K banks,
+      a 32K ЭмПЗУ card in slot 2 behind <code>$D000-$FFFF</code>, and a 32K ОЗУ
+      expansion in slot 4 that can take <code>$8000-$BFFF</code> over from base
+      RAM — which is the 128K machine most software was written for. The
+      expansion powers up deselected, so <code>$8000-$BFFF</code> is base RAM
+      until a program claims it. Only the base RAM is scanned by the
       video controller, and its size masks the mode register's page field, so
       set that one to match your disk. A filename containing <code>7a</code> or
       <code>9a</code> picks the machine for you until you choose one yourself.

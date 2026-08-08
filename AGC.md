@@ -92,7 +92,7 @@ cosmetic either: it is the only memory the video controller scans, and it masks
 the video mode register's page field, so software can tell — a disk that expects
 64K may fail on 128K.
 
-The stock Agat-7 is **96K in three devices**: 32K of base RAM, a 32K ЭмПЗУ in
+The stock Agat-7 is **128K in three devices**: 64K of base RAM, a 32K ЭмПЗУ in
 slot 2 and a 32K ОЗУ expansion in slot 4. The Agat-9 is 128K and two drives.
 A container that wants that machine says nothing but `model` and `ram`.
 

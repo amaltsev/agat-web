@@ -41,8 +41,9 @@ that is **`4`** for the ДОПОЗУ and **`2`** for the ЭмПЗУ.
 
 ### 3. `ЗАДАЙТЕ ИСПОЛНЕНИЕ?` — how big the cell is
 
-**`0` = 32K, `1` = 64K, `2` = 128K.** It starts at zero, which is easy to miss;
-32K is the stock fitting for all three devices here.
+**`0` = 32K, `1` = 64K, `2` = 128K.** It starts at zero, which is easy to miss.
+The stock machine here is 64K of base RAM, so `1`, and 32K on each of the two
+cards, so `0`.
 
 Each question is prefixed with the cell it is about, so a combined configuration
 asks the pair once per cell: `ПЗУ:ЗАДАЙТЕ ИСПОЛНЕНИЕ?`
@@ -72,17 +73,20 @@ which is how you confirm the test is really reaching the card rather than
 agreeing with itself:
 
 ```sh
-node tools/shot.js examples/TESTOZU7_140.dsk 101  --model=7   # ОЗУ,    32K
+node tools/shot.js examples/TESTOZU7_140.dsk 111  --model=7   # ОЗУ,    base RAM 64K
 node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7   # ДОПОЗУ, slot 4, 32K
 node tools/shot.js examples/TESTOZU7_140.dsk 4201 --model=7   # ПЗУ,    slot 2, 32K
+
+node tools/shot.js examples/TESTOZU7_140.dsk 101 --model=7 --ram=32    # the 32K board
+node tools/shot.js examples/TESTOZU7_140.dsk 121 --model=7 --ram=128   # the 128K board
 
 node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7 --xram=16   # must fail
 ```
 
-All three pass on the stock Agat-7. **Base RAM above 32K does not**: `--ram=64`
-under исполнение 1 and `--ram=128` under исполнение 2 both report errors beneath
-`БАНК F0`. That predates the expansion card — it reproduces on the commit before
-`xram7.js` was added — and is not yet explained.
+All of those pass. `--ram=64` under исполнение 1 used to report `ОШИБКА
+ВКЛЮЧЕНИЯ БАНКА =F1(F0)`, which is the base RAM bank register at `$C0F0-$C0FF`
+being decoded after the `$C080+16n` slot range and swallowed by the empty slot 7
+— see [HARDWARE.md](../HARDWARE.md#agat-7).
 
 ## Where it came from
 

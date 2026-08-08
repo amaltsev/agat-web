@@ -657,10 +657,10 @@ number of assertions written from the same reading of the source that produced
 the bug.
 
 `corpus.js` takes `--ram=` and `--nocards` too, which is how a table that has
-moved gets attributed. When the base RAM default went
-from 64K to 32K, `--ram=64` reproduced the old table exactly — so the diff was
-the default and not the emulator, and the three images that lost their picture
-are three images that want more memory than the standard machine has.
+moved gets attributed. Run it at the old size and diff: if the old table comes
+back exactly, what changed was the default and not the emulator, and the images
+that lost their picture are the images that want more memory than the machine
+they were given.
 
 ### Two traps worth knowing about
 
