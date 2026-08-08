@@ -354,15 +354,14 @@ function eq(what, got, want) {
        [0, true]);
 
     // Out through the container and back in, which is the whole of what the
-    // Save button does. A sector is past `HEX_MAX`, so the record is base64 and
-    // the file is stamped 2 — a version-1 reader could not have applied it.
+    // Save button does. A sector is past `HEX_MAX`, so the record is base64.
     const file = A.agc.build({ media: [{ name: back.name, bytes: back.bytes,
                                          patches: back.patches }] });
     const re = A.agc.parse(Buffer.from(file, 'utf8'), 'rise-out.agc');
     eq('a saved container reopens with the write in it',
-       [JSON.parse(file).agc, Object.keys(back.patches[0]).join('+'),
+       [Object.keys(back.patches[0]).join('+'),
         Buffer.compare(Buffer.from(re.media[0].payload), Buffer.from(want256))],
-       [2, 'at+data', 0]);
+       ['at+data', 0]);
 
     // A track that will not decode has no sector image to be a patch against.
     // One data-field prologue struck out is enough to lose that sector.
@@ -642,7 +641,8 @@ function eq(what, got, want) {
     }
     return out;
   }
-  // `Esc $9B` names the code and then gives it; a glyph is given in backticks.
+  // A cell names the code and then gives it — `Q $51`, `Esc $9B` — so the code
+  // is the last word. `—` for a key the table maps nowhere.
   const cell = (v) => v.split(/\s+/).pop().replace(/`/g, '');
 
   const named = docs.map(([f, text]) => [f, rows(text)]);
@@ -660,8 +660,10 @@ function eq(what, got, want) {
       const raw = K.KEYMAP[((K.LAT * 4 + (ext ? K.EXT : K.NORMAL)) << 7) | scan];
       const c = cell(text);
       const got = c === '—' ? 0 : K.resolveCode(c);
-      const ok = /^\$/.test(c) ? got === raw : (got & 0x7f) === (raw & 0x7f);
-      if (!ok) wrong.push(name + ' says ' + c);
+      // Bit 7, which codeFor sets on everything on its way to $C000, is what
+      // two spellings of one code are allowed to differ in: Backquote's `@` is
+      // $C0 in the shipped table and Digit2's is $40, and they are the same key.
+      if ((got | 0x80) !== (raw | 0x80)) wrong.push(name + ' says ' + c);
     }
     eq(file + ' says what the table sends', wrong, []);
   }
@@ -761,13 +763,18 @@ function eq(what, got, want) {
        [[...small], [...big]]);
     eq('the differ wraps base64 to the width it is given',
        A.agc.diff(bytes, big, 8)[0].data.map((l) => l.length), [8, 8, 8, 8, 8, 4]);
-    // A version-1 reader has no idea what `data` means and would say only that
-    // undefined is not hex, so a container carrying one is stamped 2.
+    // There is one version, and everything the writer can emit is in it.
     const stamp = (patches) => JSON.parse(
       A.agc.build({ media: [{ name: 'x.dsk', bytes: bytes, patches: patches }] })).agc;
-    eq('a base64 patch is what stamps a container agc 2',
+    eq('every container is written as agc 1',
        [stamp([]), stamp(A.agc.diff(bytes, small)), stamp(A.agc.diff(bytes, big))],
-       [1, 1, 2]);
+       [1, 1, 1]);
+    eq('a base64 patch survives being written and read back', (() => {
+      const src = A.agc.build({ media: [{ name: 'x.dsk', bytes: bytes,
+                                          patches: A.agc.diff(bytes, big) }] });
+      const m = A.agc.parse(Buffer.from(src, 'utf8'), 'x.agc').media[0];
+      return [[...m.bytes], [...m.payload]];
+    })(), [[...bytes], [...big]]);
   }
 
   // What a broken container says is the whole of what the page can show, so it
@@ -775,7 +782,7 @@ function eq(what, got, want) {
   // out by hand rather than built, because a file that will not read is not one
   // the writer would have produced.
   {
-    const broken = (m) => Buffer.from(JSON.stringify({ agc: 2, media: [m] }), 'utf8');
+    const broken = (m) => Buffer.from(JSON.stringify({ agc: 1, media: [m] }), 'utf8');
     const why = (b) => {
       try { A.agc.parse(b, 'RISE.agc'); return 'no throw'; }
       catch (e) { return e.message; }
@@ -807,6 +814,12 @@ function eq(what, got, want) {
     try { A.agc.parse(Buffer.from('{"agc": 1, ', 'utf8'), 'x.agc'); return 'no'; }
     catch (e) { return 'threw'; }
   })(), 'threw');
+  // The one thing the version is still for: a file this cannot read is refused
+  // rather than read as far as it goes.
+  eq('a container from a newer emulator is refused', (() => {
+    try { A.agc.parse(Buffer.from('{"agc": 2}', 'utf8'), 'next.agc'); return 'no throw'; }
+    catch (e) { return e.message; }
+  })(), 'next.agc: made by a newer emulator (agc 2, this reads 1)');
   eq('the sniffer prefers the container to the size table',
      A.sniff(Buffer.from(src, 'utf8'), 'x.agc').kind, 'agc');
 
@@ -1205,15 +1218,13 @@ function eq(what, got, want) {
       });
       eq('makeMachine honours an override', built.xram.size, 0x20000);
 
-      // Round trip: build a container naming slots, read it back, and check the
-      // version rule — a file whose meaning depends on `slots` is stamped 2.
+      // Round trip: build a container naming slots and read it back.
       const src = A.agc.build({
         title: 'slots', model: 7, ram: 32,
         slots: { 4: { card: 'xram', ram: 128 } },
         media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
       });
       const back = A.agc.parse(ctx.Uint8Array.from(Buffer.from(src)), 'slots.agc');
-      eq('a container carrying slots is version 2', back.version, 2);
       eq('slots survive the round trip', back.machine.slots[4],
          { card: 'xram', ram: 128 });
 
@@ -1221,11 +1232,17 @@ function eq(what, got, want) {
         title: 'plain', model: 7, ram: 64,
         media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
       });
-      eq('a container without slots stays version 1',
-         A.agc.parse(ctx.Uint8Array.from(Buffer.from(plain)), 'p.agc').version, 1);
-      eq('...and carries no slots field',
+      eq('a container without slots carries no slots field',
          A.agc.parse(ctx.Uint8Array.from(Buffer.from(plain)), 'p.agc').machine.slots,
          null);
+
+      // resolveSlots resizes a stock card from a bare size, but a container
+      // cannot ask for that: `card` names what the entry is, and without one
+      // there is nothing to fit.
+      const sizeOnly = A.agc.parse(Buffer.from(JSON.stringify(
+        { agc: 1, machine: { model: 7, slots: { 4: { ram: 128 }, 2: null } } }), 'utf8'),
+        's.agc');
+      eq('a slot entry with no card is dropped', sizeOnly.machine.slots, { 2: null });
     }
 
     // --- a container, and what the address says over it ----------------------

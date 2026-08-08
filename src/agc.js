@@ -41,13 +41,11 @@
   'use strict';
 
   // The version a container is written as, and the newest one this can read.
-  // `build` still writes `agc: 1` unless it emits something a version-1 reader
-  // would get wrong — see `formatVersion`.
-  var VERSION = 2;
+  var VERSION = 1;
 
-  // Cards a `machine.slots` entry may name. Anything else is dropped: a
-  // container from a newer emulator should run on the hardware this one has
-  // rather than fail, and the `agc:` version is what refuses when it must.
+  // Cards a `machine.slots` entry may name. Anything else is dropped, entries
+  // without a `card` included: a container from a newer emulator should run on
+  // the hardware this one has rather than fail.
   var CARDS = { psrom: 1, xram: 1, fdd140: 1, fdd840: 1 };
 
   // Base64 characters per line. 76 is the MIME width, and 57 bytes; being a
@@ -201,12 +199,12 @@
     return new TextDecoder('utf-8').decode(bytes);
   }
 
-  // Null for "not a container" — the sniffer needs that answer for every file
-  // dropped on the page. A file that says `"agc"` and then fails to parse is a
   // `machine.slots`: what this machine has that its model's stock complement
   // does not. Keys are slot numbers 0-7, values `{card, ram}` — kilobytes, as
-  // `machine.ram` is — or `null` for a slot deliberately left empty. Returns
-  // null when there is nothing to say, so a stock machine carries no field.
+  // `machine.ram` is — or `null` for a slot deliberately left empty. `card` is
+  // required; an entry that gives only a size names no card to resize and is
+  // dropped. Returns null when there is nothing to say, so a stock machine
+  // carries no field.
   function parseSlots(slots) {
     if (!slots || typeof slots !== 'object') return null;
     var out = {}, any = false, n, e, slot;
@@ -222,6 +220,8 @@
     return any ? out : null;
   }
 
+  // Null for "not a container" — the sniffer needs that answer for every file
+  // dropped on the page. A file that says `"agc"` and then fails to parse is a
   // broken container rather than something else, and says so.
   function parse(bytes, name) {
     if (!looksLikeJson(bytes)) return null;
@@ -292,32 +292,12 @@
     return out;
   }
 
-  function hasBase64Patch(media) {
-    var i, p, j;
-    for (i = 0; i < (media || []).length; i++) {
-      p = media[i].patches || [];
-      for (j = 0; j < p.length; j++) if (p[j].data !== undefined) return true;
-    }
-    return false;
-  }
-
-  // Which version to stamp a container with. Everything a version-1 reader knows
-  // still means what it meant, so a container that says nothing more is written
-  // as version 1 and older builds keep opening it. Two things are the
-  // exceptions: `machine.slots`, which a reader that ignored it would answer by
-  // silently running the wrong hardware, and a base64 patch, which a version-1
-  // reader would answer by complaining that undefined is not hex. Both are
-  // stamped 2 and refused rather than misread.
-  function formatVersion(spec) {
-    return spec.slots || hasBase64Patch(spec.media) ? 2 : 1;
-  }
-
   // The writer both `tools/mkagc.js` and the page's Save button go through, so
   // there is one definition of what a container looks like. Fields are added in
   // the documented order because JSON.stringify keeps insertion order, and a
   // format people are meant to hand-edit should read the same way every time.
   function build(spec) {
-    var o = { agc: formatVersion(spec) };
+    var o = { agc: VERSION };
     if (spec.title) o.title = spec.title;
     if (spec.author) o.author = spec.author;
     if (spec.date) o.date = String(spec.date);

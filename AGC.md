@@ -6,11 +6,10 @@ An `.agc` file is one program and everything needed to run it: the disk image,
 the machine, the settings, and the keyboard.
 
 Having the disk is not the same as knowing how to run it. Which machine — an
-Agat-7 or an Agat-9, and with how much RAM? Which interrupt model, given that
-the wrong one moves a game's music by an octave? And which key on the keyboard
-in front of you sends the byte the program is waiting for? None of that is in a
-`.dsk`, and it is usually written down nowhere at all. A container holds it
-next to the image, in one file that a person can read and edit.
+Agat-7 or an Agat-9, and with how much RAM? And which key on the keyboard in
+front of you sends the byte the program is waiting for? None of that is in a
+`.dsk`, and it is usually written down nowhere at all. A container holds it next
+to the image, in one file that a person can read and edit.
 
 It is JSON. Drop one on [the emulator](https://amaltsev.github.io/agat-web/) and
 it runs.
@@ -65,16 +64,12 @@ default, and a container that carries nothing but an image is a valid one.
 
 | field | |
 |---|---|
-| `agc` | format version — `1`, or `2` for a container that uses `machine.slots` or a base64 patch. Its presence is what identifies the file. |
+| `agc` | format version — `1`. Its presence is what identifies the file. |
 | `title` | what the program is called |
 | `author` | who wrote it |
-| `date` | **text**, not a number: `"1989"`, `"circa 1985"`, `"1990-92"` |
+| `date` | text, not a number: `"1989"`, `"circa 1985"`, `"1990-92"` |
 | `url` | where it came from, or where it is written up |
-| `notes` | prose — provenance, credits, what a patch does. Ignored by the code. |
-
-`date` is text because what is known about a program of this age is as often a
-range or a guess as it is a year, and a container that cannot say "circa 1985"
-would force someone to say `1985` and be wrong.
+| `notes` | provenance, credits, what a patch does. Ignored by the code. |
 
 These fields are frequently the last place any of this is recorded. Fill them
 in.
@@ -85,7 +80,7 @@ in.
 |---|---|
 | `model` | `7` or `9` |
 | `ram` | **base RAM in kilobytes**: `32`, `64` or `128`. Agat-7 only — the Agat-9 is always 128K. |
-| `slots` | what this machine has that the model's stock complement does not. Optional; version 2. |
+| `slots` | what this machine has that the model's stock complement does not. Optional. |
 
 `ram` is base RAM on the motherboard, not the machine's total. It is not
 cosmetic either: it is the only memory the video controller scans, and it masks
@@ -117,15 +112,8 @@ puts there; `null` empties it.
 | `card` | `"psrom"` (ЭмПЗУ), `"xram"` (ОЗУ expansion), `"fdd140"`, `"fdd840"` |
 | `ram` | **kilobytes**, for the two memory cards: `16`, `32`, `48`, `64` or `128` |
 
-Giving only `ram` resizes whatever card the stock machine already puts in that
-slot. Naming a different `card` replaces it, and the size goes with the card
-that was asked for, not the one that left.
-
-A container using this field is stamped `"agc": 2`, because an older reader that
-ignored it would silently run the wrong hardware — better refused than misread.
-
-A machine named here is treated as *chosen* — a `7a` or `9a` in a filename will
-not override it.
+`card` is required: an entry that gives only a size names no card, and is
+ignored.
 
 ### `quirks`
 
@@ -143,11 +131,34 @@ This matters for anything that sequences sound on the interrupt count, which is
 most Agat music: the pitch and the tempo come straight off this setting, and
 `held` and `raster` are an octave apart.
 
+### The keyboard: `keys` and `controls`
+
+Two blocks, and the difference between them is which side of the keyboard they
+are indexed by.
+
+| | indexed by | answers |
+|---|---|---|
+| `keys` | a **host key** — `KeyW`, `Space` | what to press, and what that key is for |
+| `controls` | an **Agat code** — `^`, `$5E` | what the program reads, and what each code does |
+
+`keys` puts an Agat code on a physical key of the keyboard in front of you, and
+names the keys the program uses even where no remapping is needed. `controls`
+does not touch the keyboard at all: it is the program's own list of codes,
+grouped and captioned, which the page prints under the screen.
+
+Either may appear alone. `keys` on its own gives the remap and a board winnowed
+to the program's keys; `controls` on its own gives the panel and a board
+winnowed to the codes it names, with nothing remapped. Together they answer both
+halves of the same question, which is why `#kbd=used` draws them from both.
+
+The left-hand sides look alike and are not: `"Space"` is a legal word in both,
+and means the physical space bar in `keys` and the code `$20` in `controls`.
+
 ### `keys` — the keys the program uses
 
 The Agat's keyboard is not your keyboard. A program that reads `^` is asking
 for `$5E`, which in ЛАТ needs <kbd>Shift</kbd>+<kbd>6</kbd> and in РУС is on
-<kbd>X</kbd> — findable, but not while something is shooting at you.
+<kbd>X</kbd>.
 
 ```json
 "keys": {
@@ -209,10 +220,6 @@ on a handheld it is what such a container opens with.
 `node tools/check.js keys <file.agc>` draws it in a terminal.
 
 ### `controls` — what the program reads, and what for
-
-`keys` is indexed by *host* key. `controls` is indexed by **Agat code**, and it
-answers the question a player actually has: what does the program read, and what
-does each one do.
 
 ```json
 "controls": {
@@ -302,8 +309,7 @@ A reader takes both. A record that gives both at once is an error, not a
 preference to resolve.
 
 The writer picks by size: up to 32 bytes hex, above that base64. A poke stays
-something to read; a rewritten sector, which nobody reads by eye, does not cost
-three characters a byte.
+something to read, and a rewritten sector does not cost three characters a byte.
 
 The payload stays **the image exactly as it was found**, and changes live here.
 That is the whole point of the split: a container carries a pristine copy of
@@ -320,8 +326,8 @@ base64 block, by the size rule above — rather than a second copy of the disk.
 A track that will not read back as sectors — a disk formatted some other way, a
 write caught half done — has no sector image for a patch to be the difference
 from. Then the whole nibble stream is saved instead, as a `.nib` payload with no
-patches. It is a bigger and duller file, but not a lossy one, and it reloads
-without any of this having to know: media are identified by size.
+patches. It is a bigger file, but not a lossy one, and it reloads without any of
+this having to know: media are identified by size.
 
 ---
 
@@ -381,8 +387,12 @@ node tools/shot.js        game.agc    # boot it and write a PNG
 
 Every name below is accepted on the left of `keys`; anything else is ignored,
 and the status line says which. The columns are what the key sends **when it is
-not remapped** — which is what a remap costs you, and what a key declared as-is
-will go on sending.
+not remapped**, which is also what a key declared as-is goes on sending.
+
+Each cell gives the glyph the Agat draws and the code itself, written the way
+`keys` and `controls` take it. The byte in `$C000` always has bit 7 set, so
+`$40` and `$C0` are the same key; the tables give the 7-bit form wherever there
+is a glyph to go with it.
 
 A letter's two halves are one byte in two character sets: РЕГ adds exactly `$20`
 across the block, which moves ASCII `@A-Z[\]^_` into the Agat's Cyrillic band in
@@ -398,58 +408,58 @@ which is the machine having one `←`.
 
 | `code` | ЛАТ | ЛАТ+РЕГ | РУС | РУС+РЕГ |
 |---|---|---|---|---|
-| `KeyQ` | `Q` | `Я` | `J` | `Й` |
-| `KeyW` | `W` | `В` | `C` | `Ц` |
-| `KeyE` | `E` | `Е` | `U` | `У` |
-| `KeyR` | `R` | `Р` | `K` | `К` |
-| `KeyT` | `T` | `Т` | `E` | `Е` |
-| `KeyY` | `Y` | `Ы` | `N` | `Н` |
-| `KeyU` | `U` | `У` | `G` | `Г` |
-| `KeyI` | `I` | `И` | `[` | `Ш` |
-| `KeyO` | `O` | `О` | `]` | `Щ` |
-| `KeyP` | `P` | `П` | `Z` | `З` |
-| `KeyA` | `A` | `А` | `F` | `Ф` |
-| `KeyS` | `S` | `С` | `Y` | `Ы` |
-| `KeyD` | `D` | `Д` | `W` | `В` |
-| `KeyF` | `F` | `Ф` | `A` | `А` |
-| `KeyG` | `G` | `Г` | `P` | `П` |
-| `KeyH` | `H` | `Х` | `R` | `Р` |
-| `KeyJ` | `J` | `Й` | `O` | `О` |
-| `KeyK` | `K` | `К` | `L` | `Л` |
-| `KeyL` | `L` | `Л` | `D` | `Д` |
-| `KeyZ` | `Z` | `З` | `Q` | `Я` |
-| `KeyX` | `X` | `Ь` | `^` | `Ч` |
-| `KeyC` | `C` | `Ц` | `S` | `С` |
-| `KeyV` | `V` | `Ж` | `M` | `М` |
-| `KeyB` | `B` | `Б` | `I` | `И` |
-| `KeyN` | `N` | `Н` | `T` | `Т` |
-| `KeyM` | `M` | `М` | `X` | `Ь` |
+| `KeyQ` | Q $51 | Я $71 | J $4A | Й $6A |
+| `KeyW` | W $57 | В $77 | C $43 | Ц $63 |
+| `KeyE` | E $45 | Е $65 | U $55 | У $75 |
+| `KeyR` | R $52 | Р $72 | K $4B | К $6B |
+| `KeyT` | T $54 | Т $74 | E $45 | Е $65 |
+| `KeyY` | Y $59 | Ы $79 | N $4E | Н $6E |
+| `KeyU` | U $55 | У $75 | G $47 | Г $67 |
+| `KeyI` | I $49 | И $69 | [ $5B | Ш $7B |
+| `KeyO` | O $4F | О $6F | ] $5D | Щ $7D |
+| `KeyP` | P $50 | П $70 | Z $5A | З $7A |
+| `KeyA` | A $41 | А $61 | F $46 | Ф $66 |
+| `KeyS` | S $53 | С $73 | Y $59 | Ы $79 |
+| `KeyD` | D $44 | Д $64 | W $57 | В $77 |
+| `KeyF` | F $46 | Ф $66 | A $41 | А $61 |
+| `KeyG` | G $47 | Г $67 | P $50 | П $70 |
+| `KeyH` | H $48 | Х $68 | R $52 | Р $72 |
+| `KeyJ` | J $4A | Й $6A | O $4F | О $6F |
+| `KeyK` | K $4B | К $6B | L $4C | Л $6C |
+| `KeyL` | L $4C | Л $6C | D $44 | Д $64 |
+| `KeyZ` | Z $5A | З $7A | Q $51 | Я $71 |
+| `KeyX` | X $58 | Ь $78 | ^ $5E | Ч $7E |
+| `KeyC` | C $43 | Ц $63 | S $53 | С $73 |
+| `KeyV` | V $56 | Ж $76 | M $4D | М $6D |
+| `KeyB` | B $42 | Б $62 | I $49 | И $69 |
+| `KeyN` | N $4E | Н $6E | T $54 | Т $74 |
+| `KeyM` | M $4D | М $6D | X $58 | Ь $78 |
 
 **Digits and punctuation — these follow ЛАТ/РУС and РЕГ**
 
 | `code` | ЛАТ | ЛАТ+РЕГ | РУС | РУС+РЕГ |
 |---|---|---|---|---|
-| `Digit1` | `1` | `!` | `1` | `!` |
-| `Digit2` | `2` | `@` | `2` | `"` |
-| `Digit3` | `3` | `#` | `3` | `#` |
-| `Digit4` | `4` | `¤` | `4` | `;` |
-| `Digit5` | `5` | `%` | `5` | `%` |
-| `Digit6` | `6` | `^` | `6` | `:` |
-| `Digit7` | `7` | `&` | `7` | `?` |
-| `Digit8` | `8` | `*` | `8` | `*` |
-| `Digit9` | `9` | `(` | `9` | `(` |
-| `Digit0` | `0` | `)` | `0` | `)` |
-| `Minus` | `-` | `_` | `-` | `-` |
-| `Equal` | `=` | `+` | `=` | `+` |
-| `BracketLeft` | `[` | `Ш` | `H` | `Х` |
-| `BracketRight` | `]` | `Щ` | `_` | `Ъ` |
-| `Semicolon` | `;` | `:` | `V` | `Ж` |
-| `Quote` | `'` | `"` | `\` | `Э` |
-| `Backquote` | `@` | `^` | `@` | `^` |
-| `Backslash` | `\` | `Э` | `\` | `Э` |
-| `Comma` | `,` | `<` | `B` | `Б` |
-| `Period` | `.` | `>` | `@` | `Ю` |
-| `Slash` | `/` | `?` | `.` | `,` |
+| `Digit1` | 1 $31 | ! $21 | 1 $31 | ! $21 |
+| `Digit2` | 2 $32 | @ $40 | 2 $32 | " $22 |
+| `Digit3` | 3 $33 | # $23 | 3 $33 | # $23 |
+| `Digit4` | 4 $34 | ¤ $24 | 4 $34 | ; $3B |
+| `Digit5` | 5 $35 | % $25 | 5 $35 | % $25 |
+| `Digit6` | 6 $36 | ^ $5E | 6 $36 | : $3A |
+| `Digit7` | 7 $37 | & $26 | 7 $37 | ? $3F |
+| `Digit8` | 8 $38 | * $2A | 8 $38 | * $2A |
+| `Digit9` | 9 $39 | ( $28 | 9 $39 | ( $28 |
+| `Digit0` | 0 $30 | ) $29 | 0 $30 | ) $29 |
+| `Minus` | - $2D | _ $5F | - $2D | - $2D |
+| `Equal` | = $3D | + $2B | = $3D | + $2B |
+| `BracketLeft` | [ $5B | Ш $7B | H $48 | Х $68 |
+| `BracketRight` | ] $5D | Щ $7D | _ $5F | Ъ $7F |
+| `Semicolon` | ; $3B | : $3A | V $56 | Ж $76 |
+| `Quote` | ' $27 | " $22 | \ $5C | Э $7C |
+| `Backquote` | @ $40 | ^ $5E | @ $40 | ^ $5E |
+| `Backslash` | \ $5C | Э $7C | \ $5C | Э $7C |
+| `Comma` | , $2C | < $3C | B $42 | Б $62 |
+| `Period` | . $2E | > $3E | @ $40 | Ю $60 |
+| `Slash` | / $2F | ? $3F | . $2E | , $2C |
 
 **Editing — one code, whatever the layout**
 
@@ -484,14 +494,14 @@ which is the machine having one `←`.
 
 | `code` | sends | `code` | sends |
 |---|---|---|---|
-| `NumpadMultiply` | `*` | `NumpadAdd` | `+` |
+| `NumpadMultiply` | * $2A | `NumpadAdd` | + $2B |
 | `Numpad7` | $90 | `Numpad1` | $9D |
 | `Numpad8` | $91 | `Numpad2` | $9E |
 | `Numpad9` | $92 | `Numpad3` | $9F |
-| `NumpadSubtract` | `-` | `Numpad0` | $81 |
+| `NumpadSubtract` | - $2D | `Numpad0` | $81 |
 | `Numpad4` | $93 | `NumpadDecimal` | $82 |
 | `Numpad5` | $94 | `NumpadEnter` | $83 |
-| `Numpad6` | $9C | `NumpadDivide` | `/` |
+| `Numpad6` | $9C | `NumpadDivide` | / $2F |
 
 ---
 
