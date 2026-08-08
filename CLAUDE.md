@@ -80,9 +80,14 @@ Settled, with evidence, and expensive to relearn:
 - The raster is **312 lines of 672 clocks** of the 10.5 MHz crystal — 15625 Hz
   line, 50.08 Hz frame, 256 displayed and 56 blanked. Both interrupts come off
   that one line counter, and the measured rates follow from it.
-- In the `held` and `pulse` interrupt models the frame NMI and sub-frame IRQ are
-  **two independent timers**, not one counter; folding them drops one IRQ in
-  twenty. `raster` has one counter because the hardware does.
+- The sub-frame interrupt is the raster's, and the **only** model: 488 Hz on the
+  Agat-7 with half the frame asserted, 1953 Hz on the Agat-9 with one line in
+  eight, a level rather than an edge in both. agat-emulator's two free-running
+  timers were carried here for comparison and are gone; do not reintroduce a
+  selectable model. What closed the question was a listening test — RISE OUT's
+  **original 1989 sound data**, restored to `examples/` in place of a copy
+  retuned in 2026 for a single-tick interrupt, sounds right to its author under
+  the raster, and the two corrections were arrived at independently.
 - Image formats are identified **by size, not extension**.
 - On the 140K drive, **write mode stops the rotation clock**: the head moves one
   byte per byte written, never one per 32 cycles. A self-sync `$FF` is 40 cycles
@@ -93,15 +98,10 @@ Settled, with evidence, and expensive to relearn:
 - Every sound in RISE OUT proper goes through `PLAY500` on the interrupt, never
   the busy-wait `PLAY`.
 
-**Not settled:** whether `held` and `pulse` can be deleted. `raster` — the
-hardware as measured and traced, a level whose edges are raster lines, 488 Hz on
-the Agat-7 with half the frame asserted and 1953 Hz on the Agat-9 with one line
-in eight — is now the default, and the other two are kept only for comparison
-until more software has been heard under it. The evidence so far is that RISE
-OUT's **original 1989 sound data** — restored to `examples/`, replacing a copy
-retuned in 2026 for the single-tick model — sounds right to its author under
-`raster`. Changing models moves its pitch by an octave, so the test is a
-listening test. See
+**Not settled:** whether more of the Agat-9's interrupt PROM should be modelled.
+D63's address carries three mode bits above the line number, so the pattern is
+per video mode: only the one-in-eight block matching the measured board is
+emulated, and the mode register does not reach it. See
 [HARDWARE.md](HARDWARE.md#the-delivery-model).
 
 ## Provenance

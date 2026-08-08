@@ -95,45 +95,24 @@
     // on the Agat-7 or $C02x on the Agat-9 — different addresses on the two
     // machines, and swapping them hangs software that otherwise runs.
     //
-    // Three delivery models, chosen with setIrqModel(). `raster` is the
-    // hardware as measured and traced through both schematics, and the default;
-    // the other two are agat-emulator's, kept for comparison:
+    // One 312-line counter drives both, as on the boards. The Agat-7 buffers
+    // bit 4 of it onto the IRQ line, so the line is asserted for 16 lines and
+    // released for 16 — 488 Hz, ten assertions a frame, with the last release
+    // cut to 8 lines by the counter's reload. The Agat-9's timing PROM pulses
+    // the line low for one line in every eight: 1953 Hz, 39 a frame. NMI is the
+    // same counter's blanking edge, which the two machines buffer in opposite
+    // senses.
     //
-    //   raster — one 312-line counter drives everything, as on the boards. The
-    //     Agat-7 buffers bit 4 of it onto the IRQ line, so the line is asserted
-    //     for 16 lines and released for 16 — 488 Hz, ten assertions a frame,
-    //     with the last release cut to 8 lines by the counter's reload. The
-    //     Agat-9's timing PROM pulses the line low for one line in every eight:
-    //     1953 Hz, 39 a frame. NMI is the same counter's blanking edge, which
-    //     the two machines buffer in opposite senses.
-    //   held   — two free-running timers, 50 Hz and that times 20 (Agat-7) or
-    //     40 (Agat-9), the line held N_RBINT_DELAY cycles per tick: 600 and 70
-    //     (videosel.c:110, cpu.c's CPU_INTR_IRQ/NOIRQ pair).
-    //   pulse  — the same two timers, one handler entry per tick.
-    //
-    // The sub-frame interrupt is a LEVEL in `raster` and `held`, and that
-    // matters more than the rate does: a 6502 whose IRQ line is still low
-    // re-enters the handler as soon as RTI restores I, so a short handler runs
-    // many times per assertion — roughly the assertion's length over its own.
-    //
-    // `held` and `pulse` keep their two timers deliberately independent. Every
-    // sub-frame tick raises IRQ, *including* the one that coincides with a
-    // frame, and folding them into one counter drops one IRQ in twenty, which
-    // is audible in software that sequences sound on the interrupt count.
+    // The sub-frame interrupt is a LEVEL, and that matters more than the rate
+    // does: a 6502 whose IRQ line is still low re-enters the handler as soon as
+    // RTI restores I, so a short handler runs many times per assertion —
+    // roughly the assertion's length over its own.
     this.videoInts = false;
     var us = AGAT.CPU_HZ / 1000000;
-    this.subDivisor = opts.subDivisor || (this.model === 7 ? 20 : 40);
-    this.irqHold = this.model === 7 ? 600 : 70;
-    this.irqUntil = 0;
-    this.framePeriod = 20000 * us;
-    this.subPeriod = (20000 / this.subDivisor) * us;
-    this.nextFrame = 0;
-    this.nextSub = 0;
     this.inVblank = false;
-    // `raster` state: the free-running line counter and the level it produces,
-    // which the arming latch gates but does not stop.
-    this.irqRaster = opts.irqRaster === undefined ? true : !!opts.irqRaster;
-    this.linePeriod = this.framePeriod / LINES;
+    // The free-running line counter and the level it produces, which the arming
+    // latch gates but does not stop.
+    this.linePeriod = 20000 * us / LINES;
     this.rasterLine = 0;
     this.nextLine = 0;
     this.irqRaw = false;
@@ -268,38 +247,12 @@
     return this;
   };
 
-  // Called before every instruction; cheap when interrupts are disarmed.
+  // Called before every instruction. One line counter, running whether or not
+  // software has armed anything: on the boards the counter is always counting
+  // and $C04x only enables the buffer that puts it on the bus, so $C019 answers
+  // from the live raster and arming mid-frame picks the line counter up where
+  // it is.
   Machine.prototype.pollInterrupts = function (now) {
-    if (this.irqRaster) { this.pollRaster(now); return; }
-    if (!this.videoInts) {
-      this.nextSub = now + this.subPeriod;
-      this.nextFrame = now + this.framePeriod;
-      this.cpu.irqLine = false;
-      return;
-    }
-    while (now >= this.nextSub) {
-      this.nextSub += this.subPeriod;
-      if (this.irqHold) {
-        this.irqUntil = now + this.irqHold;    // hold the line
-        this.cpu.irqLine = true;
-      } else {
-        this.cpu.irq();                        // or pulse it, one entry per tick
-      }
-      if (this.onSubInt) this.onSubInt();      // diagnostics hook
-    }
-    if (this.cpu.irqLine && now >= this.irqUntil) this.cpu.irqLine = false;
-    while (now >= this.nextFrame) {
-      this.nextFrame += this.framePeriod;
-      this.inVblank = true;
-      this.cpu.nmi();
-    }
-  };
-
-  // The `raster` model. One line counter, running whether or not software has
-  // armed anything: on the boards the counter is always counting and $C04x only
-  // enables the buffer that puts it on the bus, so $C019 answers from the live
-  // raster and arming mid-frame picks the line counter up where it is.
-  Machine.prototype.pollRaster = function (now) {
     while (now >= this.nextLine) {
       this.nextLine += this.linePeriod;
       if (++this.rasterLine >= LINES) this.rasterLine = 0;
@@ -309,16 +262,15 @@
       // ends: one signal, buffered in opposite senses on the two machines.
       if (line === (this.model === 7 ? DISPLAYED : 0) && this.videoInts) this.cpu.nmi();
       var on = irqAtLine(this.model, line);
-      if (on && !this.irqRaw && this.onSubInt) this.onSubInt();
+      if (on && !this.irqRaw && this.onSubInt) this.onSubInt();  // diagnostics
       this.irqRaw = on;
     }
     this.cpu.irqLine = this.videoInts && this.irqRaw;
   };
 
-  // Lines between assertions of the sub-frame interrupt, whichever model is in
-  // force — what the status line and the sound tools report a rate from.
+  // Lines between assertions of the sub-frame interrupt — what the status line
+  // and the sound tools report a rate from.
   Machine.prototype.irqPeriod = function () {
-    if (!this.irqRaster) return this.subPeriod;
     return this.linePeriod * (this.model === 7 ? 32 : 8);
   };
 
@@ -329,9 +281,6 @@
   // ROM. Cards are reset in slot order, before the CPU.
   Machine.prototype.reset = function () {
     this.videoInts = false;
-    this.nextSub = this.cpu ? this.cpu.cycles + this.subPeriod : 0;
-    this.nextFrame = this.cpu ? this.cpu.cycles + this.framePeriod : 0;
-    this.irqUntil = 0;
     this.inVblank = false;
     this.rasterLine = 0;
     this.nextLine = this.cpu ? this.cpu.cycles + this.linePeriod : 0;
@@ -590,49 +539,10 @@
     }
   };
 
-  // Which delivery model the sub-frame interrupt uses: 'raster', 'held' or
-  // 'pulse'. See the constructor for what each one is.
-  Machine.prototype.setIrqModel = function (name) {
-    this.irqRaster = name === 'raster';
-    if (this.irqRaster) {
-      this.rasterLine = 0;
-      this.nextLine = this.cpu.cycles + this.linePeriod;
-      this.irqRaw = irqAtLine(this.model, 0);
-    } else {
-      this.nextSub = this.cpu.cycles + this.subPeriod;
-      this.nextFrame = this.cpu.cycles + this.framePeriod;
-      this.setIrqHold(name === 'pulse' ? 0 : (this.model === 7 ? 600 : 70));
-    }
-    this.cpu.irqLine = false;
-    return name;
-  };
-
-  // How long `held` keeps the line asserted, in cycles; 0 makes it a pulse,
-  // one handler entry per tick.
-  Machine.prototype.setIrqHold = function (cycles) {
-    this.irqHold = cycles;
-    if (!cycles) this.cpu.irqLine = false;
-    return cycles;
-  };
-
-  // The rate `held` and `pulse` tick at. `raster` takes its rate from the
-  // raster and ignores this.
-  Machine.prototype.setSubFrameHz = function (hz) {
-    this.subDivisor = Math.max(1, Math.round(hz / 50));
-    this.subPeriod = (20000 / this.subDivisor) * (AGAT.CPU_HZ / 1000000);
-    this.nextSub = this.cpu.cycles + this.subPeriod;
-    return AGAT.CPU_HZ / this.irqPeriod();
-  };
-
   // $C04x arms both interrupts, $C05x (Agat-7) or $C02x (Agat-9) disarms them.
-  // Under `raster` this only connects the counter to the CPU; the two free
-  // timers of the other models restart instead, since they have no phase of
-  // their own to pick up.
+  // This only connects the counter to the CPU: the counter itself never stops,
+  // so arming mid-frame picks it up wherever it has got to.
   Machine.prototype.setVideoInts = function (on) {
-    if (on && !this.videoInts && !this.irqRaster) {
-      this.nextSub = this.cpu.cycles + this.subPeriod;
-      this.nextFrame = this.cpu.cycles + this.framePeriod;
-    }
     if (!on) this.cpu.irqLine = false;      // disarming drops the line at once
     this.videoInts = on;
   };

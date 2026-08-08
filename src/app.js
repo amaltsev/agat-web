@@ -47,8 +47,6 @@
     this.notes = '';
     this.fromAgc = '';                    // the container's filename, if any
     this.lastTime = 0;
-    this.subFrameHz = opts.subFrameHz || 0;    // 0 = the machine's default
-    this.irqModel = opts.irqModel || 'raster';  // 'raster' | 'held' | 'pulse'
     this.soundLog = null;
     this.onStatus = opts.onStatus || function () {};
     // What the on-screen keyboard watches: the byte a host key produced, the
@@ -113,24 +111,9 @@
       }
     }
     for (var slot in moved) this.sources[slot] = moved[slot];
-    if (this.subFrameHz) this.machine.setSubFrameHz(this.subFrameHz);
-    this.machine.setIrqModel(this.irqModel);
     this.machine.reset();
     this.resize();
     this.start();
-  };
-
-  // How the sub-frame interrupt reaches the CPU: 'raster' is the hardware as
-  // measured, 'held' and 'pulse' are agat-emulator's two readings of it.
-  App.prototype.setIrqModel = function (name) {
-    this.irqModel = name;
-    return this.machine.setIrqModel(name);
-  };
-
-  // Sub-frame interrupt rate, the one RISE OUT's music rides on.
-  App.prototype.setSubFrameHz = function (hz) {
-    this.subFrameHz = hz;
-    return this.machine.setSubFrameHz(hz);
   };
 
   // Record what the speaker is actually asked to do, for a few seconds, so a
@@ -401,15 +384,14 @@
   };
 
   // A container names a machine, so applying one is a rebuild: the model, the
-  // RAM size and both interrupt settings go in together and build() applies
-  // them all at once, rather than the machine being taken apart four times.
+  // RAM size and the cards go in together and build() applies them all at once,
+  // rather than the machine being taken apart three times.
   //
-  // `over` is whatever overrules the container — {model, ramSize, slots,
-  // irqModel, subFrameHz}, in this object's own units, each key honoured only
-  // if it is there. It belongs here, before the build, rather than in a second
-  // one afterwards: build() resets the CPU and boots nothing, so a rebuild once
-  // the media has loaded leaves the machine in the monitor with the disk still
-  // in the drive.
+  // `over` is whatever overrules the container — {model, ramSize, slots}, in
+  // this object's own units, each key honoured only if it is there. It belongs
+  // here, before the build, rather than in a second one afterwards: build()
+  // resets the CPU and boots nothing, so a rebuild once the media has loaded
+  // leaves the machine in the monitor with the disk still in the drive.
   App.prototype.applyAgc = function (c, over) {
     over = over || {};
     // A container describes a whole machine, so the drives start empty: a disk
@@ -429,9 +411,6 @@
     // profile's own cards and has to survive as that.
     this.slotOverrides = 'slots' in over ? over.slots
                        : (c.machine.slots ? scaleSlots(c.machine.slots) : null);
-    if (over.irqModel || c.quirks.irq) this.irqModel = over.irqModel || c.quirks.irq;
-    this.subFrameHz = over.subFrameHz !== undefined ? over.subFrameHz
-                                                   : (c.quirks.rate || 0);
     this.build();
 
     var keys = AGAT.keyboard.setRemap(c.keys);
@@ -527,8 +506,7 @@
   };
 
   // The machine as it stands, as a container: what is in the drives, the model
-  // and RAM it is running as, both interrupt settings, the live remap and the
-  // controls it came in with.
+  // and RAM it is running as, the live remap and the controls it came in with.
   App.prototype.toAgc = function () {
     var media = [], k;
     for (k in this.sources) media.push(this.writeBack(k));
@@ -541,8 +519,6 @@
       model: this.model,
       ram: this.ramSize >> 10,
       slots: this.slotDiff(),
-      irq: this.irqModel,
-      rate: this.subFrameHz,
       keys: AGAT.keyboard.remap(),
       controls: AGAT.keyboard.controls(),
       media: media,

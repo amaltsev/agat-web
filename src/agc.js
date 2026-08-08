@@ -1,10 +1,9 @@
 // .agc — the Agat Container.
 //
 // One JSON file holding everything needed to run an old program: the image, any
-// patches to it, a title, the machine it wants, the interrupt quirks it was
-// tuned for, and the controls it is played with. A disk on its own says none of
-// that — the model comes from a `7a` in the filename, the interrupt model from
-// a menu, and which host key sends the byte the game reads is a puzzle.
+// patches to it, a title, the machine it wants, and the controls it is played
+// with. A disk on its own says none of that — the model comes from a `7a` in
+// the filename, and which host key sends the byte the game reads is a puzzle.
 //
 //   {
 //     "agc": 1,
@@ -14,7 +13,6 @@
 //     "url": "https://…",
 //     "machine": { "model": 7, "ram": 64,
 //                  "slots": { "4": { "card": "xram", "ram": 64 } } },
-//     "quirks":  { "irq": "raster", "rate": 0 },
 //     "keys":    { "KeyW": { "code": "^" } },
 //     "controls": { "Play": { "Up Down Left Right": "Move",
 //                             "^": "Shoot right" } },
@@ -240,7 +238,7 @@
                       c.agc + ', this reads ' + VERSION + ')');
     }
 
-    var machine = c.machine || {}, quirks = c.quirks || {};
+    var machine = c.machine || {};
     var out = {
       version: c.agc,
       name: name || '',
@@ -256,10 +254,6 @@
         model: machine.model === 9 ? 9 : machine.model === 7 ? 7 : 0,
         ram: Number(machine.ram) || 0,
         slots: parseSlots(machine.slots),
-      },
-      quirks: {
-        irq: quirks.irq || '',
-        rate: Number(quirks.rate) || 0,
       },
       keys: c.keys || {},
       controls: c.controls || {},
@@ -305,7 +299,6 @@
     if (spec.notes) o.notes = spec.notes;
     o.machine = { model: spec.model === 9 ? 9 : 7, ram: spec.ram || 64 };
     if (spec.slots) o.machine.slots = spec.slots;
-    o.quirks = { irq: spec.irq || 'raster', rate: spec.rate || 0 };
     if (spec.keys && Object.keys(spec.keys).length) o.keys = spec.keys;
     if (spec.controls && Object.keys(spec.controls).length) o.controls = spec.controls;
     o.media = (spec.media || []).map(function (m) {

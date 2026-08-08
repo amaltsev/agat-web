@@ -21,7 +21,6 @@
 //
 // --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
 // --cold skips the boot and cold-starts into the monitor instead,
-// --irq=raster|held|pulse picks the sub-frame interrupt's delivery model,
 // --keys=STR types a string once the machine is up (~ Return, _ Space, ^ Esc)
 // and --per=N is how many cycles each keystroke gets.
 //
@@ -86,8 +85,6 @@ if (cmd === 'sniff') {
                (c.author ? ' by ' + c.author : '') + (c.date ? ', ' + c.date : '') +
                '  Agat-' + (c.machine.model || '?') +
                (c.machine.ram ? ' ' + c.machine.ram + 'K' : '') +
-               (c.quirks.irq ? ' irq=' + c.quirks.irq : '') +
-               (c.quirks.rate ? '@' + c.quirks.rate + 'Hz' : '') +
                '  ' + c.media.length + ' media' +
                (c.url ? '\n         ' + c.url : '') +
                '\n         keys: ' + (Object.keys(c.keys).length
@@ -410,10 +407,6 @@ H.loadRoms(ctx).then((roms) => {
     model: model,
     ramSize: agc && agc.machine.ram ? agc.machine.ram * 1024 : undefined,
   });
-  // A flag beats the container; the container beats the machine's default.
-  if (flags.irq) m.setIrqModel(flags.irq);
-  else if (agc && agc.quirks.irq) m.setIrqModel(agc.quirks.irq);
-  if (agc && agc.quirks.rate) m.setSubFrameHz(agc.quirks.rate);
   let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
   if (sniffed.kind && sniffed.kind !== 'fil') {
     slot = H.insert(m, ctx.AGAT.mount(sniffed));

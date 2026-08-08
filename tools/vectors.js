@@ -690,15 +690,15 @@ function eq(what, got, want) {
 
   const src = A.agc.build({
     title: 'ИГРА', author: 'Кто-то', date: 'circa 1985', url: 'http://x/y',
-    notes: 'n', model: 7, ram: 64, irq: 'held', rate: 500,
+    notes: 'n', model: 7, ram: 64,
     keys: { KeyW: { code: '^', note: 'Shoot right' } },
     media: [{ name: 'x.dsk', bytes: bytes, patches: [{ at: 2, hex: 'AA BB' }] }],
   });
   const c = A.agc.parse(Buffer.from(src, 'utf8'), 'x.agc');
   eq('a container round-trips',
      [c.title, c.author, c.date, c.url, c.notes, c.machine.model, c.machine.ram,
-      c.quirks.irq, c.quirks.rate, c.keys.KeyW, c.media.length, c.media[0].name],
-     ['ИГРА', 'Кто-то', 'circa 1985', 'http://x/y', 'n', 7, 64, 'held', 500,
+      c.keys.KeyW, c.media.length, c.media[0].name],
+     ['ИГРА', 'Кто-то', 'circa 1985', 'http://x/y', 'n', 7, 64,
       { code: '^', note: 'Shoot right' }, 1, 'x.dsk']);
   // A date is what is known, not a year: "circa 1985" has to survive.
   eq('a date stays as it was written',
@@ -1270,25 +1270,22 @@ function eq(what, got, want) {
         return app;
       };
       // What examples/rise-out.agc says, and the address the page writes for it.
-      const stock = agc({ model: 7, ram: 64, irq: 'raster' });
+      const stock = agc({ model: 7, ram: 64 });
 
       const plain = load(stock);
       eq('a container builds the machine it names',
-         [plain.model, plain.ramSize, plain.irqModel, plain.subFrameHz],
-         [7, 0x10000, 'raster', 0]);
+         [plain.model, plain.ramSize], [7, 0x10000]);
       eq('...and boots its medium', [plain.drives[3].name, plain.machine.cpu.pc],
          ['x.dsk', 0xc300]);
 
-      const same = load(stock, { model: 7, ramSize: 0x10000, irqModel: 'raster' });
+      const same = load(stock, { model: 7, ramSize: 0x10000 });
       eq('an address agreeing with the container changes nothing',
-         [same.model, same.ramSize, same.irqModel], [7, 0x10000, 'raster']);
+         [same.model, same.ramSize], [7, 0x10000]);
       eq('...and still leaves the medium booting', same.machine.cpu.pc, 0xc300);
 
-      const other = load(stock, { ramSize: 0x20000, irqModel: 'pulse',
-                                  subFrameHz: 1000, slots: { 2: null } });
+      const other = load(stock, { ramSize: 0x20000, slots: { 2: null } });
       eq('an address disagreeing with it wins',
-         [other.ramSize, other.irqModel, other.subFrameHz, other.slots[2]],
-         [0x20000, 'pulse', 1000, undefined]);
+         [other.ramSize, other.slots[2]], [0x20000, undefined]);
       eq('...on the machine the medium boots on', other.machine.cpu.pc, 0xc300);
 
       const nine = load(stock, { model: 9 });
@@ -1304,7 +1301,7 @@ function eq(what, got, want) {
          load(carded, { slots: null }).slots[4].ram, 0x8000);
     }
 
-    // --- the raster interrupt model -----------------------------------------
+    // --- the video interrupts ------------------------------------------------
     // Run the line counter through one whole frame and describe the IRQ line's
     // shape, which is what the oscilloscope traces on agatcomp measure: the
     // Agat-7's ten assertions with one release cut in half, and the Agat-9's
@@ -1312,12 +1309,11 @@ function eq(what, got, want) {
     const shape = (model) => {
       const mm = H.makeMachine(ctx, roms, { model: model });
       mm.reset();
-      mm.setIrqModel('raster');
       mm.setVideoInts(true);
       const level = new Array(312), nmi = [], runs = [];
       mm.cpu.nmi = () => nmi.push(mm.rasterLine);
       for (let i = 0; i < 312; i++) {
-        mm.pollRaster(mm.nextLine);
+        mm.pollInterrupts(mm.nextLine);
         level[mm.rasterLine] = mm.cpu.irqLine;
       }
       for (let line = 0; line < 312; line++) {

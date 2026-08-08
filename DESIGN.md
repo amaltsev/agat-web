@@ -210,10 +210,9 @@ is what makes re-entrancy fall out naturally rather than needing to be modelled.
 
 ### Interrupt timing
 
-`setIrqModel()` picks one of two code paths, both in CPU cycles.
-
-`Machine.pollRaster` is the hardware and the default: one 312-line counter, an
-event per line, and a level that the arming latch gates but does not stop.
+`Machine.pollInterrupts` is the hardware and the only path: one 312-line
+counter, an event per line, and a level that the arming latch gates but does not
+stop. Everything is in CPU cycles.
 
 ```js
 while (now >= this.nextLine) {
@@ -225,23 +224,11 @@ while (now >= this.nextLine) {
 this.cpu.irqLine = this.videoInts && this.irqRaw;
 ```
 
-`Machine.pollInterrupts` is agat-emulator's, two independent counters:
-
-```js
-while (now >= this.nextSub) {
-  this.nextSub += this.subPeriod;
-  if (this.irqHold) { this.irqUntil = now + this.irqHold; this.cpu.irqLine = true; }
-  else this.cpu.irq();
-  if (this.onSubInt) this.onSubInt();
-}
-if (this.cpu.irqLine && now >= this.irqUntil) this.cpu.irqLine = false;
-while (now >= this.nextFrame) { this.nextFrame += this.framePeriod; this.inVblank = true; this.cpu.nmi(); }
-```
-
-`irqHold` selects between its two variants — non-zero holds the line for that
-many cycles, zero pulses it once per tick. Both stay until `raster` has been
-confirmed by ear; see [the delivery model](HARDWARE.md#the-delivery-model).
-`irqPeriod()` reports the assertion period whichever path is live.
+Both interrupts come off that one counter — the sub-frame IRQ from a bit of it,
+NMI from its blanking edge — because that is how the boards do it; see
+[the delivery model](HARDWARE.md#the-delivery-model). `irqPeriod()` reports the
+assertion period, which is what the status line and the sound tools turn into a
+rate.
 
 `onSubInt` is a diagnostics hook, used by `recordSound()` to sample zero page at
 the interrupt's own cadence rather than once per animation frame.
@@ -591,8 +578,6 @@ reason the audio queue would otherwise drift.
 
 | | |
 |---|---|
-| `setSubFrameHz(hz)` | sub-frame interrupt rate |
-| `setIrqModel(name)` | delivery model: `raster`, `held` or `pulse` |
 | `recordSound(seconds)` | capture speaker edges and `PLAY500`'s zero page |
 | `soundReport()` | group them into notes: frequency, length, interrupts per flip |
 
@@ -614,7 +599,6 @@ node tools/check.js kbdmenu         # the page's keyboard menu, load order and a
 node tools/painters.js              # each video mode from a synthetic pattern
 
 node tools/check.js boot   <image>  # boot and report where it got to
-node tools/check.js boot <image> --irq=raster    # ...under a given interrupt model
 node tools/check.js io     <image>  # $C0xx histogram
 node tools/check.js sniff  <file…>  # what the sniffer makes of each
 node tools/check.js keys   <.agc>   # the controls panel and the winnowed board
@@ -627,7 +611,6 @@ node tools/mkagc.js <image> …       # pack an image and its settings into an .
 node tools/mkagc.js a.dsk --diff=b.dsk    # ...with the difference as patches
 
 node tools/tone.js "3,12,0" 16      # RISE OUT's PLAY500 handler on a bare machine
-node tools/tone.js "3,12,0" 16 0 raster    # ...under a given interrupt model
 python3 tools/mkirqtest.py          # rebuild examples/irqtest.dsk
 python3 tools/build_roms.py --data <dir>
 ```
