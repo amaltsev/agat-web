@@ -2,17 +2,20 @@
 
 *По-русски: [AGC.ru.md](AGC.ru.md).*
 
-An `.agc` file is one program and everything needed to run it: the disk image,
-the machine, the settings, and the keyboard.
-
 Having the disk is not the same as knowing how to run it. Which machine — an
 Agat-7 or an Agat-9, and with how much RAM? And which key on the keyboard in
 front of you sends the byte the program is waiting for? None of that is in a
-`.dsk`, and it is usually written down nowhere at all. A container holds it next
-to the image, in one file that a person can read and edit.
+`.dsk`.
+
+An `.agc` file is one program and everything needed to run it: the disk image
+(with its patches, and with whatever a program has written to it), the machine,
+the settings, and the keyboard.
 
 It is JSON. Drop one on [the emulator](https://amaltsev.github.io/agat-web/) and
 it runs.
+
+The easiest way to get started is to load a bare image into the emulator and
+press **Save AGC**: the container it writes is a text file you can edit.
 
 ---
 

@@ -314,37 +314,31 @@
 
 <div class="help">
   <p>
-    Click the screen and type. <kbd>Return</kbd>, <kbd>Esc</kbd>, arrows and
-    <kbd>Ctrl</kbd>+letter are passed through; sound starts on the first
-    keypress, as browsers require. Keys go through the Agat's own scancode
-    table, so <b>ЛАТ/РУС</b> switches to a JCUKEN layout and Cyrillic comes from
-    where a key sits rather than from what your host keyboard types. <b>Boot</b> is the equivalent of
-    <code>PR#N</code> — it restarts from the disk. <b>Reset</b> cold-starts into
-    the machine's own monitor, which is where you land with no disk in.
+    Drop an Agat image into the window and it starts running. Most host
+    keys pass through. Keys go through the Agat's own scancode table, so
+    <b>ЛАТ/РУС</b> switches to a JCUKEN Cyrillic layout. <b>Boot</b> is the
+    equivalent of <code>PR#N</code> — it restarts from the disk.
+    <b>Reset</b> cold-starts into the machine's own monitor, which is where
+    you land with no disk in.
   </p>
   <table>
     <tr><td><b>Keyboard</b></td><td>
-      Draws the mapping rather than leaving you to guess it — the Agat's own
-      board, or the PC keys the table maps — with the cap your keypress reaches
-      lit and <code>$C000</code> shown underneath. Switching <b>ЛАТ/РУС</b>
-      moves the lit cap and greys out what the other layout can no longer type:
-      РУС cannot reach <code>' , / ;</code> and ЛАТ cannot reach Ю, Ч or Ъ. Caps
-      can be clicked, so a key your host will not send is still reachable, and
-      hovering one names every host key that reaches it.
+      The Agat's own board, or the PC keys the table maps. The cap your
+      keypress reaches is lit, with <code>$C000</code> shown underneath.
+      Caps can be clicked, and hovering one names every host key that
+      reaches it.
     </td></tr>
     <tr><td><b>Takes</b></td><td>
       <code>.aim</code> tagged track images, <code>.dsk</code> sector images and
       <code>.nib</code> nibble images — 140K and 840K of each — plus
       <code>.fil</code> program files. Format is detected by size, not by
-      extension, because Agat images in the wild are routinely misnamed.
+      extension.
     </td></tr>
     <tr><td><b>AGC</b></td><td>
-      An Agat Container: one of those images plus the machine it wants, the
-      interrupt settings it was tuned for, a keyboard remap — so a game whose
-      controls are four keys away under a Shift can put them where your fingers
-      are — and the controls themselves, grouped, which is the card under the
-      screen. <b>Save AGC</b> writes one from the machine as it stands.
-      The format is written up in
+      An Agat Container: one of those images plus the machine it wants,
+      a keyboard remap, and the controls themselves, grouped, which is
+      the card under the screen. <b>Save AGC</b> writes one from the
+      machine as it stands. The format is written up in
       <a href="https://github.com/amaltsev/agat-web/blob/main/AGC.md">AGC.md</a>,
       and
       <a href="https://github.com/amaltsev/agat-web/blob/main/AGC.ru.md">по-русски</a>.
@@ -357,33 +351,21 @@
       and <code>T</code> beside it is the track its head is on.
     </td></tr>
     <tr><td><b>RO / RW</b></td><td>
-      Every disk arrives read-only, and the drive tells the program so. Click
-      <code>RO</code> to let it write — which is what an Agat-9 system disk
-      wants when it says «СИСТЕМА ИСПОРЧЕНА», and what DOS needs before it will
-      <code>SAVE</code> or <code>INIT</code>. Writes go to memory and nowhere
-      else: the image on your disk is never touched, and closing the tab loses
-      them. <b>Save AGC</b> keeps them, as patches on the disk they came from.
-      Only the 140K drive writes.
+      Disks are read-only by default. Click <code>RO</code> to allow
+      writing (only 140K writes are supported).  Writes go to memory,
+      and closing the tab loses them.  <b>Save AGC</b> keeps them, as
+      patches on the disk they came from.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
-      The three memory sizes, the interrupt model, its rate and the volume. The
-      interrupt settings are the ones to reach for when sound comes out at the
-      wrong pitch: they set how the sub-frame interrupt reaches the CPU, and
-      software that sequences sound on the interrupt count hears the choice as
-      pitch and tempo. An <code>.agc</code> carries all of it, so a program
-      tuned by ear stays tuned.
+      The three memory sizes and the volume.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
-      The Agat-9 is 128K in 8K banks, and nothing about it is adjustable. The
-      standard Agat-7 is three separate devices — 64K of base RAM in 16K banks,
-      a 32K ЭмПЗУ card in slot 2 behind <code>$D000-$FFFF</code>, and a 32K ОЗУ
-      expansion in slot 4 that can take <code>$8000-$BFFF</code> over from base
-      RAM — which is the 128K machine most software was written for. The
-      expansion powers up deselected, so <code>$8000-$BFFF</code> is base RAM
-      until a program claims it. Only the base RAM is scanned by the
-      video controller, and its size masks the mode register's page field, so
-      set that one to match your disk. A filename containing <code>7a</code> or
-      <code>9a</code> picks the machine for you until you choose one yourself.
+      The Agat-9 is 128K in 8K banks, and nothing about it is
+      adjustable. The standard Agat-7 is three separate devices —
+      64K of base RAM in 16K banks, a 32K ЭмПЗУ card in slot 2,
+      and a 32K ОЗУ expansion in slot 4. A filename containing
+      <code>7a</code> or <code>9a</code> picks the machine for you until
+      you choose one yourself.
     </td></tr>
     <tr><td><b>Bookmarks</b></td><td>
       The machine, all three memory sizes, both interrupt settings and which
