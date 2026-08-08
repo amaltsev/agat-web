@@ -146,12 +146,36 @@
   // The codes with no glyph to name them by. These are the machine's own caps —
   // the arrow cluster, ↵, ПРОБЕЛ and F1-F3 — and the values are the ones
   // keyview.js paints on them.
+  //
+  // The `KeyboardEvent.code` spellings are here as well because a container has
+  // two blocks whose left-hand sides look alike and are not: `keys` names host
+  // keys, `controls` names Agat codes, and `Space` is a legal word in both. An
+  // author who carries the habit across and writes `ArrowUp` or `Escape` in
+  // `controls` means the code, and there is nothing else those words could mean.
   var NAMED = {
     Up: 0x99, Down: 0x9a, Left: 0x88, Right: 0x95,
     '↑': 0x99, '↓': 0x9a, '←': 0x88, '→': 0x95,
+    ArrowUp: 0x99, ArrowDown: 0x9a, ArrowLeft: 0x88, ArrowRight: 0x95,
     Enter: 0x8d, '↵': 0x8d, Esc: 0x9b, Space: 0x20, Tab: 0x89, Bksp: 0x88,
+    Escape: 0x9b, Backspace: 0x88,
     F1: 0x84, F2: 0x85, F3: 0x86,
   };
+
+  // What to print for a code a person has to read. CHAR covers everything with a
+  // glyph; this covers the rest, with the machine's own cap legend where the
+  // machine has a cap and a short name where it has none. $9B is Esc on any
+  // other keyboard and РЕД on this one, and РЕД is what the board draws it on.
+  var CODE_NAME = {
+    0x99: '↑', 0x9a: '↓', 0x88: '←', 0x95: '→',
+    0x8d: '↵', 0x20: 'ПРОБЕЛ', 0x89: 'Tab', 0x9b: 'РЕД',
+    0x84: 'F1', 0x85: 'F2', 0x86: 'F3',
+  };
+
+  function codeName(code) {
+    code &= 0xff;
+    return CODE_NAME[code] || CHAR[code & 0x7f] ||
+           '$' + (code < 16 ? '0' : '') + code.toString(16).toUpperCase();
+  }
 
   var BY_CHAR = (function () {
     var out = {}, i;
@@ -252,21 +276,120 @@
   // "only mapped keys" view whether it has anything to draw.
   function keyCount() { return COUNT; }
 
-  // Which codes those keys reach, as a table of 128 indexed by the code's low
-  // seven bits and holding the code itself — the set the "only mapped keys"
-  // board keeps. A remapped key reaches its code from every plane at once. A key
-  // declared as-is reaches whatever the table has under it in this layout,
-  // unshifted and shifted, which is the pair of legends its cap carries; the
+  // ---- the controls --------------------------------------------------------
+  //
+  // `keys` is indexed by host scancode and answers "what does this key of mine
+  // do". `controls` is indexed by Agat code and answers the other question, the
+  // one a player actually has: what does the program read, and what for.
+  //
+  //   "controls": { "Play": { "Up Down Left Right": "Движение",
+  //                           "^": "Выстрел вправо" } }
+  //
+  // Groups in file order, rows in file order, and a row is one or more codes
+  // sharing a label — the four arrows are one line, not four.
+  //
+  // Codes and nothing else. There is no combination to write: the Agat keyboard
+  // is an encoder that puts one byte in $C000, РЕГ adds $20 across the letter
+  // block, so РЕГ+К is `$6B`, which is also just `"К"`. УПР collapses the same
+  // way into $81-$9F.
+
+  var CONTROLS = null;      // [{ name, rows: [{ codes, label }] }], in file order
+  var LABELS = null;        // code -> what the program does with it
+  var CTL_ROWS = 0;
+  var CTL_SRC = null;       // the block as it was given, for writing back out
+
+  function setControls(map) {
+    var bad = [], name, group, key, rows, codes, parts, i, code, label;
+    CONTROLS = null;
+    LABELS = null;
+    CTL_ROWS = 0;
+    CTL_SRC = null;
+    if (!map) return { rows: 0, groups: 0, bad: bad };
+    CTL_SRC = map;
+    CONTROLS = [];
+    LABELS = {};
+    for (name in map) {
+      group = map[name];
+      if (!group || typeof group !== 'object') { bad.push(name); continue; }
+      rows = [];
+      for (key in group) {
+        parts = String(key).split(/\s+/);
+        codes = [];
+        for (i = 0; i < parts.length; i++) {
+          if (!parts[i]) continue;
+          code = resolveCode(parts[i]);
+          // Named with its group, since a bare `Q` says nothing about where in
+          // the file to go and looking for it is the whole job.
+          if (code < 0) { bad.push(name + ': ' + parts[i]); continue; }
+          codes.push(code);
+        }
+        if (!codes.length) continue;
+        label = group[key];
+        label = (label === true || label === null || label === undefined)
+              ? '' : String(label);
+        for (i = 0; i < codes.length; i++) {
+          if (LABELS[codes[i] & 0x7f] === undefined) LABELS[codes[i] & 0x7f] = label;
+        }
+        rows.push({ codes: codes, label: label });
+        CTL_ROWS++;
+      }
+      if (rows.length) CONTROLS.push({ name: name, rows: rows });
+    }
+    if (!CONTROLS.length) { CONTROLS = null; LABELS = null; }
+    return { rows: CTL_ROWS, groups: CONTROLS ? CONTROLS.length : 0, bad: bad };
+  }
+
+  function controlGroups() { return CONTROLS; }
+  function controlCount() { return CTL_ROWS; }
+  function controls() { return CTL_SRC; }
+
+  // What the container says this code is for, or '' — the tooltips' half of
+  // `controls`, and the reason a note no longer has to be written twice.
+  function controlLabel(code) {
+    return (LABELS && LABELS[code & 0x7f]) || '';
+  }
+
+  // The codes one group names, or all of them, as the same table of 128 that
+  // usedCodes returns. Null when this container declares no controls at all.
+  function controlCodes(group) {
+    var out = null, i, j, k, g, r;
+    if (!CONTROLS) return null;
+    for (i = 0; i < CONTROLS.length; i++) {
+      g = CONTROLS[i];
+      if (group && g.name !== group) continue;
+      for (j = 0; j < g.rows.length; j++) {
+        r = g.rows[j];
+        for (k = 0; k < r.codes.length; k++) {
+          if (!out) { out = []; for (var n = 0; n < 128; n++) out.push(0); }
+          out[r.codes[k] & 0x7f] = r.codes[k];
+        }
+      }
+    }
+    return out;
+  }
+
+  // Which codes this program reaches, as a table of 128 indexed by the code's
+  // low seven bits and holding the code itself — the set the winnowed board
+  // keeps. Null when the container named nothing at all, which the board reads
+  // as "keep everything".
+  //
+  // Two sources, because a container has two ways to say it. `controls` names
+  // codes outright. A remapped key reaches its code from every plane at once; a
+  // key declared as-is reaches whatever the table has under it in this layout,
+  // unshifted and shifted, which is the pair of legends its cap carries — the
   // control plane is left out, because a cap the program only reaches under УПР
-  // is not a cap it is asking anyone to find. Null when no keys were named at
-  // all, which the board reads as "keep everything".
+  // is not a cap it is asking anyone to find.
+  //
+  // Naming a group is asking for exactly that group. The keys block is the
+  // program's whole set, so folding it back in would undo the narrowing.
   //
   // The whole code and not a flag, because `$9B` and `$1B` share an index and a
   // board drawing one of them has to know which it was given.
-  function usedCodes(layout) {
-    if (!COUNT) return null;
-    var out = [], key, k, scan, mod, v, i;
-    for (i = 0; i < 128; i++) out.push(0);
+  function usedCodes(layout, group) {
+    var out = controlCodes(group), key, k, scan, mod, v, i;
+    if (group) return out;
+    if (!COUNT) return out;
+    if (!out) { out = []; for (i = 0; i < 128; i++) out.push(0); }
     for (key in USED) {
       k = Number(key);
       scan = k & 255;
@@ -472,7 +595,10 @@
     decode: decode, codeFor: codeFor, scanOf: scanOf, planeFor: planeFor,
     routesTo: routesTo, routeName: routeName, keyName: keyName,
     setRemap: setRemap, remap: remap, resolveCode: resolveCode,
-    keyCount: keyCount, usedCodes: usedCodes,
+    keyCount: keyCount, usedCodes: usedCodes, codeName: codeName,
+    setControls: setControls, controlGroups: controlGroups,
+    controlCount: controlCount, controlLabel: controlLabel,
+    controlCodes: controlCodes, controls: controls,
     KEYMAP: KEYMAP, SCAN: SCAN, EXT_SCAN: EXT_SCAN, CHAR: CHAR,
     LAT: LAT, RUS: RUS, NORMAL: NORMAL, SHIFT: SHIFT, CTRL: CTRL, EXT: EXT,
   };

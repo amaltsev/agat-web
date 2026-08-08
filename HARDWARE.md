@@ -395,14 +395,18 @@ scancode table settles several things that are not obvious from the table alone:
   machines.
 - **The board has F1, F2 and F3 and no more**, and the table has codes at
   exactly scancodes `$3B $3C $3D` (`$84 $85 $86`) and nothing for F4-F12.
-- **There is no Esc, Tab or Backspace cap.** `←` is the backspace, and both the
+- **There is no Tab or Backspace cap.** `←` is the backspace, and both the
   host's Backspace and its ArrowLeft reach it, because both are `$88`.
+- **`РЕД` is the Esc**, `$9B`, in the same form as the arrows and the rest of
+  the board's control codes. The scancode table cannot say so on its own — `$9B`
+  comes from the host's Esc and from `УПР`+`Ш` alike, the ASCII control
+  relation — which is why `keyview.js` drew it on `Ш` until this was corrected.
 - The digit row is the ГОСТ one — `;/+ 1/! 2/" 3/# 4/¤ 5/% 6/& 7/' 8/( 9/) 0
   -/=` — and its legends check out against the character generator: what the
   `4` cap calls `¤` really is what the Agat-7 font draws at `$24`, where ASCII
   has `$`.
-- **`ПВТ` and `РЕД` send nothing** the shipped table carries, and neither does
-  the pad's `=`.
+- **`ПВТ` sends nothing** the shipped table carries, and neither does the pad's
+  `=`.
 - The numeric pad runs `1 2 3 / 4 5 6 / 7 8 9 / 0 . =`, inverted from a PC's,
   and every cap on it sends a control code in `$81-$9F` rather than a digit.
 

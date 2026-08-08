@@ -8,8 +8,15 @@
 //                                                the disk was written with
 //   node tools/check.js sniff  <file...>         what the sniffer makes of each
 //   node tools/check.js keys   <.agc | KeyW=^ | Space>
-//                                                the on-screen board a key set
-//                                                leaves, drawn in the terminal
+//                                                the controls panel and the
+//                                                board a container leaves,
+//                                                drawn in the terminal;
+//                                                --group=NAME cuts it to one
+//                                                control group, --rus switches
+//                                                the layout, --view=agat draws
+//                                                the whole machine's board
+//   node tools/check.js kbdmenu                  the page's keyboard menu, run
+//                                                against a stub <select>
 //   node tools/check.js modules                  index.html vs tools/modules.js
 //
 // --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
@@ -84,7 +91,11 @@ if (cmd === 'sniff') {
                '  ' + c.media.length + ' media' +
                (c.url ? '\n         ' + c.url : '') +
                '\n         keys: ' + (Object.keys(c.keys).length
-                 ? Object.keys(c.keys).map(key).join(', ') : 'none');
+                 ? Object.keys(c.keys).map(key).join(', ') : 'none') +
+               (Object.keys(c.controls).length
+                 ? '\n         controls: ' + Object.keys(c.controls).map((g) =>
+                     g + ' (' + Object.keys(c.controls[g]).length + ')').join(', ')
+                 : '');
     }
     console.log((s.kind || 'unknown').padEnd(8) + ' ' +
                 String(size).padStart(8) + '  ' + path.basename(p) + extra);
@@ -92,54 +103,297 @@ if (cmd === 'sniff') {
   process.exit(0);
 }
 
-// The on-screen board, drawn in the terminal. `keys` is the winnowed one — the
-// АГАТ board with everything the container did not name shrunk to a sliver — and
-// it is the cheap way to see what a container's `keys` will actually put in
-// front of a player, without a browser. KeyView touches no DOM until it is
-// built, so a stub document is enough to build it against.
+// The controls panel and the on-screen board, drawn in the terminal. The board
+// is the winnowed one — the АГАТ board with everything the container did not
+// name shrunk to a sliver — and between them they are the cheap way to see what
+// a container will actually put in front of a player, without a browser. Neither
+// touches any DOM until it is built, so a stub document is enough.
 if (cmd === 'keys') {
   const A = ctx.AGAT;
   const el = () => ({
     children: [], style: {}, className: '', textContent: '', title: '',
-    appendChild(c) { this.children.push(c); return c; },
-    addEventListener() {},
+    // parentNode as well as children: a tap lands on the deepest element under
+    // the finger and is walked back up to the thing that owns it.
+    appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+    removeChild(c) { this.children = this.children.filter((x) => x !== c); },
+    parentNode: null,
+    _l: [],
+    addEventListener(t, f) { this._l.push([t, f]); },
+    removeEventListener(t, f) { this._l = this._l.filter((x) => x[1] !== f); },
+    fire(t, ev) { for (const [tt, f] of this._l) if (tt === t) f(ev); },
     set innerHTML(v) { this.children = []; },
     get innerHTML() { return ''; },
   });
   ctx.document = { createElement: el, addEventListener() {}, removeEventListener() {} };
 
-  // Either a container's keys, or a map written on the command line the way the
-  // container writes it: KeyW=^ names a remap, a bare Space declares a key.
+  // Either a container's keys and controls, or a map written on the command line
+  // the way the container writes it: KeyW=^ names a remap, a bare Space declares
+  // a key. Controls can only come from a file — they are grouped, and a group is
+  // more than one argument's worth.
   const keys = {};
+  let controls = null;
   for (const a of rest) {
     if (/=/.test(a)) { const [k, v] = a.split('='); keys[k] = v; continue; }
     if (!/\.agc$/i.test(a)) { keys[a] = null; continue; }
     const c = A.agc.parse(fs.readFileSync(a), path.basename(a));
     Object.assign(keys, c.keys);
+    if (Object.keys(c.controls).length) Object.assign(controls = controls || {}, c.controls);
     console.log(c.title + (c.author ? ' — ' + c.author : ''));
   }
   const set = A.keyboard.setRemap(Object.keys(keys).length ? keys : null);
+  const ctl = A.keyboard.setControls(controls);
   console.log('keys: ' + set.ok + ', ' + set.remapped + ' remapped' +
               (set.bad.length ? ', ignored ' + set.bad.join(', ') : ''));
+  console.log('controls: ' + ctl.rows + ' in ' + ctl.groups + ' group(s)' +
+              (ctl.bad.length ? ', ignored ' + ctl.bad.join(', ') : ''));
+
+  // The panel as the page draws it, walked back out of the stub nodes: a group
+  // is its name and then a line per row, and a line is the codes and the label.
+  const panel = new A.ControlPanel(el());
+  const group = flags.group === true ? '' : (flags.group || '');
+  for (const g of panel.groups) {
+    console.log('  ' + g.name + (g.name === group ? '  ←' : ''));
+    for (const line of g.el.children.slice(1)) {
+      const [code, what] = line.children;
+      console.log('    ' + code.textContent.padEnd(14) + (what ? what.textContent : ''));
+    }
+  }
 
   const app = { machine: { kbdLatch: 0, cyrillic: !!flags.rus }, reset() {} };
   const view = new A.KeyView(el(), app, {
-    view: flags.view === 'agat' ? 'agat' : 'used', rus: !!flags.rus,
+    view: flags.view === 'agat' ? 'agat' : 'used' + (group ? ':' + group : ''),
+    rus: !!flags.rus,
   });
+  // Read back off the caps rather than off the table they were built from, so
+  // this shows what the page draws: the winnowed board puts the legend the
+  // program reads on top, which is not always the order the machine prints.
+  // A named legend gets a star, the terminal's version of the underline. It is
+  // per half, not per cap — `K` and `К` are two controls on one key, and a cap
+  // kept only as a stand-in has named neither of its legends.
+  const half = (sp) => sp.textContent + (/\bnamed\b/.test(sp.className) ? '*' : '');
+  const capText = (c) => c.gone ? '·'
+    : '[' + half(c.top) + (c.bot.textContent ? '/' + half(c.bot) : '') + ']';
   for (const b of view.blocks) {
     if (b.el.style.display === 'none') { console.log('  (block winnowed away)'); continue; }
     for (const r of b.rows) {
       if (r.el.style.display === 'none') continue;
       const pad = ' '.repeat(Math.round(parseFloat(r.el.style.marginLeft) || 0));
-      console.log('  ' + pad + r.caps.map((c) => c.gone ? '·'
-        : '[' + (c.def.cap !== undefined ? c.def.cap
-                 : ctx.AGAT.keyview.CHAR[c.def.u] +
-                   (c.def.s === undefined ? '' : '/' + ctx.AGAT.keyview.CHAR[c.def.s])) +
-          ']').join(' '));
+      console.log('  ' + pad + r.caps.map(capText).join(' '));
     }
   }
   console.log('  board: ' + view.board.style.fontSize);
+
+  // Then build every other board over the same container. Only the winnowed one
+  // is drawn above, and a field that exists there and nowhere else — plan() sets
+  // one — is a page that comes up blank on the board it opens with. Cheap to
+  // rule out here, and there is nothing else that would.
+  for (const v of ['agat', 'pc', 'used']) {
+    new A.KeyView(el(), app, { view: v, rus: !!flags.rus });
+  }
+  console.log('  every board builds');
   process.exit(0);
+}
+
+// The keyboard menu's own logic, lifted out of index.html and run against a stub
+// <select>. Everything else in src/ is testable because it is in src/; this is
+// the one piece of behaviour that lives in the page, and its hard cases are all
+// about load order — a bookmarked control group whose container is still on the
+// wire, a second container that takes that group away — which is exactly what a
+// browser makes tedious to reach and easy to get wrong. The functions are found
+// by name and fail loudly if they are renamed.
+if (cmd === 'kbdmenu') {
+  const A = ctx.AGAT;
+  const page = fs.readFileSync(path.join(H.ROOT, 'index.html'), 'utf8');
+  const grab = (name) => {
+    const at = page.indexOf('function ' + name + '(');
+    if (at < 0) throw new Error('index.html has no function ' + name);
+    let depth = 0;
+    for (let j = page.indexOf('{', at); j < page.length; j++) {
+      if (page[j] === '{') depth++;
+      else if (page[j] === '}' && --depth === 0) return page.slice(at, j + 1);
+    }
+    throw new Error(name + ' does not close');
+  };
+
+  // An <option>/<optgroup> pair and a <select> that answers `options` and `value`
+  // the way one does: assigning a value no option carries leaves the select
+  // showing nothing, and so does removing the option that was selected.
+  const opt = (tag) => ({ tag, value: '', textContent: '', label: '', children: [],
+                          appendChild(c) { this.children.push(c); return c; } });
+  class Select {
+    constructor() { this.kids = []; this._value = ''; this.disabled = false; }
+    get options() {
+      const out = [];
+      for (const k of this.kids) k.tag === 'optgroup' ? out.push(...k.children) : out.push(k);
+      return out;
+    }
+    get value() {
+      return this.options.some((o) => o.value === this._value) ? this._value : '';
+    }
+    set value(v) { this._value = String(v); }
+    appendChild(c) { this.kids.push(c); return c; }
+    removeChild(c) { this.kids = this.kids.filter((x) => x !== c); }
+    querySelector() { return this.options.find((o) => o.value === 'used'); }
+  }
+  const el = () => ({
+    children: [], style: {}, className: '', textContent: '', title: '',
+    // parentNode as well as children: a tap lands on the deepest element under
+    // the finger and is walked back up to the thing that owns it.
+    appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+    removeChild(c) { this.children = this.children.filter((x) => x !== c); },
+    parentNode: null,
+    _l: [],
+    addEventListener(t, f) { this._l.push([t, f]); },
+    removeEventListener(t, f) { this._l = this._l.filter((x) => x[1] !== f); },
+    fire(t, ev) { for (const [tt, f] of this._l) if (tt === t) f(ev); },
+    set innerHTML(v) { this.children = []; },
+    get innerHTML() { return ''; },
+  });
+  ctx.document = global.document = {
+    createElement: (t) => (t === 'option' || t === 'optgroup' ? opt(t) : el()),
+    addEventListener() {}, removeEventListener() {},
+  };
+  global.AGAT = A;
+
+  let pass = 0, fail = 0;
+  const eq = (what, got, want) => {
+    const g = JSON.stringify(got), w = JSON.stringify(want);
+    if (g === w) { pass++; return; }
+    fail++;
+    console.log('FAIL ' + what + '\n  got  ' + g + '\n  want ' + w);
+  };
+
+  // The page's variables, and the two things syncKbd calls that are not its own.
+  let kbdSel, usedOpt, usedBox, wantKbd, panel, kbdChosen, handheld, controlsEl;
+  let applied = [], saved = 0;
+  function applyKbd() {
+    applied.push(kbdSel.value);
+    if (panel) panel.mark(groupOf(kbdSel.value));
+  }
+  function saveUrl() { saved++; }
+  eval(grab('pick'));
+  eval(grab('groupOf'));
+  eval(grab('pickGroup'));
+  eval(grab('buildKbdOptions'));
+  eval(grab('syncKbd'));
+  eval(grab('hasKbdOption'));
+
+  // The page as it opens: the four static options, and the address read before
+  // any container is.
+  const reset = (urlKbd) => {
+    kbdSel = new Select();
+    for (const [v, t] of [['', 'Keyboard off'], ['agat', 'АГАТ keyboard'],
+                          ['pc', 'PC keyboard'], ['used', 'Only mapped keys']]) {
+      const o = opt('option'); o.value = v; o.textContent = t; kbdSel.appendChild(o);
+    }
+    usedOpt = kbdSel.querySelector();
+    usedBox = null; panel = null; controlsEl = el();
+    applied = []; saved = 0; handheld = false;
+    kbdChosen = !!urlKbd;
+    wantKbd = pick(kbdSel, urlKbd) ? '' : (urlKbd || '');
+  };
+  const load = (f) => {
+    const c = A.agc.parse(fs.readFileSync(path.join(H.ROOT, 'examples', f)), f);
+    A.keyboard.setRemap(c.keys);
+    A.keyboard.setControls(c.controls);
+  };
+  const unload = () => { A.keyboard.setRemap(null); A.keyboard.setControls(null); };
+  const menu = () => kbdSel.options.map((o) => o.value);
+  const marks = () => panel.groups.map((g) => g.el.className);
+
+  // A bookmarked group, and the container it belongs to still on its way.
+  reset('used:Cheats');
+  syncKbd(false);
+  eq('the group survives a sync before its container',
+     [kbdSel.value, wantKbd], ['', 'used:Cheats']);
+  load('rise-out.agc');
+  syncKbd(true);
+  eq('and is applied once the container brings the option', kbdSel.value, 'used:Cheats');
+  eq('which opens the board', applied, ['used:Cheats']);
+  eq('the panel marks the group the board is cut to', marks(),
+     ['ctl-group', 'ctl-group on', 'ctl-group']);
+
+  // A second container, whose groups are not the first one's.
+  load('snake.agc');
+  applied = [];
+  syncKbd(true);
+  eq('a group that is gone falls back to the whole container', kbdSel.value, 'used');
+  eq("the menu is the new container's", menu(), ['', 'agat', 'pc', 'used', 'used:Игра']);
+  eq('and the board is rebuilt rather than shut', applied, ['used']);
+
+  // A container with keys and no controls: the board it always had.
+  unload();
+  A.keyboard.setRemap({ Space: null });
+  applied = [];
+  syncKbd(true);
+  eq('no controls, no group entries', menu(), ['', 'agat', 'pc', 'used']);
+  eq('and the whole-set option says so', usedOpt.textContent, 'Only mapped keys');
+  eq('a board on `used` stays there', [kbdSel.value, applied], ['used', []]);
+
+  // Nothing named at all.
+  unload();
+  applied = [];
+  syncKbd(true);
+  eq("a board with nothing to winnow by goes back to the machine's own",
+     [kbdSel.value, applied, usedOpt.disabled], ['agat', ['agat'], true]);
+  eq('and the panel is empty', panel.groups.length, 0);
+
+  // The handheld default is the whole container, never one of its groups.
+  reset('');
+  handheld = true;
+  load('rise-out.agc');
+  syncKbd(true);
+  eq('a handheld opens on the whole container', [kbdSel.value, applied], ['used', ['used']]);
+  eq('with every group on the panel and none marked', marks(),
+     ['ctl-group', 'ctl-group', 'ctl-group']);
+
+  // A group nobody has — a typo, or a group renamed since the bookmark.
+  reset('used:Nope');
+  load('rise-out.agc');
+  syncKbd(true);
+  eq('an address naming a group nobody has still gets the controls board',
+     [kbdSel.value, wantKbd, applied], ['used', '', ['used']]);
+
+  unload();
+  reset('used:Nope');
+  syncKbd(true);
+  eq('and with nothing loaded at all, nothing is opened',
+     [kbdSel.value, wantKbd, applied], ['', '', []]);
+
+  // Tapping a group on the panel. It goes through the menu rather than around
+  // it, so the two cannot disagree and the address follows a finger as well as
+  // it follows the <select>.
+  unload();
+  reset('');
+  load('rise-out.agc');
+  syncKbd(true);
+  applied = []; saved = 0;
+  eq('the board is shut to begin with', kbdSel.value, '');
+
+  panel.el.fire('click', { target: panel.groups[1].el.children[1] });
+  eq('a tap on a group opens the board at it',
+     [kbdSel.value, applied, saved], ['used:Cheats', ['used:Cheats'], 1]);
+  eq('and the panel marks it', marks(), ['ctl-group', 'ctl-group on', 'ctl-group']);
+
+  panel.el.fire('click', { target: panel.groups[1].el });
+  eq('a tap on the live group goes back to all of them',
+     [kbdSel.value, applied.length], ['used', 2]);
+  eq('and the panel marks none', marks(),
+     ['ctl-group', 'ctl-group', 'ctl-group']);
+
+  applied = [];
+  panel.el.fire('click', { target: panel.el });
+  eq('a tap between the groups does nothing', [kbdSel.value, applied], ['used', []]);
+
+  // The panel is rebuilt on every load, and its listener lives on an element
+  // that is not. One tap must stay one tap.
+  for (let i = 0; i < 5; i++) syncKbd(true);
+  applied = [];
+  panel.el.fire('click', { target: panel.groups[0].el });
+  eq('a tap after five reloads still fires once', applied, ['used:Play']);
+
+  console.log(pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
 }
 
 // --- everything else boots a machine ----------------------------------------

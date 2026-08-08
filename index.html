@@ -167,10 +167,49 @@
   .kb-half.far, .kb-word.far { opacity: .42; }
   .kb-half.near { opacity: .62; }
   .kb-half.lit, .kb-sends.lit { opacity: 1; font-weight: 700; }
+  /* On the winnowed board, the legend the container actually named. A cap can
+     carry two of them — Rise Out reads both K and К, which are one letter cap —
+     so this marks the halves rather than the whole key, and underlines rather
+     than reusing the opacity `lit` already spends on the live register. */
+  .kb-half.named, .kb-word.named {
+    opacity: 1; text-decoration: underline; text-underline-offset: .12em;
+  }
   .kb-readout {
     color: var(--dim); font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace;
     text-align: center; margin-top: 6px;
   }
+  /* The container's controls. A reference card, not a keyboard: it carries no
+     listeners and nothing on it is pressable, so it is left to behave like the
+     text it is. The groups sit side by side and wrap on a narrow screen. */
+  #controls {
+    width: min(94vw, var(--page)); margin-top: 10px;
+    display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+  }
+  #controls:empty { display: none; }
+  /* A group is one tap target: it cuts the board beside it down to itself, and
+     tapping the live one goes back to all of them. */
+  .ctl-group {
+    flex: 0 1 auto; min-width: 9em;
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+    cursor: pointer; user-select: none;
+  }
+  .ctl-group:hover { border-color: var(--dim); }
+  /* Which group the board beside it is cut to. Last, so it holds under a
+     hover: where the board is pointing matters more than where the pointer is. */
+  .ctl-group.on { border-color: var(--accent); }
+  .ctl-name {
+    display: block; color: var(--dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px;
+  }
+  .ctl-line { display: flex; gap: .6em; align-items: baseline; }
+  /* The codes the program reads, in the font the rest of the machine's bytes
+     are written in, and wide enough that the labels line up under each other. */
+  .ctl-code {
+    font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+    min-width: 5.5em; white-space: nowrap;
+  }
+  .ctl-what { color: var(--dim); }
   #status {
     color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
     /* Wide enough for the longest line the run loop builds: a container title,
@@ -212,7 +251,7 @@
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
-  <select id="kbd" title="Draw the keyboard and light the key each host keypress reaches. АГАТ is the machine's own board, PC the keys the scancode table maps, and the third is the АГАТ board with only the keys the loaded container names.">
+  <select id="kbd" title="Draw the keyboard and light the key each host keypress reaches. АГАТ is the machine's own board, PC the keys the scancode table maps, and the last is the АГАТ board with only the keys the loaded container names — as a whole, or cut to one of its control groups.">
     <option value="">Keyboard off</option>
     <option value="agat">АГАТ keyboard</option>
     <option value="pc">PC keyboard</option>
@@ -271,6 +310,7 @@
 </div>
 
 <div id="keyboard"></div>
+<div id="controls"></div>
 
 <div class="help">
   <p>
@@ -300,9 +340,10 @@
     </td></tr>
     <tr><td><b>AGC</b></td><td>
       An Agat Container: one of those images plus the machine it wants, the
-      interrupt settings it was tuned for, and a keyboard remap — so a game
-      whose controls are four keys away under a Shift can put them where your
-      fingers are. <b>Save AGC</b> writes one from the machine as it stands.
+      interrupt settings it was tuned for, a keyboard remap — so a game whose
+      controls are four keys away under a Shift can put them where your fingers
+      are — and the controls themselves, grouped, which is the card under the
+      screen. <b>Save AGC</b> writes one from the machine as it stands.
       The format is written up in
       <a href="https://github.com/amaltsev/agat-web/blob/main/AGC.md">AGC.md</a>,
       and
@@ -398,7 +439,9 @@
   var gearBtn = document.getElementById('gear');
   var settingsEl = document.getElementById('settings');
   var keyboardEl = document.getElementById('keyboard');
+  var controlsEl = document.getElementById('controls');
   var kbView = null;
+  var panel = null;
 
   // ---- the settings, in the URL ---------------------------------------------
   //
@@ -487,7 +530,9 @@
     if (holdSel.value !== 'raster' && rateSel.value !== '0') q.push('rate=' + rateSel.value);
     // Which board is up is part of a working configuration too: a bookmark for
     // a game whose keys are a puzzle should open with the keyboard showing.
-    if (kbdSel.value) q.push('kbd=' + kbdSel.value);
+    // Encoded, unlike the rest: a control group is named by the container's
+    // author and can hold anything a JSON key can.
+    if (kbdSel.value) q.push('kbd=' + encodeURIComponent(kbdSel.value));
     location.replace('#' + q.join('&'));
   }
 
@@ -503,7 +548,9 @@
   pick(xramSel, url.xram);
   pick(holdSel, url.irq);
   pick(rateSel, url.rate);
-  pick(kbdSel, url.kbd);
+  // A board cut to a control group cannot be picked yet — the container that
+  // names the groups has not been read. syncKbd applies it once it has.
+  var wantKbd = pick(kbdSel, url.kbd) ? '' : (url.kbd || '');
   syncMemEnabled();
   rateSel.disabled = holdSel.value === 'raster';
 
@@ -692,6 +739,7 @@
     var want = kbdSel.value;
     if (!want) {
       if (kbView) { kbView.destroy(); kbView = null; }
+      if (panel) panel.mark('');
       return;
     }
     if (!kbView) {
@@ -702,6 +750,7 @@
       kbView.setView(want);
     }
     kbView.setLayout(app.machine.cyrillic);
+    if (panel) panel.mark(groupOf(want));
   }
   kbdSel.addEventListener('change', function () {
     kbdChosen = true;
@@ -709,31 +758,105 @@
     saveUrl();
   });
 
-  // The winnowed board is drawn from the container's `keys`, so the option is
-  // dead until something is loaded that names any — and a board already showing
-  // it when that stops being true goes back to the whole keyboard rather than
-  // to a board with nothing winnowed off it.
+  // `used:Cheats` is the winnowed board cut to one control group; `used` alone is
+  // all of them. The group is the part after the colon, and only KeyView needs
+  // to take it apart any further.
+  function groupOf(v) {
+    var cut = String(v || '').indexOf(':');
+    return cut < 0 ? '' : v.slice(cut + 1);
+  }
+
+  // A group tapped on the panel, which is the menu's `used:<name>` reached with
+  // a finger; '' is the panel's way back to all of them. It goes through the
+  // menu rather than around it, so the two never disagree and the address
+  // follows either way. A tap opens the board if none is up: asking for a
+  // group's keys is asking to see them.
+  function pickGroup(name) {
+    var want = name ? 'used:' + name : 'used';
+    if (!hasKbdOption(want)) return;
+    kbdSel.value = want;
+    kbdChosen = true;
+    applyKbd();
+    saveUrl();
+  }
+
+  // The winnowed board is drawn from what the container names, so the option is
+  // dead until something is loaded that names anything — and a board already
+  // showing it when that stops being true goes back to the whole keyboard rather
+  // than to a board with nothing winnowed off it.
   //
   // On a handheld there is no keyboard to press, and a container that says which
   // keys its program uses is the one case where a board of exactly those keys
   // can be opened without guessing. It is a default, not a decision: once the
   // menu has been touched, what it says stands.
   var usedOpt = kbdSel.querySelector('option[value="used"]');
+  var usedBox = null;                 // the optgroup holding one entry per group
   var kbdChosen = !!url.kbd;
   var handheld = !!(window.matchMedia &&
     window.matchMedia('(pointer: coarse) and (max-width: 900px)').matches);
 
+  // One entry per control group, after the whole-container one. Rebuilt on every
+  // load because the groups belong to the container, and an optgroup rather than
+  // four flat options because "Cheats" on its own in a list of keyboards reads
+  // like a third kind of board.
+  function buildKbdOptions() {
+    var gs = AGAT.keyboard.controlGroups(), i, o;
+    if (usedBox) { kbdSel.removeChild(usedBox); usedBox = null; }
+    usedOpt.textContent = gs ? 'All controls' : 'Only mapped keys';
+    if (!gs) return;
+    usedBox = document.createElement('optgroup');
+    usedBox.label = 'Only controls';
+    for (i = 0; i < gs.length; i++) {
+      o = document.createElement('option');
+      o.value = 'used:' + gs[i].name;
+      o.textContent = gs[i].name;
+      usedBox.appendChild(o);
+    }
+    kbdSel.appendChild(usedBox);
+  }
+
   // `loaded` is false only while a container the address names is still on its
   // way: the menu must not fall back off a board that file is about to fill.
+  //
+  // The address is read before any container is, so a bookmarked `used:Cheats`
+  // names an option that does not exist yet when pick() first runs. `wantKbd`
+  // holds it until an option by that name turns up, and is only spent when one
+  // does — the container it belongs to may still be on the wire.
+  //
+  // Two ways a group can go out from under the menu, and both land on the whole
+  // container rather than on an empty board or a shut one: the address can name
+  // a group this container does not have, and rebuilding the options can take
+  // away the one that was selected, which is what loading a second container
+  // does.
   function syncKbd(loaded) {
-    var have = AGAT.keyboard.keyCount() > 0;
+    var have = AGAT.keyboard.keyCount() > 0 || AGAT.keyboard.controlCount() > 0;
+    var was = kbdSel.value;
+    buildKbdOptions();
     usedOpt.disabled = !have;
-    if (!loaded) return;
-    if (!have && kbdSel.value === 'used') kbdSel.value = 'agat';
-    else if (have && handheld && !kbdChosen) kbdSel.value = 'used';
-    else return;
-    applyKbd();
-    saveUrl();
+    if (!kbdSel.value && groupOf(was)) kbdSel.value = 'used';
+    if (wantKbd && pick(kbdSel, wantKbd)) wantKbd = '';
+    if (panel) panel.destroy();
+    panel = new AGAT.ControlPanel(controlsEl, { onPick: pickGroup });
+    if (loaded) {
+      // A group the address named and this container does not have. It asked for
+      // the controls board, so give it the whole of one. Spent here either way:
+      // the group belongs to the container the address names, and holding it
+      // past that would drop it on whatever is loaded by hand next.
+      if (wantKbd) { if (have) kbdSel.value = 'used'; wantKbd = ''; }
+      if (groupOf(kbdSel.value) && !hasKbdOption(kbdSel.value)) kbdSel.value = 'used';
+      if (!have && kbdSel.value === 'used') kbdSel.value = 'agat';
+      else if (have && handheld && !kbdChosen) kbdSel.value = 'used';
+    }
+    // The board is only rebuilt when the menu has actually moved; the panel is
+    // new either way and has to be told which group the board is showing.
+    if (kbdSel.value !== was) { applyKbd(); saveUrl(); }
+    else panel.mark(groupOf(kbdSel.value));
+  }
+
+  function hasKbdOption(v) {
+    var os = kbdSel.options, i;
+    for (i = 0; i < os.length; i++) if (os[i].value === v) return true;
+    return false;
   }
 
   // Whether the section is open is chrome rather than machine state, so it does

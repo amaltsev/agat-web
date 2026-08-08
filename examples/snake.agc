@@ -19,6 +19,12 @@
     "ArrowRight": { },
     "Space": { }
   },
+  "controls": {
+    "Игра": {
+      "Up Down Left Right": "Движение",
+      "Space": true
+    }
+  },
   "media": [
     {
       "name": "snake.fil",

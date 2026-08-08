@@ -574,8 +574,9 @@ function eq(what, got, want) {
   const unsent = [...caps].filter((c) => !K.routesTo(c).length);
   eq('every АГАТ cap is reachable from the host', unsent.map(hex), []);
 
-  // Caps drawn dead really are dead: ПВТ, РЕД and the pad's `=` are painted on
-  // the machine and send nothing the shipped table carries.
+  // Caps drawn dead really are dead: ПВТ and the pad's `=` are painted on the
+  // machine and send nothing the shipped table carries. РЕД is not one of them —
+  // it is the machine's Esc, $9B.
   let dead = 0, wrongDead = 0;
   for (const rows of [V.AGAT_MAIN, V.AGAT_PAD]) {
     for (const r of rows) {
@@ -586,7 +587,7 @@ function eq(what, got, want) {
       }
     }
   }
-  eq('three caps send nothing', dead, 3);
+  eq('two caps send nothing', dead, 2);
   eq('no dead cap secretly carries a code', wrongDead, 0);
 
   // The PC board is the other half of the answer, so it has to be all of it.
@@ -920,27 +921,138 @@ function eq(what, got, want) {
   eq('a declared key follows the layout to another cap',
      [kept(K.LAT)[0], kept(K.RUS)[0]], [['$41 A/А'], ['$46 F/Ф']]);
 
-  // The controls are the board's, not the program's, and the winnowed board does
-  // not draw them at all — on a phone they were most of what was on the screen.
-  eq('the winnowed board has no controls and no dead caps',
-     V.VIEWS.used.reduce((n, rows) => n +
-       rows.reduce((m, row) => m + row.keys.filter((d) => d.act).length, 0), 0), 0);
+  // The controls are the board's, not the program's, so the winnowed board draws
+  // none of them — on a phone they were most of what was on the screen — with
+  // one exception it cannot do without. A cap named on both legends can only
+  // send the unshifted one by itself, so one РЕГ is carried, and plan() draws it
+  // only when some cap is in that position.
+  const acts = [];
+  for (const rows of V.VIEWS.used)
+    for (const row of rows)
+      for (const d of row.keys) if (d.act) acts.push(d.act + ' ' + d.cap);
+  eq('the winnowed board carries one control, and it is a register', acts,
+     ['shift РЕГ']);
 
-  // What a touch on a kept cap sends. Esc has no cap of its own on this machine
-  // — it is УПР+`[` — so it is drawn on `[`, and that cap has to send $9B rather
-  // than the `[` it is painted with, since this board draws no УПР either.
+  // What a touch on a kept cap sends. $8B has no cap of its own on this machine
+  // — it is УПР+K — so it is drawn on the K cap, and that cap has to send $8B
+  // rather than the K it is painted with, since this board draws no УПР either.
+  const kept1 = (used) => V.VIEWS.used[0].reduce((f, row) =>
+    f || row.keys.filter((d) => V.keeps(d, used))[0], null);
+  K.setRemap({ KeyK: { code: '$8B', note: 'Ctrl-K' } });
+  {
+    const used = V.capsUsed(K.usedCodes(K.LAT));
+    const cap = kept1(used);
+    eq('a cap standing in for a code sends that code, not its own legend',
+       [name(cap), hex(V.keeps(cap, used))], ['$4B K/К', '$8B']);
+    // The half is kept for $8B, not for the K printed on it, so there is a code
+    // on the cap and still nothing to underline.
+    eq('and the half it is kept on is not a legend the program reads',
+       V.kept(cap, used), { u: 0x8b, s: 0 });
+  }
+
+  // Esc is $9B, and on this machine $9B is the РЕД cap's own byte rather than
+  // the УПР+Ш that also produces it. So it lands on РЕД, and `[` is untouched.
   K.setRemap({ Escape: { note: 'Menu: Back' } });
   {
     const used = V.capsUsed(K.usedCodes(K.LAT));
-    const cap = V.VIEWS.used[0].reduce((f, row) =>
-      f || row.keys.filter((d) => V.keeps(d, used))[0], null);
-    eq('a cap standing in for a code sends that code, not its own legend',
-       [name(cap), hex(V.keeps(cap, used))], ['$5B [/Ш', '$9B']);
+    const cap = kept1(used);
+    eq('Esc is kept on РЕД, not on the cap УПР would make it from',
+       [name(cap), hex(V.keeps(cap, used))], ['РЕД', '$9B']);
+    eq('and no other cap is kept for it',
+       V.VIEWS.used[0].reduce((n, row) =>
+         n + row.keys.filter((d) => V.keeps(d, used)).length, 0), 1);
+  }
+
+  // Both legends of one cap, which is Rise Out's two cheats on the K key. The
+  // cap is kept once and marked twice; what a touch sends is still the unshifted
+  // one, because this board has no РЕГ to hold.
+  K.setRemap({ KeyK: { code: 'K' }, KeyL: { code: 'К' } });
+  {
+    const used = V.capsUsed(K.usedCodes(K.LAT));
+    const cap = kept1(used);
+    eq('a cap named on both halves reports both', [name(cap), V.kept(cap, used)],
+       ['$4B K/К', { u: 0x4b, s: 0x6b }]);
+    eq('and a touch still sends the unshifted one', hex(V.keeps(cap, used)), '$4B');
   }
 
   K.setRemap(null);
   eq('with no container there is nothing to winnow by', K.usedCodes(K.LAT), null);
   eq('and no keys to count', K.keyCount(), 0);
+}
+
+// --- the controls -----------------------------------------------------------
+//
+// `keys` is indexed by host scancode; `controls` by Agat code. The second is
+// what a player asks — what does the program read, and what for — and it is the
+// only one of the two that can be grouped, drawn as a card and used to cut the
+// board down to one part of a game.
+{
+  const K = A.keyboard, V = A.keyview;
+
+  const r = K.setControls({
+    Play: { 'Up Down Left Right': 'Движение', Space: true, '^': 'Выстрел' },
+    Cheats: { K: 'Самоубийство', 'К': 'Конец игры', 'Ъ+': 'not a code' },
+    Empty: 'not a group',
+  });
+  eq('setControls counts rows and groups, and names what it could not use',
+     [r.rows, r.groups, r.bad], [5, 2, ['Cheats: Ъ+', 'Empty']]);
+
+  // File order, both ways down: the groups as the container lists them and the
+  // rows as the group lists them. A row is one or more codes sharing a label, so
+  // the four arrows are one line rather than four.
+  eq('groups and rows keep the order the file gave them',
+     K.controlGroups().map((g) => [g.name, g.rows.map((w) => w.codes.map(hex).join(' '))]),
+     [['Play', ['$99 $9A $88 $95', '$20', '$5E']],
+      ['Cheats', ['$4B', '$6B']]]);
+
+  // There is no combination to write. РЕГ adds $20 across the letter block, so
+  // what a person calls РЕГ+К is one byte, and one byte is what the encoder puts
+  // in $C000 — `"К"` and `"$6B"` are the same control.
+  eq('РЕГ+К is a code like any other',
+     [K.resolveCode('К'), K.resolveCode('$6B')], [0x6b, 0x6b]);
+  eq('and the two halves of one cap are two different controls',
+     [K.controlLabel(0x4b), K.controlLabel(0x6b)], ['Самоубийство', 'Конец игры']);
+  eq('a control with no label is still a control', K.controlLabel(0x20), '');
+
+  // The KeyboardEvent.code spellings resolve too. `keys` and `controls` have
+  // left-hand sides that look alike and are not, and an author carrying the
+  // habit across from one to the other means the code.
+  eq('the host spellings of the named codes resolve as the codes',
+     ['Escape', 'ArrowUp', 'Esc', 'Up'].map(K.resolveCode), [0x9b, 0x99, 0x9b, 0x99]);
+  // Printed with the machine's own cap legend where the machine has a cap, so
+  // that the panel and the board beside it name the same key: $9B is Esc on the
+  // host and РЕД here.
+  eq('and a code is printable whether or not it has a glyph',
+     [0x99, 0x20, 0x5e, 0x6b, 0x9b].map(K.codeName), ['↑', 'ПРОБЕЛ', '^', 'К', 'РЕД']);
+
+  // What the board is winnowed by. Controls and keys are one set — a container
+  // may say it either way, or both — but naming a group is asking for that group
+  // alone, since the keys block is the program's whole set and folding it back
+  // in would undo the narrowing.
+  const codes = (t) => (t || []).map((v) => v && hex(v)).filter(Boolean).sort();
+  K.setRemap({ KeyW: { code: '^' }, Space: null });
+  eq('the board is winnowed by the controls and the keys together',
+     codes(K.usedCodes(K.LAT)), ['$20', '$4B', '$5E', '$6B', '$88', '$95', '$99', '$9A']);
+  eq('a group is exactly itself', codes(K.usedCodes(K.LAT, 'Cheats')), ['$4B', '$6B']);
+  eq('a group nobody declared narrows to nothing at all',
+     K.usedCodes(K.LAT, 'Nope'), null);
+
+  // K and К are the two legends of one cap, so the winnowed board draws that one
+  // cap for both — but a cap sends one byte, and this board draws no РЕГ. The
+  // unshifted half wins, and the shifted control cannot be tapped. It types
+  // fine: ЛАТ Shift+K, and the full АГАТ board has a РЕГ cap to latch.
+  {
+    const used = V.capsUsed(K.usedCodes(K.LAT, 'Cheats'));
+    const cap = { u: 0x4b, s: 0x6b, up: 's' };
+    eq('two controls on one cap leave only the unshifted one tappable',
+       hex(V.keeps(cap, used)), '$4B');
+  }
+
+  K.setControls(null);
+  eq('with the controls gone the keys still winnow the board',
+     codes(K.usedCodes(K.LAT)), ['$20', '$5E']);
+  eq('and no controls to count', [K.controlCount(), K.controlGroups()], [0, null]);
+  K.setRemap(null);
 }
 
 // --- .fil -------------------------------------------------------------------

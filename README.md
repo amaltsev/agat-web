@@ -51,6 +51,14 @@ disappears and one named arrow brings the whole cluster. It needs a `.agc` that
 says which keys those are, and on a phone it is what such a container opens
 with.
 
+A container that also groups its controls gets a **card under the screen** — what
+the program reads and what each code does, in the groups its author wrote — and a
+menu entry per group, so the board can be cut down to the movement keys or to the
+cheats alone. Tapping a group on the card does the same thing, and tapping it
+again goes back. The card says what the *program* wants and stays put; the board
+says which of your keys reaches it and moves with ЛАТ/РУС. Both come from the
+container's [`controls`](AGC.md#controls--what-the-program-reads-and-what-for).
+
 The bar picks the **machine**; the ⚙ popup has its memory. The default Agat-7 is
 the standard machine — 96K in three separate devices: 32K of base RAM, a 32K
 ЭмПЗУ card in slot 2 and a 32K ОЗУ expansion in slot 4. Base RAM is the one to

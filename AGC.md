@@ -32,7 +32,13 @@ it runs.
   "quirks":  { "irq": "raster", "rate": 0 },
 
   "keys": {
-    "KeyW": { "code": "^", "note": "Shoot right" }
+    "KeyW": { "code": "^" }
+  },
+  "controls": {
+    "Play": {
+      "Up Down Left Right": "Move",
+      "^": "Shoot right"
+    }
   },
 
   "media": [
@@ -189,18 +195,79 @@ The `note` says what the key *does*. It is the half worth writing: the on-screen
 keyboard shows it, so hovering `^` reads **`W (Shoot right)`** rather than
 leaving someone to work it out.
 
-Naming every key a program uses, remapped or not, is what the **Only mapped
-keys** board needs: the machine's caps, with every one no listed key reaches
-shrunk to a sliver, so the keys that are left keep the positions the Agat gives
-them. It is drawn as three areas that collapse on their own — the typewriter,
-the arrows and the numeric pad — so a program that uses none of the pad is not
-shown one, and naming a single arrow brings the whole cluster. The board's own
-controls (СБР, УПР, РУС/LAT, РЕГ) are not drawn: they are not the program's
-keys, and on a phone they were most of the screen.
+Naming every key a program uses, remapped or not, is what the winnowed board
+needs: the machine's caps, with every one no listed key reaches shrunk to a
+sliver, so the keys that are left keep the positions the Agat gives them. It is
+drawn as three areas that collapse on their own — the typewriter, the arrows and
+the numeric pad — so a program that uses none of the pad is not shown one, and
+naming a single arrow brings the whole cluster. The board's own controls (СБР,
+УПР, РУС/LAT, РЕГ) are not drawn: they are not the program's keys, and on a
+phone they were most of the screen.
 
-The menu offers this board only for a container that names keys, and on a
-handheld it is what such a container opens with.
+The menu offers this board only for a container that names keys or controls, and
+on a handheld it is what such a container opens with.
 `node tools/check.js keys <file.agc>` draws it in a terminal.
+
+### `controls` — what the program reads, and what for
+
+`keys` is indexed by *host* key. `controls` is indexed by **Agat code**, and it
+answers the question a player actually has: what does the program read, and what
+does each one do.
+
+```json
+"controls": {
+  "Play": {
+    "Up Down Left Right": "Движение",
+    "Space": "Стоп",
+    "^": "Выстрел вправо"
+  },
+  "Cheats": { "K": "Самоубийство", "К": "Конец игры" }
+}
+```
+
+Groups in the order the file lists them, rows in the order the group lists them.
+A row's key is **one or more codes separated by spaces**, written any of the ways
+[above](#keys--the-keys-the-program-uses) — so the arrow cluster is one line
+rather than four, and `"Space Enter"` is one line for a program that takes
+either. The value is what that row *does*; `true` means a control worth naming
+with nothing to add.
+
+**Codes, never combinations.** The Agat keyboard is an encoder that puts one byte
+in `$C000`. РЕГ adds `$20` across the letter block — that is why the caps are
+dual-legend — so what a person calls РЕГ+К is the single code `$6B`, written
+`"К"` or `"$6B"`. УПР collapses the same way into `$81`–`$9F`. There is nothing
+a `+` could mean here, and it is not accepted.
+
+Three things read this block:
+
+- **The controls panel**, under the screen: a card of the groups, side by side.
+  It is deliberately static. It prints what the *program* reads — `Q` is `$51`
+  whatever is switched on — and the board beside it answers the other half, which
+  host key reaches that code right now. The only host key on the panel is a
+  container remap, `^ (W)`, because a remap holds in every plane and so is the
+  only one that does not move under ЛАТ/РУС.
+- **The winnowed board**, which takes the codes named here together with the ones
+  the `keys` block reaches.
+- **The keyboard menu**, which gains an entry per group, so the board can be cut
+  to just the part of the game in hand. That choice rides in the address:
+  `#kbd=used%3ACheats`. Tapping a group on the panel picks the same thing with a
+  finger, and tapping the one already showing goes back to all of them.
+
+Two traps worth knowing:
+
+- **Do not name a group or a control with a bare digit.** JSON objects iterate
+  integer-like keys first whatever the file says, so a control written `"1"`
+  jumps to the front of its group. Write it `"$31"`.
+- **Two controls can land on one cap.** `K` and `К` are the unshifted and
+  shifted halves of a single Agat cap, so a container naming both gets one key
+  on the board. It is drawn with both halves underlined and names both in its
+  tooltip, and the board grows a **РЕГ** cap — the one control it otherwise
+  never draws — because without a register the shifted half could not be
+  reached by touch at all. Tap РЕГ, then the key. It is a one-shot, as it has to
+  be with one finger, and it appears only when some cap needs it.
+
+`node tools/check.js keys <file.agc>` prints the panel and the board together,
+and `--group=NAME` cuts them the way the menu does.
 
 ### `media`
 

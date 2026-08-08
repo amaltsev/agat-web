@@ -2,7 +2,7 @@
 //
 // One JSON file holding everything needed to run an old program: the image, any
 // patches to it, a title, the machine it wants, the interrupt quirks it was
-// tuned for, and the keys it is played with. A disk on its own says none of
+// tuned for, and the controls it is played with. A disk on its own says none of
 // that — the model comes from a `7a` in the filename, the interrupt model from
 // a menu, and which host key sends the byte the game reads is a puzzle.
 //
@@ -15,8 +15,9 @@
 //     "machine": { "model": 7, "ram": 64,
 //                  "slots": { "4": { "card": "xram", "ram": 64 } } },
 //     "quirks":  { "irq": "raster", "rate": 0 },
-//     "keys":    { "KeyW": { "code": "^", "note": "Shoot right" },
-//                  "Space": { "note": "Jump" } },
+//     "keys":    { "KeyW": { "code": "^" } },
+//     "controls": { "Play": { "Up Down Left Right": "Move",
+//                             "^": "Shoot right" } },
 //     "media": [ { "name": "rise-out.dsk", "data": ["…", "…"] } ]
 //   }
 //
@@ -261,6 +262,7 @@
         rate: Number(quirks.rate) || 0,
       },
       keys: c.keys || {},
+      controls: c.controls || {},
       media: [],
     };
 
@@ -325,6 +327,7 @@
     if (spec.slots) o.machine.slots = spec.slots;
     o.quirks = { irq: spec.irq || 'raster', rate: spec.rate || 0 };
     if (spec.keys && Object.keys(spec.keys).length) o.keys = spec.keys;
+    if (spec.controls && Object.keys(spec.controls).length) o.controls = spec.controls;
     o.media = (spec.media || []).map(function (m) {
       var e = { name: m.name || 'image' };
       e.data = encode64(m.bytes, spec.width);

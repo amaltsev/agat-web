@@ -330,6 +330,7 @@
       this.title = this.author = this.date = this.url = '';
       this.notes = this.fromAgc = '';
       AGAT.keyboard.setRemap(null);
+      AGAT.keyboard.setControls(null);
     }
     // Honour the machine the filename implies, unless the user has chosen one.
     if (s.hintModel && s.hintModel !== this.model && !this.modelPinned) {
@@ -434,6 +435,7 @@
     this.build();
 
     var keys = AGAT.keyboard.setRemap(c.keys);
+    var ctl = AGAT.keyboard.setControls(c.controls);
     this.sources = {};                 // the container is the whole set
     this.title = c.title;
     this.author = c.author;
@@ -448,7 +450,11 @@
                   (keys.ok ? ' — ' + keys.ok + ' key' + (keys.ok > 1 ? 's' : '') +
                              (keys.remapped ? ', ' + keys.remapped + ' remapped' : '')
                            : '') +
-                  (keys.bad.length ? ' — ignored ' + keys.bad.join(', ') : ''));
+                  (ctl.rows ? ' — ' + ctl.rows + ' control' + (ctl.rows > 1 ? 's' : '') +
+                              ' in ' + ctl.groups + ' group' + (ctl.groups > 1 ? 's' : '')
+                            : '') +
+                  (keys.bad.length || ctl.bad.length
+                    ? ' — ignored ' + keys.bad.concat(ctl.bad).join(', ') : ''));
     return { kind: 'agc', title: c.title, media: c.media.length };
   };
 
@@ -521,7 +527,8 @@
   };
 
   // The machine as it stands, as a container: what is in the drives, the model
-  // and RAM it is running as, both interrupt settings, and the live remap.
+  // and RAM it is running as, both interrupt settings, the live remap and the
+  // controls it came in with.
   App.prototype.toAgc = function () {
     var media = [], k;
     for (k in this.sources) media.push(this.writeBack(k));
@@ -537,6 +544,7 @@
       irq: this.irqModel,
       rate: this.subFrameHz,
       keys: AGAT.keyboard.remap(),
+      controls: AGAT.keyboard.controls(),
       media: media,
     });
   };

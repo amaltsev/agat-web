@@ -44,9 +44,10 @@
   function C(text, o) { o = o || {}; o.cap = text; return o; }
 
   // Which cap owns a code. УПР sends $81-$9F, which is the letter's own code
-  // less $40 — the ASCII control relation — and no cap carries those directly,
-  // so a Ctrl'd byte is shown on the letter it was made from. $88 is the
-  // exception that needs no rule: it is already the ← cap's own code.
+  // less $40 — the ASCII control relation — and most of those have no cap of
+  // their own, so a Ctrl'd byte is shown on the letter it was made from. The
+  // ones that do have a cap need no rule and are held by `CARRIED` instead:
+  // $88 is the ← cap's own code, and $9B is РЕД's.
   function capCode(code) {
     code &= 0x7f;
     return (code >= 0x01 && code <= 0x1f) ? 0x40 + code : code;
@@ -57,8 +58,11 @@
   // `w` is a cap's width in units and `gap` the space before it; `pad` is the
   // row's left indent, and the stagger is the real board's. `act` marks a cap
   // that does something other than send a byte: СБР resets, РУС and LAT switch
-  // layout, УПР and РЕГ are the modifiers, and ПВТ, РЕД and the pad's `=` send
+  // layout, УПР and РЕГ are the modifiers, and ПВТ and the pad's `=` send
   // nothing the shipped table carries.
+  //
+  // РЕД is the Esc, $9B. The scancode table cannot say which cap owns that byte,
+  // since host Esc and УПР+Ш both produce it.
 
   // The arrow caps are named rather than written in place, because two boards
   // put them in two different places: here they are where the machine has them,
@@ -78,7 +82,7 @@
       P(0x38, 0x28), P(0x39, 0x29), { u: 0x30, up: 'u' }, P(0x2d, 0x3d),
       C('ПВТ', { act: 'none', red: 1, w: 1.5, gap: 0.2 }),
       UP,
-      C('РЕД', { act: 'none', red: 1 }),
+      C('РЕД', { code: 0x9b, red: 1 }),
     ] },
     { pad: 0.1, keys: [
       C('УПР', { act: 'ctrl', red: 1, w: 1.3 }),
@@ -198,9 +202,9 @@
   // It is three areas that collapse on their own — the typewriter, the arrow
   // cluster and the numeric pad — because a program that uses none of the pad
   // is better served by not being shown a column of slivers where the pad was,
-  // and because ↑ has to stay over ↓. On the machine ↑ is held in place by ПВТ
-  // and РЕД, which are two of the caps this board does not draw at all, so the
-  // cluster is arranged here instead.
+  // and because ↑ has to stay over ↓. On the machine ↑ is held in place between
+  // ПВТ and РЕД; ПВТ is a cap this board does not draw at all, so the row closes
+  // up around ↑ and the cluster is arranged here instead.
   //
   // What it does not draw: СБР, УПР, РУС/LAT and РЕГ. They are the board's
   // controls rather than the program's keys, and on the phone this view exists
@@ -224,13 +228,20 @@
   // A block of the machine's board, less the caps this one does not draw: the
   // controls, the caps that send nothing at all, and the arrows the cluster
   // above now carries.
+  //
+  // With one exception, and it is the exception that makes the board usable by
+  // touch. A cap named on both its legends can only send the unshifted one by
+  // itself, so the left РЕГ is kept — not as furniture, but as the only way to
+  // reach the other control. plan() draws it when some cap is in that position
+  // and winnows it away when none is.
   function keysOnly(block) {
-    var out = [], keys, r, i, j, d;
+    var out = [], keys, r, i, j, d, shift = 0;
     for (i = 0; i < block.length; i++) {
       r = block[i];
       keys = [];
       for (j = 0; j < r.keys.length; j++) {
         d = r.keys[j];
+        if (d.act === 'shift') { if (!shift++) keys.push(d); continue; }
         if (!d.act && !d.nav) keys.push(d);
       }
       if (keys.length) out.push({ pad: r.pad, gapTop: r.gapTop, keys: keys });
@@ -254,10 +265,10 @@
   var SLIVER = 0.5;
 
   // Which codes the machine's own board carries on a cap of their own, and so
-  // which cap owns a code there: $88 is the ← cap and $99 the ↑ one, and a code
-  // with a cap of its own belongs to it rather than to the letter capCode would
-  // otherwise send it to. This is the same order light() takes, as a table,
-  // because the winnowed board is always the АГАТ one.
+  // which cap owns a code there: $88 is the ← cap, $99 the ↑ one and $9B РЕД,
+  // and a code with a cap of its own belongs to it rather than to the letter
+  // capCode would otherwise send it to. This is the same order light() takes, as
+  // a table, because the winnowed board is always the АГАТ one.
   var CARRIED = (function () {
     var out = [], rows = [AGAT_MAIN, AGAT_PAD], i, j, k, d;
     for (i = 0; i < 128; i++) out.push(0);
@@ -275,9 +286,9 @@
   })();
 
   // The codes a container's keys reach, moved onto the caps that own them. The
-  // value kept is the code itself, not a flag, because a cap reached this way
-  // is not always sending its own byte: `$9B` has no cap on this machine and
-  // lands on `[`, which is where УПР makes it.
+  // value kept is the code itself, not a flag, because a cap reached this way is
+  // not always sending its own byte: `$8B` has no cap on this machine and lands
+  // on `K`, which is where УПР makes it.
   function capsUsed(raw) {
     var out = [], i, c;
     if (!raw) return null;
@@ -290,17 +301,35 @@
     return out;
   }
 
-  // Which caps that board keeps: the ones carrying a code the container's keys
-  // reach, and nothing else. A cap that does something rather than sending a
-  // byte is not one of the program's keys and is not drawn.
+  // What each half of a cap is kept for, which is `keeps` before it collapses to
+  // one byte. A letter cap has two legends and the container may have named
+  // both — Rise Out reads `K` and `К`, which are the halves of one key — and a
+  // board that remembered only the half a touch sends would draw the other one
+  // as scenery.
+  //
+  // The value is the code the half stands for, and that is not always the legend
+  // printed on it: `$8B` has no cap and is kept on `K`, where УПР makes it. Ask
+  // `marks()` whether a legend is itself what the program reads.
+  var NONE = { u: 0, s: 0 };       // nothing kept, for a board that winnows nothing
+
+  function kept(d, used) {
+    if (d.act) return NONE;
+    if (d.code !== undefined) return { u: used[d.code & 0x7f] || 0, s: 0 };
+    return { u: d.u === undefined ? 0 : used[d.u & 0x7f] || 0,
+             s: d.s === undefined ? 0 : used[d.s & 0x7f] || 0 };
+  }
+
+  // Which caps that board keeps: the ones carrying a code the container named,
+  // and nothing else. A cap that does something rather than sending a byte is
+  // not one of the program's keys and is not drawn.
   // The answer is the code the cap stands for, which is what a touch on it has
   // to send: the cap's own byte where it carries one, and the program's key
   // where the cap is only standing in for it. 0 for a cap this board drops.
+  // Where both legends are named the unshifted one is what a touch sends, since
+  // this board draws no РЕГ to hold.
   function keeps(d, used) {
-    if (d.act) return 0;
-    if (d.code !== undefined) return used[d.code & 0x7f] || 0;
-    if (d.u === undefined) return 0;
-    return used[d.u & 0x7f] || (d.s === undefined ? 0 : used[d.s & 0x7f]) || 0;
+    var n = kept(d, used);
+    return n.u || n.s;
   }
 
   // ---- the view ------------------------------------------------------------
@@ -314,6 +343,7 @@
     this.app = app;
     this.onLayout = opts.onLayout || function () {};
     this.view = '';
+    this.group = '';       // which control group the winnowed board is cut to
     this.caps = [];
     this.blocks = [];
     this.board = null;
@@ -327,12 +357,32 @@
     this.setView(opts.view);        // setView is what knows the names
   }
 
+  // `used:Cheats` is the winnowed board narrowed to one of the container's
+  // control groups. The group rides beside the view rather than in it: what is
+  // drawn is still the winnowed board, and everything below — plan, winnow,
+  // size — asks only whether the view is `used`.
+  //
+  // A group the loaded container does not have is dropped here, in the one place
+  // every caller goes through, rather than left to become a board winnowed down
+  // to nothing.
   KeyView.prototype.setView = function (name) {
+    var cut = String(name || '').indexOf(':');
+    var group = cut < 0 ? '' : name.slice(cut + 1);
+    name = cut < 0 ? name : name.slice(0, cut);
     name = VIEWS[name] ? name : 'agat';
-    if (name === this.view) return;
+    if (group && !hasGroup(group)) group = '';
+    if (name === this.view && group === this.group) return;
+    if (name === this.view) { this.group = group; this.refresh(); return; }
     this.view = name;
+    this.group = group;
     this.build();
   };
+
+  function hasGroup(name) {
+    var gs = K.controlGroups() || [], i;
+    for (i = 0; i < gs.length; i++) if (gs[i].name === name) return true;
+    return false;
+  }
 
   KeyView.prototype.build = function () {
     var blocks = VIEWS[this.view], self = this, i;
@@ -415,7 +465,7 @@
     el.appendChild(bot);
 
     var cap = { def: def, el: el, top: top, bot: bot, w: w,
-                gone: false, hide: false, sends: 0 };
+                gone: false, hide: false, sends: 0, kept: NONE };
     this.caps.push(cap);
     el.__cap = cap;
     this.index(cap);
@@ -477,12 +527,36 @@
     return any;
   };
 
+  // What a code is, said out loud: the byte, its glyph, what the container says
+  // it does, and every host key that reaches it. The label comes from `controls`,
+  // which is where the prose lives now — `keys` notes still arrive through
+  // routeName, so a container written either way says something.
   KeyView.prototype.title = function (code) {
     var rs = K.routesTo(code), names = [], i;
+    var label = K.controlLabel(code);
     for (i = 0; i < rs.length; i++) names.push(K.routeName(rs[i]));
     return '$' + hex2(code & 0x7f) +
-           (CHAR[code & 0x7f] ? ' ‘' + CHAR[code & 0x7f] + '’' : '') + ' — ' +
+           (CHAR[code & 0x7f] ? ' ‘' + CHAR[code & 0x7f] + '’' : '') +
+           (label ? ' — ' + label : '') + ' — ' +
            (names.length ? names.join(', ') : 'no host key sends this');
+  };
+
+  // Whether this legend is one the container named. A cap standing in for a code
+  // it does not carry — `$8B` drawn on `K` — has nothing to mark: the legend on
+  // it is not what the program reads, which is what the tooltip is for.
+  KeyView.prototype.marks = function (cap, code) {
+    return (cap.kept.u && cap.kept.u === code) ||
+           (cap.kept.s && cap.kept.s === code);
+  };
+
+  // What this cap does in this program, every named legend of it. Two controls
+  // on one cap get a line each, which is the only place they are both spelled
+  // out — the board can mark both but can only send one.
+  KeyView.prototype.reads = function (cap) {
+    var out = [];
+    if (cap.kept.u) out.push(this.title(cap.kept.u));
+    if (cap.kept.s) out.push('РЕГ ' + this.title(cap.kept.s));
+    return out.join('\n');
   };
 
   // Which codes this program's keys reach, on the caps that own them. Null when
@@ -490,7 +564,7 @@
   // asked to show only a program's keys, with no program loaded, is the whole
   // keyboard rather than an empty one.
   KeyView.prototype.used = function () {
-    return capsUsed(K.usedCodes(this.layout()));
+    return capsUsed(K.usedCodes(this.layout(), this.group));
   };
 
   // Which caps this board draws, decided a block at a time. A block the
@@ -501,25 +575,39 @@
   // The winnowing is the one thing the layout changes without a keypress: a key
   // declared as-is sends a different code in РУС than in ЛАТ, and so lands on a
   // different cap.
+  //
+  // Two passes over every block rather than one per block, because whether РЕГ
+  // is drawn is a question about the whole board: the cap that needs it may be
+  // in a block the first pass has not reached.
   KeyView.prototype.plan = function (used) {
-    var i, j, k, b, r, cap, any;
+    var i, j, k, b, r, cap;
+    this.needShift = false;
     for (i = 0; i < this.blocks.length; i++) {
       b = this.blocks[i];
-      any = 0;
+      b.any = 0;
       b.thin = false;
       for (j = 0; j < b.rows.length; j++) {
         r = b.rows[j];
         for (k = 0; k < r.caps.length; k++) {
           cap = r.caps[k];
-          cap.sends = used ? keeps(cap.def, used) : 0;
-          if (cap.sends) any = 1;
+          cap.kept = used ? kept(cap.def, used) : NONE;
+          cap.sends = cap.kept.u || cap.kept.s;
+          // Both halves named is the only case a register can help with. Where
+          // only the shifted one is, `sends` is already it and a touch is enough.
+          if (cap.kept.u && cap.kept.s) this.needShift = true;
+          if (cap.sends) b.any = 1;
         }
       }
+    }
+    for (i = 0; i < this.blocks.length; i++) {
+      b = this.blocks[i];
       for (j = 0; j < b.rows.length; j++) {
         r = b.rows[j];
         for (k = 0; k < r.caps.length; k++) {
           cap = r.caps[k];
-          cap.hide = !!used && !(b.whole ? any : cap.sends);
+          cap.hide = !used ? false
+                   : cap.def.act === 'shift' ? !this.needShift
+                   : !(b.whole ? b.any : cap.sends);
           if (cap.hide) b.thin = true;
         }
       }
@@ -551,6 +639,9 @@
       if (d.act === 'ctrl' && this.ctrled()) cls += ' on';
       if (d.act === 'layout' && (d.cap === 'LAT') !== this.rus) cls += ' on';
       if (d.act === 'none') cls += ' dead';
+      // On the winnowed board this is the one control drawn, and it is drawn
+      // among a program's keys where it needs saying what it is for.
+      if (d.act === 'shift') cap.el.title = 'РЕГ — the shifted half of a cap, for the next key';
 
       if (d.scan !== undefined) {
         // The PC board: the byte this key sends right now, under its own name.
@@ -564,7 +655,8 @@
       } else if (d.code !== undefined) {
         // A caption cap has one code and so no half to light: all it can say is
         // whether this layout reaches it.
-        cap.top.className = 'kb-word ' + this.state(d.code, false);
+        cap.top.className = 'kb-word ' + this.state(d.code, false) +
+                            (cap.kept.u ? ' named' : '');
         cap.el.title = this.title(d.code);
       } else if (d.u !== undefined) {
         // The lit half is whichever legend the live register would send, which
@@ -573,14 +665,28 @@
         var now = this.shifted() ? d.s : d.u;
         var upper = d.up === 'u' ? d.u : d.s;
         var lower = d.up === 'u' ? d.s : d.u;
-        cap.top.className = 'kb-half ' + this.state(upper, upper === now);
-        cap.bot.className = 'kb-half ' + this.state(lower, lower === now);
+        // The machine's order is the wrong one on the winnowed board when the
+        // program reads the lower legend only. A cap kept for `U` is printed
+        // У over U, so the big glyph on it is the one byte the game does not
+        // want, and the board answers "which key?" with the wrong character.
+        // Put the legend this program reads on top. A cap kept for both keeps
+        // the machine's order, since neither half is the answer on its own.
+        if (this.marks(cap, lower) && !this.marks(cap, upper)) {
+          var swap = upper; upper = lower; lower = swap;
+        }
+        cap.top.textContent = CHAR[upper] || '';
+        cap.bot.textContent = CHAR[lower] || '';
+        cap.top.className = 'kb-half ' + this.state(upper, upper === now) +
+                            (this.marks(cap, upper) ? ' named' : '');
+        cap.bot.className = 'kb-half ' + this.state(lower, lower === now) +
+                            (this.marks(cap, lower) ? ' named' : '');
         cap.el.title = this.title(d.u) +
           (d.s === undefined ? '' : '\nРЕГ ' + this.title(d.s));
       }
       // On the winnowed board the question is what this key does in *this*
-      // program, and the cap may be standing in for a code it does not carry.
-      if (cap.sends) cap.el.title = this.title(cap.sends);
+      // program: every legend the container named, and the cap may be standing
+      // in for a code it does not carry at all.
+      if (cap.sends) cap.el.title = this.reads(cap);
       if (cap.el.className !== cls) cap.el.className = cls;
     }
     // Run on the winnowed board whether or not anything was winnowed: a
@@ -724,9 +830,13 @@
   // have no host key at all.
   //
   // On the winnowed board a cap sends the program's key it was kept for, which
-  // is not always its own byte: `$9B` has no cap on this machine and is drawn on
-  // `[`, where УПР makes it, and that board draws no УПР. The same goes for a
-  // key whose code is a shifted legend, since it draws no РЕГ either.
+  // is not always its own byte: `$8B` has no cap on this machine and is drawn on
+  // `K`, where УПР makes it, and that board draws no УПР.
+  //
+  // Where the container named both legends of one cap the unshifted one is what
+  // a touch sends, since this board draws no РЕГ to hold either. A host Shift
+  // held down reaches the other, which is the whole of what one pointer and no
+  // modifier caps can offer.
   KeyView.prototype.press = function (e) {
     var el = e.target, cap, code, d;
     while (el && !el.__cap) el = el.parentNode;
@@ -743,7 +853,7 @@
     if (d.act === 'none') return;
 
     if (cap.sends) {
-      code = cap.sends;
+      code = this.shifted() && cap.kept.s ? cap.kept.s : cap.sends;
     } else if (d.scan !== undefined) {
       code = K.codeFor(d.scan, this.layout(),
                        K.planeFor(d.ext, this.ctrled(), this.shifted()));
@@ -772,10 +882,133 @@
     this.readout = null;
   };
 
+  // ---- the controls panel --------------------------------------------------
+  //
+  // The container's `controls`, drawn as a card: a column per group, a line per
+  // row, in the order the file lists them. It is not a keyboard — it carries no
+  // listeners and nothing on it is pressable. It says what the *program* reads —
+  // `Q` is $51 whatever is switched on — and the board beside it answers the
+  // other half, which host key reaches that code now. The panel is static for
+  // exactly that reason: greying and relocation belong to the board, which
+  // already does both.
+  //
+  // The one host-side thing on it is a container remap, `^ (W)`. A remap holds
+  // in every plane by construction, so it is the only host key that does not
+  // move under ЛАТ/РУС and the only one this panel can honestly promise.
+
+  // A group is also a tap target: it cuts the board beside it down to that group,
+  // which is the `used:<name>` the keyboard menu offers. `opts.onPick` is how the
+  // page hears about it, and it gets '' for "all of them again".
+  //
+  // Pointer only, deliberately. Every keystroke on this page belongs to the
+  // machine, so a focusable tile would be a tile that eats a key the emulator
+  // wanted; the `<select>` in the bar reaches the same states from the keyboard
+  // and is the accessible route to them.
+  function ControlPanel(el, opts) {
+    var self = this;
+    opts = opts || {};
+    this.el = el;
+    this.onPick = opts.onPick || function () {};
+    this.groups = [];
+    this.active = '';
+    this.build();
+    // One listener for the whole panel, as the board has: the groups are rebuilt
+    // whenever a container is, and per-tile listeners would have to be rebuilt
+    // with them. `click` and not `pointerdown`, because this is a choice rather
+    // than a keypress — a touch that turns into a scroll should not make it.
+    this.tap = function (e) { self.pick(e); };
+    el.addEventListener('click', this.tap);
+  }
+
+  // A tap anywhere inside a group is a tap on the group, and a tap on the one
+  // the board is already cut to goes back to the whole container — the same
+  // target is the way out as well as the way in, which is the only way out a
+  // board with no menu in reach would have.
+  ControlPanel.prototype.pick = function (e) {
+    var el = e.target;
+    while (el && el !== this.el && !el.__group) el = el.parentNode;
+    if (!el || !el.__group) return;
+    this.onPick(el.__group === this.active ? '' : el.__group);
+  };
+
+  function span(cls, text) {
+    var s = document.createElement('span');
+    s.className = cls;
+    s.textContent = text;
+    return s;
+  }
+
+  // Which host key the container nailed to this code, or ''. routesTo carries
+  // both kinds of route and only the remaps are taken: the rest come from the
+  // machine's own table, which is indexed by layout.
+  function remappedTo(code) {
+    var rs = K.routesTo(code), i;
+    for (i = 0; i < rs.length; i++) {
+      if (rs[i].remap) return K.keyName(rs[i].scan, rs[i].ext ? K.EXT : K.NORMAL);
+    }
+    return '';
+  }
+
+  // A row's codes, as one string: `↑ ↓ ← →`, or `^ (W)` where a host key was
+  // nailed to it. The parenthesis is dropped when it would only repeat the code,
+  // which is most letters — `K (K)` tells nobody anything.
+  function codeList(codes) {
+    var out = [], i, name, host;
+    for (i = 0; i < codes.length; i++) {
+      name = K.codeName(codes[i]);
+      host = remappedTo(codes[i]);
+      out.push(host && host !== name ? name + ' (' + host + ')' : name);
+    }
+    return out.join(' ');
+  }
+
+  ControlPanel.prototype.build = function () {
+    var gs = K.controlGroups(), box, head, line, g, i, j;
+    this.el.innerHTML = '';
+    this.groups = [];
+    if (!gs) return;
+    for (i = 0; i < gs.length; i++) {
+      g = gs[i];
+      box = document.createElement('div');
+      box.className = 'ctl-group';
+      box.__group = g.name;             // what a tap anywhere inside it picks
+      head = span('ctl-name', g.name);
+      box.appendChild(head);
+      for (j = 0; j < g.rows.length; j++) {
+        line = document.createElement('div');
+        line.className = 'ctl-line';
+        line.appendChild(span('ctl-code', codeList(g.rows[j].codes)));
+        if (g.rows[j].label) line.appendChild(span('ctl-what', g.rows[j].label));
+        box.appendChild(line);
+      }
+      this.groups.push({ name: g.name, el: box });
+      this.el.appendChild(box);
+    }
+  };
+
+  // Which group the board beside this panel is currently cut to, so that a board
+  // showing four caps is not left looking like the container lost the rest. Also
+  // what a tap on that same group toggles back off.
+  ControlPanel.prototype.mark = function (group) {
+    var i, on;
+    this.active = group || '';
+    for (i = 0; i < this.groups.length; i++) {
+      on = !!group && this.groups[i].name === group;
+      this.groups[i].el.className = 'ctl-group' + (on ? ' on' : '');
+    }
+  };
+
+  ControlPanel.prototype.destroy = function () {
+    this.el.removeEventListener('click', this.tap);
+    this.el.innerHTML = '';
+    this.groups = [];
+  };
+
   AGAT.KeyView = KeyView;
+  AGAT.ControlPanel = ControlPanel;
   AGAT.keyview = {
     CHAR: CHAR, VIEWS: VIEWS, capCode: capCode, SLIVER: SLIVER,
-    keeps: keeps, capsUsed: capsUsed, CARRIED: CARRIED,
+    keeps: keeps, kept: kept, capsUsed: capsUsed, CARRIED: CARRIED,
     AGAT_MAIN: AGAT_MAIN, AGAT_PAD: AGAT_PAD,
     PC_MAIN: PC_MAIN, PC_NAV: PC_NAV, PC_PAD: PC_PAD,
   };

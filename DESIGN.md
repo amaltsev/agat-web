@@ -67,7 +67,7 @@ Load order matters only in that a module's dependencies must already be on
 | `video.js` | painters and `render()` |
 | `font.js` | glyph blitting; keeps `{font, m0}` together |
 | `keyboard.js` | browser `code` → scancode → Agat keymap, and the same table read backwards |
-| `keyview.js` | the on-screen keyboard: three boards over that one table |
+| `keyview.js` | the on-screen keyboard: three boards over that one table, and the container's controls as a card |
 | `audio.js` | `$C030` edges → PCM |
 | `unpack.js` | embedded ROM decompression |
 | `fil.js` | `.fil` loading |
@@ -449,29 +449,54 @@ is named. A program that never touches the pad gets no column of slivers where
 the pad was.
 
 The cluster is the reason the areas exist. On the machine ↑ sits between ПВТ and
-РЕД with ← ↓ → below, and those two caps are what hold it over ↓ — but they are
-caps this board does not draw, so collapsing them dragged ↑ halfway across the
-row. `USED_NAV` arranges the four arrows itself, and is marked `whole`: one arrow
+РЕД with ← ↓ → below, and those two caps are what hold it over ↓ — but ПВТ is a
+cap this board does not draw, so the row closes up and ↑ ends halfway across it.
+`USED_NAV` arranges the four arrows itself, and is marked `whole`: one arrow
 in the key set brings all four, because a cluster missing one of its arms reads
 worse than no cluster. `USED_MAIN` and `USED_PAD` are the machine's own blocks
 with the caps this view never draws filtered out.
 
-**It draws no controls.** СБР, УПР, РУС/LAT, РЕГ and the caps that send nothing
+**It draws almost no controls.** СБР, УПР, РУС/LAT and the caps that send nothing
 are the board's own furniture rather than the program's keys, and on a phone they
-were most of what was on the screen.
+were most of what was on the screen. The exception is one **РЕГ**, and it is not
+furniture: a cap named on both its legends can only send the unshifted one by
+itself, so without a register the other control would be unreachable by touch.
+`keysOnly` carries the left one and `plan()` draws it only when some cap is in
+that position — Rise Out's Cheats board has it, its Menu board does not.
 
-`usedCodes(layout)` says which codes the key set reaches — a remap's own code,
-and for a key declared as-is whatever the table has under it in this layout,
-unshifted and shifted. It returns the codes themselves rather than flags, because
+`usedCodes(layout, group)` says which codes this program reaches. Two sources,
+because a container has two ways to say it: `controls` names codes outright, and
+the key set contributes a remap's own code and, for a key declared as-is,
+whatever the table has under it in this layout, unshifted and shifted. Naming a
+group is asking for that group alone — the key set is the program's *whole* set,
+so folding it back in would undo the narrowing. It returns the codes themselves
+rather than flags, because
 `capsUsed` then moves each onto the cap that owns it, the same order `light()`
 takes: a code with a cap of its own goes there, the rest fall back to `capCode`.
 So `$88` lands on `←`, and `$8B` on `К` where УПР makes it.
 
-That fallback is why a kept cap remembers what it stands for. `$9B` — Esc — has
-no cap on this machine at all and is drawn on `[`; with no УПР to hold, a touch
-on that cap has to send `$9B` rather than the `[` it is painted with, so `plan()`
-records the code on the cap and `press()` and the tooltip use it. The same
-applies to a key whose code is a shifted legend, since there is no РЕГ either.
+That fallback is why a kept cap remembers what it stands for. `$8B` has no cap on
+this machine at all and is drawn on `K`; with no УПР to hold, a touch on that cap
+has to send `$8B` rather than the `K` it is painted with, so `plan()` records the
+code on the cap and `press()` and the tooltip use it.
+
+**The legend the program reads goes on top.** The machine prints its letter caps
+Cyrillic over Latin, so a cap kept for `U` is drawn `У` over `U` and the big
+glyph on it is the one byte the game does not want — which is exactly how a
+container's own author came to read the Cheats board as asking for `$75` and
+`$64`. On the winnowed board the two halves swap when the program reads only the
+lower one. The full АГАТ board never swaps: it is the machine, and the machine
+prints them the other way round.
+
+`kept(d, used)` is that record, one code per half — `keeps()` is the same thing
+collapsed to the single byte a touch sends. Two halves are worth keeping apart
+because a container can name both: Rise Out reads `K` and `К`, which are the
+unshifted and shifted legends of one letter cap. `refresh()` underlines every
+half the program actually reads, `reads()` gives the cap a tooltip line per
+control, and `press()` sends the unshifted one — or the shifted one while a host
+Shift is held, which is as far as one pointer and no РЕГ cap can go. A half kept
+only as a stand-in is marked on neither legend, since the code on it is not the
+one printed there; `marks()` is what draws that distinction.
 
 An indent is measured in cap widths, so in a block that lost caps to slivers it
 collapses with them — ПРОБЕЛ stays under the letters instead of nine ems to their
@@ -482,9 +507,62 @@ number the stylesheet cannot know: what is left depends on the container.
 The winnowing is redone on every `refresh()`, since a key declared as-is is a
 different cap in ЛАТ than in РУС. With no container loaded there is nothing to
 winnow by and every cap it has is drawn; the menu greys the option out until
-something names keys, and on a handheld a container that names them opens with
-it. `node tools/check.js keys <file.agc>` draws the same board in a terminal,
-against a stub `document` — which is what makes it testable at all.
+something names keys or controls, and on a handheld a container that names them
+opens with it. `node tools/check.js keys <file.agc>` draws the same board in a
+terminal, against a stub `document` — which is what makes it testable at all.
+
+`setView('used:Cheats')` cuts it to one of the container's control groups. The
+group rides *beside* the view rather than in it — everything below still asks
+only whether the view is `used` — and a group the loaded container does not have
+is dropped in `setView`, the one place every caller goes through, rather than
+left to become a board winnowed down to nothing.
+
+### The controls panel
+
+`ControlPanel` draws the container's `controls`: a column per group, a line per
+row, in file order. It is not a keyboard — no cap on it sends a byte. What it
+says is **static on purpose**: it prints what the *program* reads, and `Q` is
+`$51` whatever is switched on. Which host key reaches `$51` right now is the
+board's question, and the board already answers it by moving the lit cap and
+greying the rest.
+
+**A group is a tap target**, though, and the whole tile is one: it cuts the board
+beside it to that group, and tapping the live one goes back to all of them, so
+the same target is the way out as well as the way in. It goes through the
+`<select>` rather than around it — `onPick` sets the menu and calls the same
+`applyKbd`/`saveUrl` the menu's own `change` does — so the two can never disagree
+and the address follows a finger as well as it follows the menu. One delegated
+`click` listener on the panel element, as the board has one for all its caps, and
+`destroy()` takes it off again: the panel is rebuilt on every container load and
+its host element is not, so a listener left behind would make one tap fire twice.
+
+Pointer only, deliberately. Every keystroke on this page belongs to the machine,
+so a focusable tile would be a tile that eats a key the emulator wanted; the
+`<select>` in the bar reaches the same states from the keyboard.
+
+The one host-side thing on the panel is a container remap, `^ (W)`. A remap holds
+in every plane by construction, so it is the only host key that does not move
+under ЛАТ/РУС and the only one the panel can honestly promise.
+
+The panel is also where the prose lives now. `controls` labels are indexed by
+code, which is what the winnowed board's caps are, so `title()` reads them
+straight off `controlLabel(code)`; `keys` notes still arrive the old way through
+`routeName`, and a container written either way says something.
+
+**Two controls, one cap.** `K` and `К` are the unshifted and shifted legends of a
+single cap, so a container naming both gets one key on the winnowed board — drawn
+with both halves underlined, naming both in its tooltip, sending the unshifted one
+on a click and the shifted one after РЕГ or under a held Shift. `plan()` sets
+`needShift` when it sees such a cap, which is what puts РЕГ on the board; the
+latch is the same one-shot `stick` the АГАТ board uses, so it clears itself after
+the key it was pressed for.
+
+**УПР is not needed and is not drawn.** A cap kept as a stand-in for a control
+code sends that code directly — `press()` uses `cap.sends`, not the legend — so
+`$8B` on the `K` cap needs no modifier. What a container *cannot* currently do is
+name `$4B` and `$8B` both: `capsUsed` keeps one code per cap index and the second
+is dropped rather than made unreachable. Nothing in `examples/` does it, and the
+fix would be to let a cap hold a third code, not to add УПР.
 
 ---
 
@@ -532,12 +610,14 @@ Everything runs headlessly against the shipping source.
 node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/vectors.js               # pure-function tests, about a second
 node tools/check.js modules         # index.html vs tools/modules.js
+node tools/check.js kbdmenu         # the page's keyboard menu, load order and all
 node tools/painters.js              # each video mode from a synthetic pattern
 
 node tools/check.js boot   <image>  # boot and report where it got to
 node tools/check.js boot <image> --irq=raster    # ...under a given interrupt model
 node tools/check.js io     <image>  # $C0xx histogram
 node tools/check.js sniff  <file…>  # what the sniffer makes of each
+node tools/check.js keys   <.agc>   # the controls panel and the winnowed board
 node tools/check.js write  <image> --keys=…    # boot unlocked, say what was written
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
 node tools/corpus.js <dir> --md     # walk a directory, boot everything

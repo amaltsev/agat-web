@@ -13,15 +13,26 @@
     "rate": 0
   },
   "keys": {
-    "ArrowUp": { },
-    "ArrowDown": { },
-    "ArrowLeft": { },
-    "ArrowRight": { },
-    "KeyW": { "note": "Shoot right", "code": "^" },
-    "KeyQ": { "note": "Shoot left", "code": "Q" },
-    "KeyK": { "note": "Suicide", "code": "K" },
-    "Space": { "note": "Menu: Select" },
-    "Escape": { "note": "Menu: Back" }
+    "KeyW": { "code": "^" }
+  },
+  "controls": {
+    "Play": {
+      "Up Down Left Right": "Движение",
+      "Space": "Стоп",
+      "^": "Выстрел вправо",
+      "Q": "Выстрел влево"
+    },
+    "Cheats": {
+      "K": "Самоубийство",
+      "$75": "Уровень вверх",
+      "$64": "Уровень вниз",
+      "$6B": "Конец игры"
+    },
+    "Menu": {
+      "Up Down Left Right": "Выбор",
+      "Space": "Внутрь",
+      "Esc": "Назад"
+    }
   },
   "media": [
     {
