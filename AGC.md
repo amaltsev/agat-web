@@ -31,7 +31,6 @@ press **Save AGC**: the container it writes is a text file you can edit.
   "notes": "Carries the original 1989 sound data.",
 
   "machine": { "model": 7, "ram": 64 },
-  "quirks":  { "irq": "raster", "rate": 0 },
 
   "keys": {
     "KeyW": { "code": "^" }
@@ -117,22 +116,6 @@ puts there; `null` empties it.
 
 `card` is required: an entry that gives only a size names no card, and is
 ignored.
-
-### `quirks`
-
-| field | |
-|---|---|
-| `irq` | `"raster"`, `"held"` or `"pulse"` — how the sub-frame interrupt reaches the CPU |
-| `rate` | sub-frame interrupt in Hz; `0` means the machine's own default |
-
-`raster` is the hardware as measured, and it sets its own rate, so `rate` is
-ignored under it. The other two are agat-emulator's readings, kept for
-comparison — see
-[HARDWARE.md](HARDWARE.md#the-delivery-model).
-
-This matters for anything that sequences sound on the interrupt count, which is
-most Agat music: the pitch and the tempo come straight off this setting, and
-`held` and `raster` are an octave apart.
 
 ### The keyboard: `keys` and `controls`
 
@@ -339,8 +322,8 @@ this having to know: media are identified by size.
 ### From the emulator
 
 **Save AGC** writes a container from the machine as it stands: what is in the
-drives, the model and RAM, both interrupt settings, the live remap, and anything
-a program has written to an unlocked disk. It asks nothing.
+drives, the model and RAM, the live remap, and anything a program has written
+to an unlocked disk. It asks nothing.
 
 A container that was loaded from a file keeps its own title and filename. One
 made from a bare image takes the image's name for both, so `game.dsk` saves as
@@ -352,7 +335,7 @@ author, a date and the keys.
 ```sh
 node tools/mkagc.js game.dsk \
   --title="…" --author="…" --date=1989 --url=https://… \
-  --model=7 --ram=64 --irq=raster \
+  --model=7 --ram=64 \
   --key="KeyW:^:Shoot right" > game.agc
 ```
 

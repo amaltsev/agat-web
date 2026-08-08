@@ -332,40 +332,18 @@ That the Agat-9 replaced a counter bit with a one-line pulse, from a PROM that
 could have emitted any pattern at all, is the clearest evidence available that
 the Agat-7's duty cycle was understood at the time to be a wart.
 
-`raster` is the default. The other two are kept selectable for comparison, and
-are expected to go once enough software has been heard under `raster`:
+One 312-line counter drives both interrupts, level, phase locked to the frame,
+and that is the only model emulated. Because there genuinely is one counter, a
+question that dogs a two-timer approximation does not arise here: the sub-frame
+assertion that coincides with the frame is the same count as the NMI, not a
+second timer's tick to be kept or dropped.
 
-| model | what it is |
-|---|---|
-| `raster` | **the default** — the above: one 312-line counter, level, phase locked to the frame |
-| `held` | agat-emulator's — two free timers at 50 Hz and 1000/2000 Hz, line held `N_RBINT_DELAY` cycles per tick (600 Agat-7, 70 Agat-9: `videosel.c:110`, `cpu.c`'s `CPU_INTR_IRQ`/`NOIRQ` pair) |
-| `pulse` | the same two timers, one handler entry per tick |
-
-In agat-emulator's source `N_RB_7 = 16` is the *repaint* block count and has
-nothing to do with any of this; `N_RBINT_7 = 20` is the separate interrupt
-divisor, and 20 × 50 = 1000 Hz looks chosen to be a round number as much as
-anything.
-
-`held` and `pulse` keep their timers deliberately independent of each other:
-every tick raises IRQ, *including* the one that coincides with a frame, and
-folding them into one counter drops one IRQ in twenty. Under `raster` the
-question does not arise, because there genuinely is one counter.
-
-The bundled RISE OUT carries its **original 1989 sound data**, and under
-`raster` it sounds right to its author. The copy that shipped here before had
-been hand-retuned in 2026 to compensate for the single-tick model, which is the
+The bundled RISE OUT carries its **original 1989 sound data**, and under this
+model it sounds right to its author. The copy that shipped here before had been
+hand-retuned in 2026 to compensate for a single-tick interrupt, which is the
 sort of thing a wrong timebase makes people do — and the fact that undoing that
-compensation and switching to `raster` agree is the best confirmation the model
-has.
-
-`held`'s 600 cycles of 1020 is a 59% duty cycle where the hardware's is 50%, so
-it is much closer than it looks in total handler entries — but it bunches them
-at twice the rate. Measured on `PLAY500`'s handler through `tools/tone.js`,
-switching `held` → `raster` costs 14% of the entries and stretches a fixed-length
-note by 16%, while halving the rate at which the bursts repeat. Since the ear
-takes the repetition rate for the pitch, **`raster` sounds an octave below
-`held`** — which is what `PLAY500`'s name says it should be, and what RISE OUT's
-author remembers.
+compensation and arriving at the raster from the schematics agree is the best
+confirmation the model has.
 
 [clocks]: https://agatcomp.ru/agat/Hardware/useful/clock.shtml
 [repl]: https://agat-hardware.sourceforge.io/

@@ -1,7 +1,6 @@
 // Boot an image, optionally send keys, write the screen out as a PNG.
 //
 //   node tools/shot.js <image> [keys] [cycles-per-key] [out.png] [--model=7|9]
-//                      [--irq=raster|held|pulse]
 //                      [--ram=32|64|128] [--psrom=KB] [--xram=KB]
 //
 // keys: ~ = Return, _ = Space, ^ = Escape, anything else is that character.
@@ -104,7 +103,6 @@ H.loadRoms(ctx).then((roms) => {
     ramSize: flags.ram ? Number(flags.ram) * 1024 : undefined,
     slots: Object.keys(slots).length ? slots : undefined,
   });
-  if (flags.irq) m.setIrqModel(flags.irq);
   if (sniffed.kind === 'fil') {
     ctx.AGAT.loadFil(m, sniffed.payload);
   } else {

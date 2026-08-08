@@ -9,8 +9,6 @@
 //   --notes=TEXT          prose: provenance, credits, what a patch does
 //   --model=7|9           the machine it wants
 //   --ram=32|64|128       Agat-7 RAM, in K
-//   --irq=raster|held|pulse
-//   --rate=HZ             sub-frame rate for the two free-running models
 //   --key=KEY[:CODE[:NOTE]]   a key the program uses, repeatable, the note
 //                             saying what it does: --key=KeyW:^:Shoot right.
 //                             With no code the key is declared as it already
@@ -106,8 +104,6 @@ try {
     notes: flags.notes || '',
     model: model,
     ram: Number(flags.ram) || (model === 9 ? 128 : 64),
-    irq: flags.irq || 'raster',
-    rate: Number(flags.rate) || 0,
     keys: keys,
     media: media,
     width: Number(flags.width) || 0,

@@ -84,26 +84,21 @@ the tab loses them; **Save AGC** lights up while there are any, and keeps them
 as patches on the image they came from. The 840K drive does not write.
 
 The **⚙** holds the settings a machine is run under rather than driven by: the
-volume, and two selectors for the **video interrupt**. The default, `raster`, is
-the hardware as measured off real boards — a level whose edges are raster lines,
-which sets its own rate and so greys the rate selector out. The other two are
-agat-emulator's readings of it, kept for comparison. See
-[HARDWARE.md](HARDWARE.md#the-delivery-model). They only matter for software
-that sequences sound on the interrupt count, where they set both the pitch and
-the tempo — an octave apart between `held` and `raster`.
+volume, and the three memory sizes. The video interrupt is not among them — it
+comes off the line counter, exactly as the boards produce it, and there is
+nothing to choose. See [HARDWARE.md](HARDWARE.md#the-delivery-model).
 
 Every one of those settings rides in the address, so a machine that runs a
 program properly is a bookmark:
 
-    index.html#model=7&ram=64&irq=raster
-    index.html#model=7&ram=128&irq=held&rate=500
+    index.html#model=7&ram=64
+    index.html#model=7&ram=128&xram=128
 
 `model` is 7 or 9; `ram` is base RAM in KB — 32, 64 or 128, Agat-7 only, since
-the Agat-9 is always 128K; `psrom` and `xram` size the two Agat-7 memory cards
-in KB, and appear only when they are not the stock 32K (`0` leaves the slot
-empty); `irq` is `raster`, `held` or `pulse`; and `rate` is the sub-frame
-interrupt in Hz, which only the last two obey. A machine named in the URL is
-treated as chosen, so a `7a`/`9a` filename does not override it.
+the Agat-9 is always 128K; and `psrom` and `xram` size the two Agat-7 memory
+cards in KB, appearing only when they are not the stock 32K (`0` leaves the slot
+empty). A machine named in the URL is treated as chosen, so a `7a`/`9a` filename
+does not override it.
 
 `agc=` names a container, which carries the file itself:
 
@@ -116,7 +111,7 @@ program on the other machine and it is the other machine the program boots on.
 ## `.agc` — the Agat Container
 
 Knowing how to run an old program is more than having its disk: which machine,
-how much RAM, which interrupt model, and which host key sends the byte it reads.
+how much RAM, which cards, and which host key sends the byte it reads.
 An `.agc` is all of that in one JSON file, which the page takes like any other.
 The format is written up field by field in [AGC.md](AGC.md), and in Russian in
 [AGC.ru.md](AGC.ru.md).
@@ -129,7 +124,6 @@ The format is written up field by field in [AGC.md](AGC.md), and in Russian in
   "date": "1989",
   "url": "https://…",
   "machine": { "model": 7, "ram": 64 },
-  "quirks":  { "irq": "raster", "rate": 0 },
   "keys":    { "KeyW": { "code": "^", "note": "Shoot right" },
                "Space": { "note": "Jump" } },
   "media": [ { "name": "rise-out.dsk", "data": ["…base64…"] } ]
@@ -166,16 +160,17 @@ container is the only place left that says who wrote a program and when.
 Nothing but `agc` and `media` is required.
 
 **Save .agc** writes one out from the machine as it stands: what is in the
-drives, the model and its memory, both interrupt settings and the live remap.
-Cards are written down only where they differ from the stock machine, so a
-container for an ordinary Agat-7 stays short. It asks nothing. A container that was loaded from a file keeps its own title and
-filename; one made from a bare image takes the image's name for both, so
+drives, the model and its memory, and the live remap. Cards are written down
+only where they differ from the stock machine, so a container for an ordinary
+Agat-7 stays short. It asks nothing. A container that was loaded from a file
+keeps its own title and filename; one made from a bare image takes the image's
+name for both, so
 `irqtest.dsk` saves as `irqtest.agc` titled `irqtest.dsk` — rename it
 afterwards if it deserves better. From the command line:
 
 ```sh
 node tools/mkagc.js game.dsk --title="…" --author="…" --date=1989 \
-  --model=7 --ram=64 --irq=raster --key="KeyW:^:Shoot right" > game.agc
+  --model=7 --ram=64 --key="KeyW:^:Shoot right" > game.agc
 ```
 
 `--diff=<patched image>` works out the patches by comparing, and `--patch=AT:HEX`
@@ -207,10 +202,10 @@ exactly 1000 interrupts, then is silent for 500, for *n* = 1, 2, 4, round and
 round. Both pitch and duration derive from the interrupt alone, so it reports
 the rate *and* whether the counting matches. Here it gives three brief tones near
 7400, 3950 and 2050 Hz — the carrier is the handler's own length, so those hold
-under any level model — with the whole round taking about 0.7 s under `raster`
-and a sixth less under `held`. Three leisurely one-second tones at 500, 250 and
-125 Hz instead mean the IRQ is being treated as an edge, which is exactly what
-the `pulse` model gives.
+wherever the interrupt is a level — with the whole round taking about 0.7 s.
+Three leisurely one-second tones at 500, 250 and 125 Hz instead mean that
+emulator is treating the IRQ as an edge, one handler entry per assertion, where
+the hardware re-enters throughout.
 
 ---
 

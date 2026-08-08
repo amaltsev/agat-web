@@ -8,10 +8,6 @@
     "model": 7,
     "ram": 64
   },
-  "quirks": {
-    "irq": "raster",
-    "rate": 0
-  },
   "keys": {
     "ArrowUp": { },
     "ArrowDown": { },

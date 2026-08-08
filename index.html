@@ -257,7 +257,7 @@
     <option value="pc">PC keyboard</option>
     <option value="used">Only mapped keys</option>
   </select>
-  <button id="gear" title="Memory sizes, interrupt model, interrupt rate and volume" aria-expanded="false">⚙</button>
+  <button id="gear" title="Memory sizes and volume" aria-expanded="false">⚙</button>
   <span class="lamps" id="lamps"></span>
   <span id="status">loading…</span>
 </div>
@@ -288,19 +288,6 @@
       <option value="64">64K ОЗУ</option>
       <option value="128">128K ОЗУ</option>
       <option value="0">no ОЗУ</option>
-    </select>
-  </div>
-  <div class="row">
-    <span class="key">Interrupt</span>
-    <select id="hold" title="How the sub-frame interrupt reaches the CPU. 'raster' is the hardware as measured — a level whose edges are raster lines, and it sets its own rate. The other two are agat-emulator's.">
-      <option value="raster">raster (hardware)</option>
-      <option value="held">held (agat-emulator)</option>
-      <option value="pulse">one per tick</option>
-    </select>
-    <select id="irq" disabled title="Sub-frame interrupt rate. Software that sequences sound on the interrupt count hears this as pitch and tempo.">
-      <option value="0">IRQ 1000 Hz</option>
-      <option value="500">IRQ 500 Hz</option>
-      <option value="2000">IRQ 2000 Hz</option>
     </select>
   </div>
   <div class="row">
@@ -368,10 +355,10 @@
       you choose one yourself.
     </td></tr>
     <tr><td><b>Bookmarks</b></td><td>
-      The machine, all three memory sizes, both interrupt settings and which
-      keyboard is up ride in the address, so a configuration that runs a program
-      properly can be kept or passed on. <code>#agc=</code> names a container,
-      which carries the program itself.
+      The machine, all three memory sizes and which keyboard is up ride in the
+      address, so a configuration that runs a program properly can be kept or
+      passed on. <code>#agc=</code> names a container, which carries the program
+      itself.
     </td></tr>
   </table>
   <p id="examples"></p>
@@ -416,8 +403,6 @@
   var ramSel = document.getElementById('ram');
   var psromSel = document.getElementById('psrom');
   var xramSel = document.getElementById('xram');
-  var rateSel = document.getElementById('irq');
-  var holdSel = document.getElementById('hold');
   var kbdSel = document.getElementById('kbd');
   var layoutBtn = document.getElementById('layout');
   var gearBtn = document.getElementById('gear');
@@ -430,12 +415,11 @@
   // ---- the settings, in the URL ---------------------------------------------
   //
   // Which machine a program wants — an Agat-7 with this much base RAM and these
-  // cards, an interrupt model, and the rate the two free-running models run at
-  // — is part of knowing how to run it,
-  // so it lives in the address and a working configuration is a bookmark. The
-  // fragment rather than a query string, and location.replace() rather than
-  // history.replaceState(): a page opened straight off the disk has a null
-  // origin, and replaceState() refuses to be handed a file:// URL there.
+  // cards — is part of knowing how to run it, so it lives in the address and a
+  // working configuration is a bookmark. The fragment rather than a query
+  // string, and location.replace() rather than history.replaceState(): a page
+  // opened straight off the disk has a null origin, and replaceState() refuses
+  // to be handed a file:// URL there.
   //
   // The file itself is not in the URL, but `agc=` names one that can carry it:
   // a container holds the image and the machine together, so a link to one is a
@@ -508,10 +492,6 @@
         if (kb !== stockKb(e[0])) q.push(e[1] + '=' + kb);
       });
     }
-    q.push('irq=' + holdSel.value);
-    // The rate belongs to the free-running models; under `raster` it comes off
-    // the line counter, and 0 is "whatever the machine does" either way.
-    if (holdSel.value !== 'raster' && rateSel.value !== '0') q.push('rate=' + rateSel.value);
     // Which board is up is part of a working configuration too: a bookmark for
     // a game whose keys are a puzzle should open with the keyboard showing.
     // Encoded, unlike the rest: a control group is named by the container's
@@ -530,13 +510,10 @@
   pick(ramSel, Number(url.ram) * 1024);
   pick(psromSel, url.psrom);
   pick(xramSel, url.xram);
-  pick(holdSel, url.irq);
-  pick(rateSel, url.rate);
   // A board cut to a control group cannot be picked yet — the container that
   // names the groups has not been read. syncKbd applies it once it has.
   var wantKbd = pick(kbdSel, url.kbd) ? '' : (url.kbd || '');
   syncMemEnabled();
-  rateSel.disabled = holdSel.value === 'raster';
 
   var app = new AGAT.App({
     canvas: document.getElementById('canvas'),
@@ -544,8 +521,6 @@
     model: Number(modelSel.value),
     ramSize: Number(ramSel.value),
     slots: slotOverrides(),
-    irqModel: holdSel.value,
-    subFrameHz: rateSel.disabled ? 0 : Number(rateSel.value),
     onKey: function (v, info) { if (kbView) kbView.light(info, v, true); },
     onKeyUp: function (info) { if (kbView) kbView.light(info, 0, false); },
     onMods: function (m) { if (kbView) kbView.setMods(m); },
@@ -560,11 +535,6 @@
   // another when an Agat-7 and an Agat-9 are open side by side.
   function syncMachineUI() {
     modelSel.value = String(app.model);
-    // A container names the interrupt settings too, so the menus have to follow
-    // the App rather than keep showing what was chosen before it was loaded.
-    pick(holdSel, app.irqModel);
-    pick(rateSel, String(app.subFrameHz));
-    rateSel.disabled = app.irqModel === 'raster';
     // The Agat-9's 128K is not a choice, and writing it into the menu would
     // still be sitting there when the machine went back to being an Agat-7.
     if (app.model === 7) {
@@ -844,41 +814,20 @@
   }
 
   // Whether the section is open is chrome rather than machine state, so it does
-  // not go in the address: a bookmark carries the interrupt settings themselves.
+  // not go in the address: a bookmark carries the settings themselves, not
+  // which panel was left showing.
   gearBtn.addEventListener('click', function () {
     settingsEl.hidden = !settingsEl.hidden;
     gearBtn.className = settingsEl.hidden ? '' : 'on';
     gearBtn.setAttribute('aria-expanded', String(!settingsEl.hidden));
   });
 
-  rateSel.addEventListener('change', function (e) {
-    var hz = Number(e.target.value);
-    say(hz ? 'sub-frame interrupt now ' + Math.round(app.setSubFrameHz(hz)) + ' Hz'
-           : 'sub-frame interrupt back to the machine default');
-    if (!hz) { app.subFrameHz = 0; app.build(); }
-    saveUrl();
-  });
-
-  // The rate selector belongs to the two free-running models; under `raster`
-  // the rate comes off the line counter and there is nothing to choose.
-  holdSel.addEventListener('change', function (e) {
-    var name = e.target.value;
-    rateSel.disabled = name === 'raster';
-    app.setIrqModel(name);
-    saveUrl();
-    say(name === 'raster'
-        ? 'interrupt off the line counter — ' +
-          Math.round(AGAT.CPU_HZ / app.machine.irqPeriod()) + ' Hz'
-        : name === 'pulse' ? 'interrupt pulsed — one handler entry per tick'
-                           : 'interrupt held, as agat-emulator does it');
-  });
-
   // ---- writing a container out ----------------------------------------------
   //
-  // What is loaded plus how it is running: the machine, both interrupt settings
-  // and the remap. The point is that a configuration arrived at by ear — which
-  // is how the interrupt model is chosen — survives as a file rather than as a
-  // memory of which menus were touched.
+  // What is loaded plus how it is running: the machine and the remap. The point
+  // is that a configuration arrived at by trying things — which is how a card
+  // complement is settled on — survives as a file rather than as a memory of
+  // which menus were touched.
 
   // Nothing is asked. A container that came from a file keeps its own title and
   // filename; one made from a bare image takes the image's name for both. That
@@ -1048,8 +997,8 @@
   });
 
   // A container names a machine, and the address may disagree with it on
-  // purpose — that is how a program gets tried on the other model, or under
-  // another interrupt setting, without editing the file. What the fragment
+  // purpose — that is how a program gets tried on the other model, or with a
+  // card it did not ask for, without editing the file. What the fragment
   // carried goes into the load, so the container builds one machine with the
   // disagreement already in it and the program boots on that. Read before the
   // fetch, while the controls still hold the address's values: a container that
@@ -1063,8 +1012,6 @@
     if (url.model && pick(modelSel, url.model)) o.model = Number(modelSel.value);
     if (url.ram && pick(ramSel, Number(url.ram) * 1024)) o.ramSize = Number(ramSel.value);
     if (url.psrom !== undefined || url.xram !== undefined) o.slots = slotOverrides();
-    if (url.irq && pick(holdSel, url.irq)) o.irqModel = holdSel.value;
-    if (url.rate && pick(rateSel, url.rate)) o.subFrameHz = Number(rateSel.value);
     return o;
   }
 
