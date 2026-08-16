@@ -64,6 +64,8 @@ the standard machine — 128K in three separate devices: 64K of base RAM, a 32K
 ЭмПЗУ card in slot 2 and a 32K ОЗУ expansion in slot 4. Base RAM is the one to
 set to match your disk, because it is the only memory the video controller scans
 and its size masks the video mode register's page field, so software can tell.
+The Agat-9's own 128K is fixed, but it takes a 128K ОЗУ expansion of its own in
+slot 2 — a different card, and MouseGraf will not start without it.
 A filename containing `7a` or `9a` picks the machine for you until you choose
 one yourself.
 
@@ -84,7 +86,7 @@ the tab loses them; **Save AGC** lights up while there are any, and keeps them
 as patches on the image they came from. The 840K drive does not write.
 
 The **⚙** holds the settings a machine is run under rather than driven by: the
-volume, and the three memory sizes. The video interrupt is not among them — it
+volume, and the machine's memory sizes. The video interrupt is not among them — it
 comes off the line counter, exactly as the boards produce it, and there is
 nothing to choose. See [HARDWARE.md](HARDWARE.md#the-delivery-model).
 

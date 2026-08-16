@@ -7,6 +7,7 @@ const MODULES = [
   'src/mem7.js',
   'src/psrom7.js',
   'src/xram7.js',
+  'src/xram9.js',
   'src/videosel.js',
   'src/videopal.js',
   'src/machine.js',

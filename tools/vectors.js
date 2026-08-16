@@ -121,7 +121,7 @@ function eq(what, got, want) {
 
   const nine = mk({ model: 9, ramSize: 0x8000 });
   eq('App Agat-9 ignores a RAM size', nine.ramSize, 0x20000);
-  eq('App Agat-9 slots', cards(nine), ['5:fdd840', '6:fdd140']);
+  eq('App Agat-9 slots', cards(nine), ['2:xram9', '5:fdd840', '6:fdd140']);
 
   const big = mk({ model: 7, slots: { 4: { card: 'xram', ram: 0x20000 }, 2: null } });
   eq('App override reaches the slots',

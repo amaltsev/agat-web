@@ -289,6 +289,12 @@
       <option value="128">128K ОЗУ</option>
       <option value="0">no ОЗУ</option>
     </select>
+    <select id="xram9" title="ОЗУ expansion in slot 2 — 128K addressed through the same eight 8K windows as the motherboard's RAM, each window taken over one at a time. MouseGraf will not start without it.">
+      <option value="32">32K ОЗУ</option>
+      <option value="64">64K ОЗУ</option>
+      <option value="128">128K ОЗУ</option>
+      <option value="0">no ОЗУ</option>
+    </select>
   </div>
   <div class="row">
     <span class="key">Volume</span>
@@ -344,18 +350,18 @@
       patches on the disk they came from.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
-      The three memory sizes and the volume.
+      The machine's memory sizes and the volume.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
-      The Agat-9 is 128K in 8K banks, and nothing about it is
-      adjustable. The standard Agat-7 is three separate devices —
-      64K of base RAM in 16K banks, a 32K ЭмПЗУ card in slot 2,
-      and a 32K ОЗУ expansion in slot 4. A filename containing
+      The Agat-9 is 128K in 8K banks on the motherboard, which is
+      fixed, plus a 128K ОЗУ expansion in slot 2. The standard Agat-7
+      is three separate devices — 64K of base RAM in 16K banks, a 32K
+      ЭмПЗУ card in slot 2, and a 32K ОЗУ expansion in slot 4. A filename containing
       <code>7a</code> or <code>9a</code> picks the machine for you until
       you choose one yourself.
     </td></tr>
     <tr><td><b>Bookmarks</b></td><td>
-      The machine, all three memory sizes and which keyboard is up ride in the
+      The machine, its memory sizes and which keyboard is up ride in the
       address, so a configuration that runs a program properly can be kept or
       passed on. <code>#agc=</code> names a container, which carries the program
       itself.
@@ -377,6 +383,7 @@
 <script src="src/mem7.js"></script>
 <script src="src/psrom7.js"></script>
 <script src="src/xram7.js"></script>
+<script src="src/xram9.js"></script>
 <script src="src/videosel.js"></script>
 <script src="src/videopal.js"></script>
 <script src="src/machine.js"></script>
@@ -403,6 +410,7 @@
   var ramSel = document.getElementById('ram');
   var psromSel = document.getElementById('psrom');
   var xramSel = document.getElementById('xram');
+  var xram9Sel = document.getElementById('xram9');
   var kbdSel = document.getElementById('kbd');
   var layoutBtn = document.getElementById('layout');
   var gearBtn = document.getElementById('gear');
@@ -449,30 +457,34 @@
     return false;
   }
 
-  // The two Agat-7 memory cards, as sizes in kilobytes and as the slot map the
-  // App and an .agc both speak. Sitting at the stock size says nothing: a
-  // machine that matches its own profile carries no overrides and no URL keys.
-  var MEM_CARDS = [[2, 'psrom'], [4, 'xram']];
+  // The memory cards each machine takes, as sizes in kilobytes and as the slot
+  // map the App and an .agc both speak — two on the Agat-7, one on the Agat-9.
+  // Sitting at the stock size says nothing: a machine that matches its own
+  // profile carries no overrides and no URL keys.
+  var MEM_CARDS = { 7: [[2, 'psrom'], [4, 'xram']], 9: [[2, 'xram9']] };
+  var MEM_SEL = { psrom: psromSel, xram: xramSel, xram9: xram9Sel };
 
-  function memSel(card) { return card === 'psrom' ? psromSel : xramSel; }
+  function memCards() { return MEM_CARDS[modelSel.value] || []; }
 
-  function stockKb(slot) {
-    return AGAT.Machine.PROFILES[7].slots[slot].ram >> 10;
+  function stockKb(model, slot) {
+    return AGAT.Machine.PROFILES[model].slots[slot].ram >> 10;
   }
 
-  // None of the three sizes is a choice on an Agat-9: its 128K is fixed, and it
-  // has neither of the Agat-7's memory cards.
+  // Base RAM is not a choice on an Agat-9: its 128K is fixed. The cards are, but
+  // they are different cards, so each machine shows only its own — a greyed
+  // ЭмПЗУ next to a live Ext. RAM would suggest the two belonged together.
   function syncMemEnabled() {
     var nine = modelSel.value === '9';
-    ramSel.disabled = psromSel.disabled = xramSel.disabled = nine;
+    ramSel.disabled = nine;
+    psromSel.hidden = xramSel.hidden = nine;
+    xram9Sel.hidden = !nine;
   }
 
   function slotOverrides() {
-    if (modelSel.value !== '7') return null;
-    var out = {}, any = false;
-    MEM_CARDS.forEach(function (e) {
-      var kb = Number(memSel(e[1]).value);
-      if (kb === stockKb(e[0])) return;
+    var out = {}, any = false, model = Number(modelSel.value);
+    memCards().forEach(function (e) {
+      var kb = Number(MEM_SEL[e[1]].value);
+      if (kb === stockKb(model, e[0])) return;
       out[e[0]] = kb ? { card: e[1], ram: kb * 1024 } : null;
       any = true;
     });
@@ -485,13 +497,11 @@
     // there is one: the rest of the keys read as adjustments to it.
     if (agcUrl) q.push('agc=' + encodeURIComponent(agcUrl));
     q.push('model=' + modelSel.value);
-    if (modelSel.value === '7') {
-      q.push('ram=' + (Number(ramSel.value) >> 10));
-      MEM_CARDS.forEach(function (e) {
-        var kb = Number(memSel(e[1]).value);
-        if (kb !== stockKb(e[0])) q.push(e[1] + '=' + kb);
-      });
-    }
+    if (modelSel.value === '7') q.push('ram=' + (Number(ramSel.value) >> 10));
+    memCards().forEach(function (e) {
+      var kb = Number(MEM_SEL[e[1]].value);
+      if (kb !== stockKb(Number(modelSel.value), e[0])) q.push(e[1] + '=' + kb);
+    });
     // Which board is up is part of a working configuration too: a bookmark for
     // a game whose keys are a puzzle should open with the keyboard showing.
     // Encoded, unlike the rest: a control group is named by the container's
@@ -506,10 +516,15 @@
   // The machine's own sizes first, so an address that names none of them opens
   // the standard machine rather than whichever option happens to be listed first.
   ramSel.value = String(AGAT.Machine.PROFILES[7].ram);
-  MEM_CARDS.forEach(function (e) { memSel(e[1]).value = String(stockKb(e[0])); });
+  [7, 9].forEach(function (m) {
+    MEM_CARDS[m].forEach(function (e) {
+      MEM_SEL[e[1]].value = String(stockKb(m, e[0]));
+    });
+  });
   pick(ramSel, Number(url.ram) * 1024);
   pick(psromSel, url.psrom);
   pick(xramSel, url.xram);
+  pick(xram9Sel, url.xram9);
   // A board cut to a control group cannot be picked yet — the container that
   // names the groups has not been read. syncKbd applies it once it has.
   var wantKbd = pick(kbdSel, url.kbd) ? '' : (url.kbd || '');
@@ -535,15 +550,14 @@
   // another when an Agat-7 and an Agat-9 are open side by side.
   function syncMachineUI() {
     modelSel.value = String(app.model);
-    // The Agat-9's 128K is not a choice, and writing it into the menu would
-    // still be sitting there when the machine went back to being an Agat-7.
-    if (app.model === 7) {
-      ramSel.value = String(app.ramSize);
-      MEM_CARDS.forEach(function (e) {
-        var n = AGAT.Machine.slotOf(app.slots, e[1]);
-        pick(memSel(e[1]), String(n < 0 ? 0 : (app.slots[n].ram || 0) >> 10));
-      });
-    }
+    // The Agat-9's 128K is not a choice, and writing it into the base RAM menu
+    // would still be sitting there when the machine went back to being an
+    // Agat-7. Its card is a choice, and shares the slot map with the Agat-7's.
+    if (app.model === 7) ramSel.value = String(app.ramSize);
+    MEM_CARDS[app.model].forEach(function (e) {
+      var n = AGAT.Machine.slotOf(app.slots, e[1]);
+      pick(MEM_SEL[e[1]], String(n < 0 ? 0 : (app.slots[n].ram || 0) >> 10));
+    });
     syncMemEnabled();
     document.title = 'Agat-' + app.model + ' ' + (app.ramSize >> 10) + 'K — emulator';
     // Switching machines builds a new one, and a new one comes up in ЛАТ. The
@@ -670,6 +684,7 @@
   ramSel.addEventListener('change', applyModel);
   psromSel.addEventListener('change', applyModel);
   xramSel.addEventListener('change', applyModel);
+  xram9Sel.addEventListener('change', applyModel);
 
   // ---- the layout, and the keyboard that draws it ----------------------------
   //

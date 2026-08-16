@@ -84,6 +84,7 @@
     this.cards = [];                       // cards[slot], see addCard()
     this.psrom = null;                     // Agat-7 ЭмПЗУ, if fitted
     this.xram = null;                      // Agat-7 ОЗУ expansion, if fitted
+    this.xram9 = null;                     // Agat-9 ОЗУ expansion, if fitted
 
     // Video. `mode` is the $C7xx register; `appleVideo` says whether the
     // Apple-compatible switches have taken over the display, which only ever
@@ -175,6 +176,7 @@
     9: {
       ram: 0x20000,
       slots: {
+        2: { card: 'xram9', ram: 0x20000 },
         5: { card: 'fdd840' },
         6: { card: 'fdd140' },
       },
@@ -235,6 +237,9 @@
           break;
         case 'xram':
           if (AGAT.Xram7) card = new AGAT.Xram7({ size: spec.ram });
+          break;
+        case 'xram9':
+          if (AGAT.Xram9) card = new AGAT.Xram9({ size: spec.ram });
           break;
         case 'fdd840':
           if (AGAT.Disk840) card = new AGAT.Disk840({ rom: roms.teac });
@@ -339,9 +344,11 @@
   // and write(reg, val, now) for its $C080+16n register file.
   Machine.prototype.addCard = function (n, card) {
     this.cards[n] = card;
+    if (card) card.slot = n;             // a card whose registers name its slot
     if (card && card.rom) this.slotRom.set(card.rom, n * 0x100);
     if (AGAT.Psrom7 && card instanceof AGAT.Psrom7) this.psrom = card;
     if (AGAT.Xram7 && card instanceof AGAT.Xram7) this.xram = card;
+    if (AGAT.Xram9 && card instanceof AGAT.Xram9) this.xram9 = card;
     return card;
   };
 
@@ -375,6 +382,9 @@
       // agat-emulator does the same thing by broadcasting XRAM_RELEASE and
       // letting baseram reclaim the window (xram7.c:150-156, baseram.c:532-540).
       if (this.xram && a >= 0x8000 && this.xram.selected()) return this.xram.read(a);
+      // The Agat-9's card takes windows over one at a time, and an enabled
+      // window is its for reads and writes both.
+      if (this.xram9 && this.xram9.owns(a)) return this.xram9.readMem(a);
       var p = this.phys(a);
       return p < 0 ? 0xff : this.ram[p];             // Agat-7 open bus reads $FF
     }
@@ -394,6 +404,12 @@
       if (this.psrom && this.psrom.readsRam()) return this.psrom.read(a);
       return a >= 0xf800 ? this.rom[a - 0xf800] : 0xff;
     }
+    // An expansion card that has taken $D000-$FFFF over answers first, but only
+    // while its own mode enables reads: with them off it releases the window
+    // and the motherboard has it back (xram9.c, xram_restore_segment case 6).
+    if (this.xram9 && this.xram9.ownsHigh(a) && this.xram9.readsRam()) {
+      return this.xram9.readHigh(a);
+    }
     if (this.psromReadsRam()) return this.ram[this.psromAddr(a)];
     return a >= this.romBase ? this.rom[(a - this.romBase) & (this.rom.length - 1)] : 0;
   };
@@ -405,6 +421,7 @@
         this.xram.write(a, v);                       // dropped if write-protected
         return;
       }
+      if (this.xram9 && this.xram9.owns(a)) { this.xram9.writeMem(a, v); return; }
       var p = this.phys(a);
       if (p >= 0) this.ram[p] = v;
       return;
@@ -424,6 +441,12 @@
     if (a < 0xd000) return;
     if (this.model === 7) {
       if (this.psrom) this.psrom.write(a, v);     // no base RAM up here
+      return;
+    }
+    // Unlike a read, a write to a window the card holds never falls through: it
+    // is taken or dropped, which is the card's write protection.
+    if (this.xram9 && this.xram9.ownsHigh(a)) {
+      if (this.xram9.writesRam()) this.xram9.writeHigh(a, v);
       return;
     }
     if (this.psromWritesRam()) this.ram[this.psromAddr(a)] = v;

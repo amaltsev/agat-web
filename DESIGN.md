@@ -54,6 +54,7 @@ Load order matters only in that a module's dependencies must already be on
 | `mem7.js` | Agat-7 16K window decode |
 | `psrom7.js` | Agat-7 ЭмПЗУ card |
 | `xram7.js` | Agat-7 ОЗУ expansion card |
+| `xram9.js` | Agat-9 ОЗУ expansion card ("Ext. RAM") |
 | `videosel.js` | pure `$C7xx` mode decode, `videoSel7` / `videoSel9` |
 | `videopal.js` | four palettes, `$C058-$C05B` |
 | `machine.js` | the bus: memory maps, soft switches, slots, interrupt timers |

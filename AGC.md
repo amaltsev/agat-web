@@ -111,8 +111,8 @@ puts there; `null` empties it.
 
 | field | |
 |---|---|
-| `card` | `"psrom"` (ЭмПЗУ), `"xram"` (ОЗУ expansion), `"fdd140"`, `"fdd840"` |
-| `ram` | **kilobytes**, for the two memory cards: `16`, `32`, `48`, `64` or `128` |
+| `card` | `"psrom"` (Agat-7 ЭмПЗУ), `"xram"` (Agat-7 ОЗУ expansion), `"xram9"` (Agat-9 ОЗУ expansion), `"fdd140"`, `"fdd840"` |
+| `ram` | **kilobytes**, for the memory cards: `16`, `32`, `48`, `64` or `128` |
 
 `card` is required: an entry that gives only a size names no card, and is
 ignored.

@@ -199,6 +199,39 @@ wired to the motherboard's memory. A picture cannot be put in the expansion.
 `baseio_sel`, so `$C0Ax` and `$C0Cx` are open bus on an Agat-7 rather than a
 window into whichever card sits in that slot.
 
+### ОЗУ expansion (Agat-9, slot 2)
+
+A different card for a different machine: 128K addressed through the same eight
+8K windows as the motherboard's own RAM, rather than a single 16K aperture.
+agat-emulator fits one as standard (`sysconf.c:80`) and calls it *Ext. RAM*.
+Ported from `xram9.c`.
+
+Its register file is the slot's `$Cn00-$CnFF` page — `$C200-$C2FF` in slot 2 —
+and reads the same way base RAM's does at `$C100`: the window is bits 6-4 of the
+address and the bank is bits 3-0. What the motherboard's file has no use for is
+**bit 7, the enable**. A store to `$Cn8v` points window *n* at the card's bank
+*v* and gives the card that window outright; a store with bit 7 clear hands it
+back. Every window is handed back at reset, so a machine with the card fitted
+behaves as one without it until software says otherwise, and a program can take
+`$2000-$3FFF` alone and leave the rest of the map where it was.
+
+Unlike the Agat-7's cards this one **does** decode `$C080+16n`, where it keeps a
+ПЗУ mode register of its own with the motherboard's nibble: `mode & 3` picks
+read-RAM / ROM-read-RAM-write, `mode & 8` picks which 4K half of window 6's bank
+backs `$D000-$DFFF`. That register is how the card is found — a program writes
+`$C0n8` and reads it back, getting the slot's own `$F0` in the high nibble where
+an empty slot answers `$FF`. MouseGraf sweeps slots 1-4 that way before it will
+start.
+
+The two top windows are arbitrated the way the Agat-7's aperture is, with one
+asymmetry worth keeping: with **reads** disabled the card releases the window
+and the motherboard answers, but with **writes** disabled stores are *dropped*
+rather than forwarded (`xram9.c`, `xram_restore_segment` case 6). That is the
+card's write protection, and passing the store on would defeat it.
+
+128K is the only fitting agat-emulator offers; a smaller card set here aliases,
+because the bank field is four bits wide whatever is behind it.
+
 ---
 
 ## Slots
@@ -206,8 +239,8 @@ window into whichever card sits in that slot.
 | | Agat-7 | Agat-9 |
 |---|---|---|
 | ЭмПЗУ | 2 | — |
+| ОЗУ expansion | 4 | 2 |
 | 140K Shugart | 3 | 6 |
-| ОЗУ expansion | 4 | — |
 | 840K Teac | 5 | 5 |
 
 This is the stock complement, in `Machine.PROFILES`; an `.agc` or the gear popup
