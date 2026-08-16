@@ -578,11 +578,31 @@ the further it has moved since the last read, the more each step of the reported
 figure is worth. Whether that table is the hardware's or a reconstruction is not
 established; it appears in agat-emulator and nowhere else found.
 
-Nothing here exercises the ММ-8031. MouseGraf 4.4 is the only program known to
-speak it, and it will not look at a parallel mouse whose `$Cn00` page does not
-start `$18 $90` — the printer card's ROM, which is not ours to ship. With that
-ROM supplied it is found and driven, which is how the model above was checked;
-without one the card is fitted and detected but silent.
+### The card ROM, and why only one of them has it
+
+The printer card carries a ROM — `cm6337.rom`, bundled as `mouse`, of which only
+the last 256 bytes are used, that being the card's `$Cn00` page. Whether it is
+fitted decides whether a program will look at the card at all, and the two
+programs here want opposite answers:
+
+- **MouseGraf 4.4** finds a parallel mouse by scanning slot ROM pages from
+  `$C700` down for the `$18 $90` that page starts with, and will not touch the
+  ports of a card without it.
+- **MouseGraf 1.6** looks at the same page first and has *two* modes, on bit 7
+  of its own `$6F` (`$8023-$8033`): with the bit set it accepts the ROM's `$18`,
+  and with it clear — which is how it starts — it accepts only `$FF`, an empty
+  page, and rejects the slot outright otherwise. It never reaches the ports.
+
+So the ROM is fitted to the ММ-8031, which 4.4 drives, and not to the
+«Марсианка», which 1.6 drives. That is a choice about the machine rather than
+about the mouse — the ROM is on the card, not on the cable — and it is made this
+way because each is then the machine its program expects. Fitting the ROM to the
+«Марсианка» measurably stops MouseGraf 1.6 dead: it rejects slot 6 at `$8026`
+and never reads the mouse.
+
+The driver proper is in the card's `$C800-$CFFF` expansion window, which nothing
+here decodes, so a program that calls the ROM instead of driving the ports will
+not work. Neither MouseGraf does.
 
 ### Which button
 

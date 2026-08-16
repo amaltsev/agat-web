@@ -19,12 +19,19 @@ import os
 import sys
 
 # key -> (agat-emulator relative path, AgatF filename, expected size)
+#
+# The fonts and the palette have an AgatF name here but are *not* the same
+# bytes, so the fallback changes what the machine draws; the five ROMs are
+# identical. `mouse` has no fallback at all — AgatF's agatF-mmars.bin is the
+# same ROM's $Cn00 page with the jump into the card's $C800 window patched out,
+# which is a modified ROM and not what this table is for. See ROMS.md.
 BLOBS = {
     'monitor7': ('roms/monitor7.rom',   'agatF-sysmon7.bin',    2048),
     'monitor9': ('roms/monitor9.rom',   'agatF-sysmon9.bin',    2048),
     'teac':     ('roms/teac.rom',       'agatF-fd800.bin',       256),
     'shugart7': ('roms/shugart7.rom',   'agatF-fd140-105.bin',   256),
     'shugart9': ('roms/shugart9.rom',   'agatF-fd140-173.bin',   256),
+    'mouse':    ('roms/cm6337.rom',     '',                     2048),
     'font7':    ('fnts/agathe7.fnt',    'agatF-font7-g-32.bin', 2048),
     'font9':    ('fnts/agathe9.fnt',    'agatF-font9-32.bin',   2048),
 }
@@ -40,7 +47,7 @@ def find(data, agatf, rel, alt):
         p = os.path.join(data, rel)
         if os.path.exists(p):
             return p
-    if agatf:
+    if agatf and alt:
         p = os.path.join(agatf, alt)
         if os.path.exists(p):
             return p

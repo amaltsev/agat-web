@@ -122,11 +122,17 @@
   // Port C's top two bits are the buttons on both, active low. What the rest of
   // it means is where they part company.
   //
-  // Neither has a ROM here. The real card has one, and MouseGraf 4.4 will not
-  // look at a parallel mouse whose $Cn00 page does not start $18 $90 — which
-  // leaves 1.6, probing the ports directly, as the only program in reach: it
-  // speaks «Марсианка», so nothing here drives the ММ-8031. See HARDWARE.md.
-  function Parallel(name) {
+  // Whether the card's $Cn00 page — the last 256 bytes of roms/cm6337.rom — is
+  // fitted decides whether a program will look at the card at all, and the two
+  // programs here want opposite answers, so Machine.fit hands the ROM to one of
+  // these and not the other. See HARDWARE.md; the short version is that
+  // MouseGraf 4.4 will not touch a parallel mouse whose page lacks the ROM's
+  // $18 $90, and 1.6 as it starts will not touch one whose page has it.
+  //
+  // Only the page, never the 2K: the driver proper lives in the card's
+  // $C800-$CFFF expansion window, which nothing here decodes. A program that
+  // calls the ROM rather than driving the ports itself will not work.
+  function Parallel(name, rom) {
     this.isMouse = true;
     this.name = name;
     countersFor(this);
@@ -135,7 +141,7 @@
     this.btn = 0;                      // bit 0 button A, bit 1 button B
     this.portA = 0;
     this.portB = 0;
-    this.rom = null;
+    this.rom = rom || null;            // the printer card's $Cn00 page
     this.slot = -1;
   }
 
@@ -193,8 +199,8 @@
   // against the hundred-odd its loop takes to come round.
   var PULSE_CYCLES = 64;
 
-  function MouseMars() {
-    Parallel.call(this, '«Марсианка»');
+  function MouseMars(rom) {
+    Parallel.call(this, '«Марсианка»', rom);
     this.pendX = 0;                    // steps the ball owes the driver
     this.pendY = 0;
     this.lines = 0;                    // which direction lines are asserted
@@ -262,8 +268,8 @@
     return COMPAND[Math.abs(index)] * (index < 0 ? -1 : 1);
   }
 
-  function MouseMM8031() {
-    Parallel.call(this, 'ММ-8031');
+  function MouseMM8031(rom) {
+    Parallel.call(this, 'ММ-8031', rom);
     this.x = 0;                        // free-running position, in counts
     this.y = 0;
     this.last = [0, 0];                // what the program has been told about
