@@ -210,6 +210,12 @@
     min-width: 5.5em; white-space: nowrap;
   }
   .ctl-what { color: var(--dim); }
+  /* The container's own line to whoever is about to play. A whole row of its
+     own below the groups, since it is a sentence and not a column, and it is
+     the only thing in the panel that is not a tap target. */
+  .ctl-hint {
+    flex: 0 1 100%; text-align: center; color: var(--dim); font-size: 12.5px;
+  }
   #status {
     color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
     /* Wide enough for the longest line the run loop builds: a container title,
@@ -346,7 +352,8 @@
     <tr><td><b>AGC</b></td><td>
       An Agat Container: one of those images plus the machine it wants,
       a keyboard remap, and the controls themselves, grouped, which is
-      the card under the screen. <b>Save AGC</b> writes one from the
+      the card under the screen — with the container's own hint under
+      them, where it has one. <b>Save AGC</b> writes one from the
       machine as it stands. The format is written up in
       <a href="https://github.com/amaltsev/agat-web/blob/main/AGC.md">AGC.md</a>,
       and
@@ -838,7 +845,7 @@
     if (!kbdSel.value && groupOf(was)) kbdSel.value = 'used';
     if (wantKbd && pick(kbdSel, wantKbd)) wantKbd = '';
     if (panel) panel.destroy();
-    panel = new AGAT.ControlPanel(controlsEl, { onPick: pickGroup });
+    panel = new AGAT.ControlPanel(controlsEl, { onPick: pickGroup, hint: app.hint });
     if (loaded) {
       // A group the address named and this container does not have. It asked for
       // the controls board, so give it the whole of one. Spent here either way:

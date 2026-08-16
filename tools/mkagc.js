@@ -6,10 +6,13 @@
 //   --author=TEXT         who wrote it
 //   --date=TEXT           when: "1989", "circa 1985", "1990-92"
 //   --url=URL             where it came from, or where it is written up
-//   --notes=TEXT          prose: provenance, credits, what a patch does
+//   --notes=TEXT          prose for the record: provenance, credits, what a
+//                         patch does. Nothing shows it.
+//   --hint=TEXT           one line to whoever plays it, printed under the
+//                         controls
 //   --model=7|9           the machine it wants
 //   --ram=32|64|128       Agat-7 RAM, in K
-//   --key=KEY[:CODE[:NOTE]]   a key the program uses, repeatable, the note
+//   --key=KEY[:CODE[:HINT]]   a key the program uses, repeatable, the hint
 //                             saying what it does: --key=KeyW:^:Shoot right.
 //                             With no code the key is declared as it already
 //                             is: --key=Space::Jump
@@ -26,7 +29,10 @@ const H = require('./harness');
 const argv = process.argv.slice(2);
 const flags = {};
 const files = argv.filter((a) => {
-  const m = /^--([a-z]+)(?:=(.*))?$/.exec(a);
+  // `[\s\S]` rather than `.`, so a value pasted with line breaks in it — a
+  // --hint wrapped in the shell — is still that flag's value rather than a
+  // filename that does not exist.
+  const m = /^--([a-z]+)(?:=([\s\S]*))?$/.exec(a);
   if (!m) return true;
   // The repeatable flags collect; the rest are last-wins.
   if (m[1] === 'key' || m[1] === 'patch') (flags[m[1]] = flags[m[1]] || []).push(m[2]);
@@ -46,8 +52,8 @@ const A = ctx.AGAT;
 // disk that has been written to, so --diff and a save produce the same records.
 const diff = A.agc.diff;
 
-// KEY:VALUE:NOTE, split on the first two colons — a value is `^`, `$5E` or a
-// name and never contains one, so only the note can. No value at all declares
+// KEY:VALUE:HINT, split on the first two colons — a value is `^`, `$5E` or a
+// name and never contains one, so only the hint can. No value at all declares
 // the key as it already is: `--key=Space` and `--key=Space::Jump` both say the
 // program uses Space and leave what it sends alone.
 const keys = {};
@@ -57,13 +63,13 @@ for (const k of flags.key || []) {
   const rest = at < 0 ? '' : k.slice(at + 1);
   const cut = rest.indexOf(':');
   const value = cut < 0 ? rest : rest.slice(0, cut);
-  const note = cut < 0 ? '' : rest.slice(cut + 1);
+  const hint = cut < 0 ? '' : rest.slice(cut + 1);
   if (value && A.keyboard.resolveCode(value) < 0) {
     console.error('--key=' + k + ': ' + value + ' is not a code — try $5E, ^, or Up');
     process.exit(2);
   }
-  keys[key] = value ? (note ? { code: value, note: note } : value)
-                    : (note ? { note: note } : null);
+  keys[key] = value ? (hint ? { code: value, hint: hint } : value)
+                    : (hint ? { hint: hint } : null);
 }
 
 const explicit = (flags.patch || []).map((p) => {
@@ -73,7 +79,7 @@ const explicit = (flags.patch || []).map((p) => {
 });
 
 try {
-  let hint = 0;
+  let modelHint = 0;                 // not the container's `hint`: the 7a/9a
   const media = files.map((f, i) => {
     const bytes = new ctx.Uint8Array(fs.readFileSync(f));
     // Sniffed for the error, not for the container: a container holds the file
@@ -81,7 +87,7 @@ try {
     const s = A.sniff(bytes, path.basename(f));
     if (!s.kind) throw new Error(f + ': not a recognised Agat image');
     if (s.kind === 'agc') throw new Error(f + ': already a container');
-    if (!hint) hint = s.hintModel || 0;
+    if (!modelHint) modelHint = s.hintModel || 0;
     let patches = explicit;
     if (flags.diff) {
       if (i > 0) throw new Error('--diff applies to one image, and this is ' + f);
@@ -95,13 +101,14 @@ try {
     return { name: path.basename(f), bytes: bytes, patches: patches };
   });
 
-  const model = Number(flags.model) || hint || 7;
+  const model = Number(flags.model) || modelHint || 7;
   process.stdout.write(A.agc.build({
     title: flags.title || '',
     author: flags.author || '',
     date: flags.date || '',
     url: flags.url || '',
     notes: flags.notes || '',
+    hint: flags.hint || '',
     model: model,
     ram: Number(flags.ram) || (model === 9 ? 128 : 64),
     keys: keys,

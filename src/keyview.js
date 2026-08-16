@@ -529,7 +529,7 @@
 
   // What a code is, said out loud: the byte, its glyph, what the container says
   // it does, and every host key that reaches it. The label comes from `controls`,
-  // which is where the prose lives now — `keys` notes still arrive through
+  // which is where the prose lives now — `keys` hints still arrive through
   // routeName, so a container written either way says something.
   KeyView.prototype.title = function (code) {
     var rs = K.routesTo(code), names = [], i;
@@ -896,6 +896,12 @@
   // in every plane by construction, so it is the only host key that does not
   // move under ЛАТ/РУС and the only one this panel can honestly promise.
 
+  // Under the groups goes the container's `hint`, if it wrote one: one line of
+  // plain text, the thing a player has to be told that no list of codes can say
+  // — which layout the program comes up in, that it wants a key held at the
+  // title screen. `opts.hint` rather than the keyboard's tables, because it is
+  // the container talking and not the keyboard.
+  //
   // A group is also a tap target: it cuts the board beside it down to that group,
   // which is the `used:<name>` the keyboard menu offers. `opts.onPick` is how the
   // page hears about it, and it gets '' for "all of them again".
@@ -909,6 +915,7 @@
     opts = opts || {};
     this.el = el;
     this.onPick = opts.onPick || function () {};
+    this.hint = opts.hint || '';
     this.groups = [];
     this.active = '';
     this.build();
@@ -963,10 +970,9 @@
   }
 
   ControlPanel.prototype.build = function () {
-    var gs = K.controlGroups(), box, head, line, g, i, j;
+    var gs = K.controlGroups() || [], box, head, line, g, i, j;
     this.el.innerHTML = '';
     this.groups = [];
-    if (!gs) return;
     for (i = 0; i < gs.length; i++) {
       g = gs[i];
       box = document.createElement('div');
@@ -984,6 +990,11 @@
       this.groups.push({ name: g.name, el: box });
       this.el.appendChild(box);
     }
+    // Last, and carrying no `__group`, so it sits under the groups and a tap on
+    // it picks nothing. A container with a hint and no controls is a container
+    // with one line to draw, which is why the group loop does not bail out on
+    // an empty set.
+    if (this.hint) this.el.appendChild(span('ctl-hint', this.hint));
   };
 
   // Which group the board beside this panel is currently cut to, so that a board

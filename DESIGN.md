@@ -417,14 +417,14 @@ movement key that changed meaning under a modifier the player happened to be
 holding would be worse than no remap.
 
 The long form carries what the key is *for* —
-`{ "code": "^", "note": "Shoot right" }` — and that note rides on the route, so
+`{ "code": "^", "hint": "Shoot right" }` — and that hint rides on the route, so
 the board's tooltip answers the question someone actually has rather than the
 one the index was built to answer.
 
-An entry with **no code** — `"Space": { "note": "Jump" }` — declares a key the
+An entry with **no code** — `"Space": { "hint": "Jump" }` — declares a key the
 program uses as it already is. It adds nothing to `REMAP` and changes nothing
 `codeFor()` returns; it only puts the key in the set the container named, and
-its note on the routes the table already had. Both kinds together are the key
+its hint on the routes the table already had. Both kinds together are the key
 set, and `keyCount()` and `usedCodes(layout)` are what a board asks about it.
 
 That is one `if` at the top of `codeFor()`, and it is deliberately the *only*
@@ -555,9 +555,19 @@ The one host-side thing on the panel is a container remap, `^ (W)`. A remap hold
 in every plane by construction, so it is the only host key that does not move
 under ЛАТ/РУС and the only one the panel can honestly promise.
 
+**The container's `hint`** goes under the groups, as one plain-text line with no
+markup in it and none allowed. It reaches the panel through `opts.hint` rather
+than through the keyboard's tables, because it belongs to the container and not
+to the keyboard: `syncKbd` hands it `app.hint`, which is set from the container
+and cleared by a bare image, so the hint is rebuilt and dropped with everything
+else the container brought. A hint with no `controls` is still a panel — the
+group loop does not bail out on an empty set — and the hint carries no
+`__group`, so a tap on it picks nothing. It is the same word as a key's `hint`
+and the same rule: `notes` is the record, and a hint is what is shown.
+
 The panel is also where the prose lives now. `controls` labels are indexed by
 code, which is what the winnowed board's caps are, so `title()` reads them
-straight off `controlLabel(code)`; `keys` notes still arrive the old way through
+straight off `controlLabel(code)`; `keys` hints still arrive the old way through
 `routeName`, and a container written either way says something.
 
 **Two controls, one cap.** `K` and `К` are the unshifted and shifted legends of a
@@ -657,8 +667,9 @@ against the decode tables, the AIM checksum against sectors pulled from a real
 census, and a font case asserting glyph `$C1` renders correctly at `m0 = $80`.
 
 The `.agc` cases pin what a hand-written container may rely on — the line width,
-a build/parse round-trip, and that a patch reaches the payload without touching
-the packed copy — and the remap cases pin both directions of it at once: `W`
+a build/parse round-trip, that a patch reaches the payload without touching the
+packed copy, and that a `hint` survives beside `notes` and collapses to the one
+line the panel prints — and the remap cases pin both directions of it at once: `W`
 sending `$DE` in every plane, `$5E` naming `W` as a route, `$57` losing ЛАТ `W`,
 and all three coming back when the remap is dropped.
 

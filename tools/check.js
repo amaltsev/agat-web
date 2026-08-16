@@ -79,7 +79,7 @@ if (cmd === 'sniff') {
       const key = (k) => {
         const v = c.keys[k], spec = v && typeof v === 'object' ? v : { code: v };
         return k + (spec.code ? '→' + spec.code : '') +
-               (spec.note ? ' (' + spec.note + ')' : '');
+               (spec.hint ? ' (' + spec.hint + ')' : '');
       };
       extra += '\n         .agc "' + c.title + '"' +
                (c.author ? ' by ' + c.author : '') + (c.date ? ', ' + c.date : '') +
@@ -129,12 +129,15 @@ if (cmd === 'keys') {
   // more than one argument's worth.
   const keys = {};
   let controls = null;
+  let hint = '';
   for (const a of rest) {
     if (/=/.test(a)) { const [k, v] = a.split('='); keys[k] = v; continue; }
     if (!/\.agc$/i.test(a)) { keys[a] = null; continue; }
     const c = A.agc.parse(fs.readFileSync(a), path.basename(a));
     Object.assign(keys, c.keys);
     if (Object.keys(c.controls).length) Object.assign(controls = controls || {}, c.controls);
+    // Several containers on one line are one panel here, as their keys are.
+    if (c.hint) hint = hint ? hint + ' ' + c.hint : c.hint;
     console.log(c.title + (c.author ? ' — ' + c.author : ''));
   }
   const set = A.keyboard.setRemap(Object.keys(keys).length ? keys : null);
@@ -146,7 +149,7 @@ if (cmd === 'keys') {
 
   // The panel as the page draws it, walked back out of the stub nodes: a group
   // is its name and then a line per row, and a line is the codes and the label.
-  const panel = new A.ControlPanel(el());
+  const panel = new A.ControlPanel(el(), { hint });
   const group = flags.group === true ? '' : (flags.group || '');
   for (const g of panel.groups) {
     console.log('  ' + g.name + (g.name === group ? '  ←' : ''));
@@ -154,6 +157,12 @@ if (cmd === 'keys') {
       const [code, what] = line.children;
       console.log('    ' + code.textContent.padEnd(14) + (what ? what.textContent : ''));
     }
+  }
+  // Whatever the panel put below the groups — the container's hint, which is
+  // the one child that belongs to no group. Read back off the built nodes, so
+  // this says what the page draws rather than what it was handed.
+  for (const kid of panel.el.children) {
+    if (!kid.__group) console.log('  ' + kid.textContent);
   }
 
   const app = { machine: { kbdLatch: 0, cyrillic: !!flags.rus }, reset() {} };
@@ -263,6 +272,10 @@ if (cmd === 'kbdmenu') {
   // The page's variables, and the two things syncKbd calls that are not its own.
   let kbdSel, usedOpt, usedBox, wantKbd, panel, kbdChosen, handheld, controlsEl;
   let applied = [], saved = 0;
+  // The App, as much of it as syncKbd touches: the container's hint, which the
+  // panel is handed because it belongs to the container rather than to the
+  // keyboard's tables.
+  const app = { hint: '' };
   function applyKbd() {
     applied.push(kbdSel.value);
     if (panel) panel.mark(groupOf(kbdSel.value));
@@ -293,10 +306,16 @@ if (cmd === 'kbdmenu') {
     const c = A.agc.parse(fs.readFileSync(path.join(H.ROOT, 'examples', f)), f);
     A.keyboard.setRemap(c.keys);
     A.keyboard.setControls(c.controls);
+    app.hint = c.hint;
   };
-  const unload = () => { A.keyboard.setRemap(null); A.keyboard.setControls(null); };
+  const unload = () => {
+    A.keyboard.setRemap(null); A.keyboard.setControls(null); app.hint = '';
+  };
   const menu = () => kbdSel.options.map((o) => o.value);
   const marks = () => panel.groups.map((g) => g.el.className);
+  // Whatever the panel drew that belongs to no group, which is the hint.
+  const hint = () => panel.el.children.filter((k) => !k.__group)
+                          .map((k) => k.textContent).join('');
 
   // A bookmarked group, and the container it belongs to still on its way.
   reset('used:Cheats');
@@ -334,6 +353,19 @@ if (cmd === 'kbdmenu') {
   eq("a board with nothing to winnow by goes back to the machine's own",
      [kbdSel.value, applied, usedOpt.disabled], ['agat', ['agat'], true]);
   eq('and the panel is empty', panel.groups.length, 0);
+
+  // The hint rides beside the controls rather than in them, so it is the App's
+  // and the panel takes it on every rebuild: a second container's hint replaces
+  // the first one's, and a bare image leaves none.
+  reset('');
+  load('rise-out.agc');
+  app.hint = 'Starts in ЛАТ.';
+  syncKbd(true);
+  eq('a hint is drawn under the groups', hint(), 'Starts in ЛАТ.');
+  eq('and is not a group the board can be cut to', panel.groups.length, 3);
+  unload();
+  syncKbd(true);
+  eq('and goes when the container that brought it does', hint(), '');
 
   // The handheld default is the whole container, never one of its groups.
   reset('');

@@ -16,11 +16,16 @@
 //     "keys":    { "KeyW": { "code": "^" } },
 //     "controls": { "Play": { "Up Down Left Right": "Move",
 //                             "^": "Shoot right" } },
+//     "hint": "Press РУС at the title screen or the menu comes up in Latin.",
 //     "media": [ { "name": "rise-out.dsk", "data": ["…", "…"] } ]
 //   }
 //
 // `date` is text, not a number: what is known about an old program is as often
 // "circa 1985" or "1990-92" as it is a year.
+//
+// `hint` and `notes` split by who is reading. A hint is shown: this one under
+// the controls, and `keys.<key>.hint` on the on-screen board. `notes` is the
+// record — provenance, credits, what a patch does — and nothing reads it.
 //
 // Two encodings, on purpose. The payload is bulk and gets base64, split into
 // short lines so a container is a file a diff can show rather than one endless
@@ -200,6 +205,16 @@
     return new TextDecoder('utf-8').decode(bytes);
   }
 
+  // One paragraph of plain text, which is all a `hint` is: runs of whitespace —
+  // an escaped `\n`, a string wrapped by whatever wrote the file — collapse to
+  // single spaces. The page prints it as text and not as markup, so a line
+  // break in the source would be lost there anyway; losing it here means the
+  // file and the screen agree.
+  function oneLine(s) {
+    return s === undefined || s === null ? ''
+         : String(s).replace(/\s+/g, ' ').trim();
+  }
+
   // `machine.slots`: what this machine has that its model's stock complement
   // does not. Keys are slot numbers 0-7, values `{card, ram}` — kilobytes, as
   // `machine.ram` is — or `null` for a slot deliberately left empty. `card` is
@@ -260,6 +275,10 @@
       },
       keys: c.keys || {},
       controls: c.controls || {},
+      // What the controls panel prints under the groups: the one thing the
+      // container has to say to whoever is about to play, rather than to
+      // whoever is reading the file.
+      hint: oneLine(c.hint),
       media: [],
     };
 
@@ -294,7 +313,7 @@
   // the documented order because JSON.stringify keeps insertion order, and a
   // format people are meant to hand-edit should read the same way every time.
   function build(spec) {
-    var o = { agc: VERSION };
+    var o = { agc: VERSION }, hint = oneLine(spec.hint);
     if (spec.title) o.title = spec.title;
     if (spec.author) o.author = spec.author;
     if (spec.date) o.date = String(spec.date);
@@ -304,6 +323,9 @@
     if (spec.slots) o.machine.slots = spec.slots;
     if (spec.keys && Object.keys(spec.keys).length) o.keys = spec.keys;
     if (spec.controls && Object.keys(spec.controls).length) o.controls = spec.controls;
+    // After the controls, because that is where it is printed and where it
+    // reads as belonging.
+    if (hint) o.hint = hint;
     o.media = (spec.media || []).map(function (m) {
       var e = { name: m.name || 'image' };
       e.data = encode64(m.bytes, spec.width);

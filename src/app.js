@@ -46,6 +46,7 @@
     this.date = '';                       // text: "1989", "circa 1985", "1990-92"
     this.url = '';
     this.notes = '';
+    this.hint = '';                       // the line the controls panel prints
     this.fromAgc = '';                    // the container's filename, if any
     this.lastTime = 0;
     // Whether the page is holding the pointer for the machine. A mouse card is
@@ -394,7 +395,7 @@
     // silently applying to the next disk would be worse than no remap at all.
     if (!from) {
       this.title = this.author = this.date = this.url = '';
-      this.notes = this.fromAgc = '';
+      this.notes = this.hint = this.fromAgc = '';
       AGAT.keyboard.setRemap(null);
       AGAT.keyboard.setControls(null);
     }
@@ -504,6 +505,7 @@
     this.date = c.date;
     this.url = c.url;
     this.notes = c.notes;
+    this.hint = c.hint;
     this.fromAgc = c.name;
     for (var i = 0; i < c.media.length; i++) {
       this.load(c.media[i].payload, c.media[i].name, c.media[i]);
@@ -604,6 +606,7 @@
       slots: this.slotDiff(),
       keys: AGAT.keyboard.remap(),
       controls: AGAT.keyboard.controls(),
+      hint: this.hint,
       media: media,
     });
   };

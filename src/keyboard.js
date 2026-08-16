@@ -205,13 +205,13 @@
   //
   // The long form carries what the key is *for*:
   //
-  //   "keys": { "KeyW": { "code": "^", "note": "Shoot right" } }
+  //   "keys": { "KeyW": { "code": "^", "hint": "Shoot right" } }
   //
   // which is the answer to the question someone actually has in front of an
   // unfamiliar game, and it reaches the on-screen board's tooltips through the
   // same route index as everything else.
   //
-  // An entry with no code at all — `"Space": { "note": "Jump" }`, or a bare
+  // An entry with no code at all — `"Space": { "hint": "Jump" }`, or a bare
   // `"Space": null` — declares a key the program uses *as it already is*. It
   // sends what the table has under it, exactly as it would with no container
   // loaded; all it adds is that the key is one of this program's, which is what
@@ -224,7 +224,7 @@
 
   var REMAP = null;         // scancode -> code, the keys given one
   var USED = null;          // scancode -> true, every key the container names
-  var NOTES = null;         // scancode -> what the key does
+  var HINTS = null;         // scancode -> what the key does
   var COUNT = 0;            // how many of them there are
   var REMAP_SRC = null;     // the map as it was given, for writing back out
 
@@ -233,13 +233,13 @@
     ROUTES = null;                 // the backwards index is built from both
     REMAP = null;
     USED = null;
-    NOTES = null;
+    HINTS = null;
     COUNT = 0;
     REMAP_SRC = null;
     if (!map) return { ok: 0, remapped: 0, bad: bad };
     REMAP = {};
     USED = {};
-    NOTES = {};
+    HINTS = {};
     for (key in map) {
       spec = map[key];
       if (spec === null || spec === undefined) spec = {};
@@ -262,7 +262,7 @@
         on++;
       }
       USED[k] = true;
-      NOTES[k] = spec.note || '';
+      HINTS[k] = spec.hint || '';
       ok++;
     }
     COUNT = ok;
@@ -344,7 +344,7 @@
   function controls() { return CTL_SRC; }
 
   // What the container says this code is for, or '' — the tooltips' half of
-  // `controls`, and the reason a note no longer has to be written twice.
+  // `controls`, and the reason a hint no longer has to be written twice.
   function controlLabel(code) {
     return (LABELS && LABELS[code & 0x7f]) || '';
   }
@@ -470,7 +470,7 @@
           r = { layout: layout, mod: mod, scan: scan };
           // A key the container declared without remapping it still has a job,
           // and the job is the half worth reading out.
-          if (NOTES && NOTES[k]) r.note = NOTES[k];
+          if (HINTS && HINTS[k]) r.hint = HINTS[k];
           ROUTES[v & 0x7f].push(r);
         }
       }
@@ -479,7 +479,7 @@
       ext = Number(key) >= 256;
       ROUTES[REMAP[key] & 0x7f].push({
         scan: Number(key) & 255, ext: ext, mod: ext ? EXT : NORMAL,
-        remap: true, note: NOTES[key],
+        remap: true, hint: HINTS[key],
       });
     }
   }
@@ -528,17 +528,17 @@
   // that a key which only reaches this code because a container put it there is
   // not mistaken for something the machine's own table does. A key the
   // container only declared is a route the table already had, so it keeps its
-  // layout and modifier and gains the note: "ЛАТ Space (Jump)".
+  // layout and modifier and gains the hint: "ЛАТ Space (Jump)".
   function routeName(r) {
     if (r.remap) {
       return keyName(r.scan, r.ext ? EXT : NORMAL) +
-             ' (' + (r.note || 'remap') + ')';
+             ' (' + (r.hint || 'remap') + ')';
     }
-    var note = r.note ? ' (' + r.note + ')' : '';
-    if (r.mod === EXT) return keyName(r.scan, EXT) + note;
+    var hint = r.hint ? ' (' + r.hint + ')' : '';
+    if (r.mod === EXT) return keyName(r.scan, EXT) + hint;
     return (r.layout === RUS ? 'РУС ' : 'ЛАТ ') +
            (r.mod === SHIFT ? 'Shift+' : r.mod === CTRL ? 'Ctrl+' : '') +
-           keyName(r.scan, r.mod) + note;
+           keyName(r.scan, r.mod) + hint;
   }
 
   // Attach to a DOM element. `target` gets the listeners, `machine` receives

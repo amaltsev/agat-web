@@ -865,7 +865,7 @@ function eq(what, got, want) {
   const src = A.agc.build({
     title: 'ИГРА', author: 'Кто-то', date: 'circa 1985', url: 'http://x/y',
     notes: 'n', model: 7, ram: 64,
-    keys: { KeyW: { code: '^', note: 'Shoot right' } },
+    keys: { KeyW: { code: '^', hint: 'Shoot right' } },
     media: [{ name: 'x.dsk', bytes: bytes, patches: [{ at: 2, hex: 'AA BB' }] }],
   });
   const c = A.agc.parse(Buffer.from(src, 'utf8'), 'x.agc');
@@ -873,7 +873,26 @@ function eq(what, got, want) {
      [c.title, c.author, c.date, c.url, c.notes, c.machine.model, c.machine.ram,
       c.keys.KeyW, c.media.length, c.media[0].name],
      ['ИГРА', 'Кто-то', 'circa 1985', 'http://x/y', 'n', 7, 64,
-      { code: '^', note: 'Shoot right' }, 1, 'x.dsk']);
+      { code: '^', hint: 'Shoot right' }, 1, 'x.dsk']);
+  // A hint is shown and `notes` is not, so a container carrying both has to
+  // come back carrying both: the fields say the same kind of thing to two
+  // different readers.
+  {
+    const both = A.agc.parse(Buffer.from(A.agc.build({
+      notes: 'from a 1989 tape', hint: 'Starts in РУС.', media: [],
+    }), 'utf8'));
+    eq('a hint and the notes are two fields', [both.notes, both.hint],
+       ['from a 1989 tape', 'Starts in РУС.']);
+    // One paragraph of plain text: a hand-wrapped hint is one line on the page,
+    // so it is one line in the container that was written from it.
+    eq('a hint collapses to one line',
+       A.agc.parse(Buffer.from(A.agc.build({
+         hint: '  Hold\n\n  РЕГ   at the title\tscreen. ', media: [],
+       }), 'utf8')).hint,
+       'Hold РЕГ at the title screen.');
+    eq('a container with no hint says nothing',
+       /"hint"/.test(A.agc.build({ media: [] })), false);
+  }
   // A date is what is known, not a year: "circa 1985" has to survive.
   eq('a date stays as it was written',
      ['1989', 'circa 1985', '1990-92'].map(
@@ -1031,10 +1050,10 @@ function eq(what, got, want) {
 
   // The long form says what the key is for, and that is what the board's
   // tooltip should read out — "which key is ^" is rarely the real question.
-  K.setRemap({ KeyW: { code: '^', note: 'Shoot right' } });
-  eq('a noted remap says what the key does',
+  K.setRemap({ KeyW: { code: '^', hint: 'Shoot right' } });
+  eq('a hinted remap says what the key does',
      names(0x5e).split(', ').pop(), 'W (Shoot right)');
-  eq('a noted remap still sends the code', K.codeFor(0x11, 1, 1), 0xde);
+  eq('a hinted remap still sends the code', K.codeFor(0x11, 1, 1), 0xde);
 
   K.setRemap(null);
   eq('dropping the remap restores the table',
@@ -1052,7 +1071,7 @@ function eq(what, got, want) {
   const names = (c) => K.routesTo(c).map(K.routeName).join(', ');
 
   const r = K.setRemap({
-    Space: { note: 'Jump' }, ArrowUp: null, KeyW: { code: '^', note: 'Shoot' },
+    Space: { hint: 'Jump' }, ArrowUp: null, KeyW: { code: '^', hint: 'Shoot' },
     KeyQQ: null,
   });
   eq('a declared key counts, without counting as a remap',
@@ -1060,9 +1079,9 @@ function eq(what, got, want) {
   eq('and sends exactly what the table always had',
      [K.codeFor(0x39, 0, 0), K.codeFor(0x39, 1, 1), K.codeFor(0x48, 0, 3)],
      [0xa0, 0xa0, 0x99]);
-  // The note rides on the routes the table already had, in every plane the key
+  // The hint rides on the routes the table already had, in every plane the key
   // has one: it says what the key is for, and the key is the same key shifted.
-  eq('a declared key keeps its layout and gains its note', names(0x20),
+  eq('a declared key keeps its layout and gains its hint', names(0x20),
      'ЛАТ Space (Jump), ЛАТ Shift+Space (Jump), ЛАТ Ctrl+Space (Jump), ' +
      'РУС Space (Jump), РУС Shift+Space (Jump), РУС Ctrl+Space (Jump)');
   eq('a declaration with nothing to say adds nothing', names(0x99),
@@ -1098,7 +1117,7 @@ function eq(what, got, want) {
   // four would be a hole rather than a shape.
   K.setRemap({ ArrowLeft: null });
   eq('one arrow brings the whole cluster', kept(K.LAT)[1], ['↑', '←', '↓', '→']);
-  K.setRemap({ KeyA: { note: 'Left' } });
+  K.setRemap({ KeyA: { hint: 'Left' } });
   eq('and no arrow brings none of it', kept(K.LAT)[1], []);
 
   // A key declared as-is is a different cap in the other layout, because that
@@ -1125,7 +1144,7 @@ function eq(what, got, want) {
   // rather than the K it is painted with, since this board draws no УПР either.
   const kept1 = (used) => V.VIEWS.used[0].reduce((f, row) =>
     f || row.keys.filter((d) => V.keeps(d, used))[0], null);
-  K.setRemap({ KeyK: { code: '$8B', note: 'Ctrl-K' } });
+  K.setRemap({ KeyK: { code: '$8B', hint: 'Ctrl-K' } });
   {
     const used = V.capsUsed(K.usedCodes(K.LAT));
     const cap = kept1(used);
@@ -1139,7 +1158,7 @@ function eq(what, got, want) {
 
   // Esc is $9B, and on this machine $9B is the РЕД cap's own byte rather than
   // the УПР+Ш that also produces it. So it lands on РЕД, and `[` is untouched.
-  K.setRemap({ Escape: { note: 'Menu: Back' } });
+  K.setRemap({ Escape: { hint: 'Menu: Back' } });
   {
     const used = V.capsUsed(K.usedCodes(K.LAT));
     const cap = kept1(used);

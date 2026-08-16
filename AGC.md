@@ -41,6 +41,7 @@ press **Save AGC**: the container it writes is a text file you can edit.
       "^": "Shoot right"
     }
   },
+  "hint": "Press РУС at the title screen or the menu comes up in Latin.",
 
   "media": [
     {
@@ -75,6 +76,11 @@ default, and a container that carries nothing but an image is a valid one.
 
 These fields are frequently the last place any of this is recorded. Fill them
 in.
+
+`notes` is for the record and nothing reads it. What the page shows is a
+**hint**: [`hint`](#hint--the-line-the-player-is-shown) under the controls, and
+`hint` inside a `keys` entry on the on-screen board. Anything the reader is
+meant to see is a hint; `notes` is the file talking to whoever opens it.
 
 ### `machine`
 
@@ -155,9 +161,9 @@ for `$5E`, which in ЛАТ needs <kbd>Shift</kbd>+<kbd>6</kbd> and in РУС is 
 
 ```json
 "keys": {
-  "KeyW": { "code": "^", "note": "Shoot right" },
+  "KeyW": { "code": "^", "hint": "Shoot right" },
   "KeyA": "←",
-  "Space": { "note": "Jump" },
+  "Space": { "hint": "Jump" },
   "ArrowUp": null
 }
 ```
@@ -169,9 +175,9 @@ character, so a remap is the same on any host layout. Every name this emulator
 accepts, and what each of them sends unmapped, is in
 [What each key sends](#what-each-key-sends).
 
-The value is either the code to send, or `{ "code": …, "note": … }`, or — with
+The value is either the code to send, or `{ "code": …, "hint": … }`, or — with
 no code at all — a declaration that the program uses the key **as it already
-is**. `"Space": { "note": "Jump" }` and a bare `"ArrowUp": null` change nothing
+is**. `"Space": { "hint": "Jump" }` and a bare `"ArrowUp": null` change nothing
 about what those keys send; they say that these are among the program's keys,
 which is what the on-screen board's **Only mapped keys** view is drawn from. A
 game whose controls need no remapping still has controls, and this is how it
@@ -195,7 +201,7 @@ that changed meaning because a modifier was being held would be worse than no
 remap at all. What the key used to send is unreachable while the container is
 loaded, so remap keys the program does not otherwise need.
 
-The `note` says what the key *does*. It is the half worth writing: the on-screen
+The `hint` says what the key *does*. It is the half worth writing: the on-screen
 keyboard shows it, so hovering `^` reads **`W (Shoot right)`** rather than
 leaving someone to work it out.
 
@@ -268,6 +274,28 @@ Two traps worth knowing:
 
 `node tools/check.js keys <file.agc>` prints the panel and the board together,
 and `--group=NAME` cuts them the way the menu does.
+
+### `hint` — the line the player is shown
+
+```json
+"hint": "Press РУС at the title screen or the menu comes up in Latin."
+```
+
+One sentence or two, printed under the controls panel. It is for the thing no
+list of codes can say: which layout the program comes up in, that the first
+disk is the one to boot, that the pause key is also the quit key. A container
+with a hint and no `controls` still gets the line — the panel is drawn for it.
+
+**Plain text.** No paragraph breaks, no Markdown, no HTML: the page prints it as
+text, so a `<b>` shows up as `<b>`. Whitespace collapses, so a hint wrapped
+across lines in the file is one line on the screen and is written back as one.
+
+It is the same word as a key's `hint`, and the same rule: a hint is shown. This
+one is the container's, and `keys.<key>.hint` is one key's. `notes` is the other
+kind — the record, which nothing reads. A container can carry all three.
+
+`node tools/check.js keys <file.agc>` prints it under the panel, where the page
+puts it.
 
 ### `media`
 
@@ -342,11 +370,11 @@ author, a date and the keys.
 ```sh
 node tools/mkagc.js game.dsk \
   --title="…" --author="…" --date=1989 --url=https://… \
-  --model=7 --ram=64 \
+  --model=7 --ram=64 --hint="Press РУС at the title screen." \
   --key="KeyW:^:Shoot right" > game.agc
 ```
 
-`--key` is `CODE:VALUE:NOTE`, split on the first two colons, and may be repeated.
+`--key` is `CODE:VALUE:HINT`, split on the first two colons, and may be repeated.
 `--patch=AT:HEX` states a patch directly; `--diff=<modified image>` works the
 patches out by comparing a changed copy against the original, which is how a
 patch is usually arrived at.
@@ -508,6 +536,8 @@ which is the machine having one `←`.
   will eventually eat someone's notes.
 - `ram` is in kilobytes and `date` is a string. Both are the kind of thing that
   is easy to guess wrong in a second implementation.
+- A `hint` is shown and `notes` is not. Keep both, and do not let one be read
+  as the other.
 - A patch carries `hex` or `data`, never both. Read either; refuse a record that
   gives the two.
 

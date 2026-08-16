@@ -146,8 +146,8 @@ The format is written up field by field in [AGC.md](AGC.md), and in Russian in
   "date": "1989",
   "url": "https://…",
   "machine": { "model": 7, "ram": 64 },
-  "keys":    { "KeyW": { "code": "^", "note": "Shoot right" },
-               "Space": { "note": "Jump" } },
+  "keys":    { "KeyW": { "code": "^", "hint": "Shoot right" },
+               "Space": { "hint": "Jump" } },
   "media": [ { "name": "rise-out.dsk", "data": ["…base64…"] } ]
 }
 ```
@@ -160,7 +160,7 @@ or by name (`Up`, `Enter`, `Esc`, `F1`), and the short form `"KeyW": "^"` works
 where there is nothing to say about it. An entry with **no** code names a key
 the program uses as it already is, and changes nothing about what it sends.
 
-The `note` is the useful half. The on-screen keyboard reads the key set the same
+The `hint` is the useful half. The on-screen keyboard reads the key set the same
 way it reads the shipped table, so the cap lights on a keypress and hovering `^`
 reads **W (Shoot right)** — which is the question someone in front of an
 unfamiliar game actually has.
@@ -178,7 +178,11 @@ the sectors it was built from, so a saved game costs a patch and not a second
 copy of the disk.
 
 `title`, `author`, `date`, `url` and `notes` are for the record — often the
-container is the only place left that says who wrote a program and when.
+container is the only place left that says who wrote a program and when. A
+**hint** is the other kind, and the rule is that a hint is shown: a key's `hint`
+on the on-screen board, and the container's own `hint` under the controls card —
+one line of plain text, for what no list of codes says, like which layout the
+program comes up in or which disk to boot from.
 Nothing but `agc` and `media` is required.
 
 **Save .agc** writes one out from the machine as it stands: what is in the
@@ -192,7 +196,8 @@ afterwards if it deserves better. From the command line:
 
 ```sh
 node tools/mkagc.js game.dsk --title="…" --author="…" --date=1989 \
-  --model=7 --ram=64 --key="KeyW:^:Shoot right" > game.agc
+  --model=7 --ram=64 --key="KeyW:^:Shoot right" \
+  --hint="Press РУС at the title screen." > game.agc
 ```
 
 `--diff=<patched image>` works out the patches by comparing, and `--patch=AT:HEX`
