@@ -29,7 +29,20 @@
     iy = m.fy | 0;                     // remainder follows the movement
     m.fx -= ix;
     m.fy -= iy;
-    m.step(ix, iy);
+    m.moves++;                         // both tallies are for mouseReport(),
+    m.counts += Math.abs(ix) + Math.abs(iy);   // which is the only way to see
+    m.step(ix, iy);                            // which side of the card is dead
+  }
+
+  // What every card carries for App.mouseReport(): what the host has put in,
+  // and what the machine has taken out, per register. A mouse that does nothing
+  // is either not being fed or not being read, and nothing on screen says which.
+  function countersFor(m) {
+    m.moves = 0;                       // host movement events
+    m.counts = 0;                      // whole counts they came to
+    m.polls = 0;                       // register reads by the machine
+    m.regs = [];                       // and by register within the page
+    for (var i = 0; i < 16; i++) m.regs.push(0);
   }
 
   // ---- Ниппель --------------------------------------------------------------
@@ -50,7 +63,7 @@
   // MouseGraf 4.4 does exactly that, sweeping slots 6 down to 1.
   function MouseNippel() {
     this.isMouse = true;
-    this.polls = 0;                    // reads of any register; see App.describe
+    countersFor(this);
     this.x = 0;                        // the two counters, 7 bits each
     this.y = 0;
     this.fx = 0;                       // the sub-count remainder, host side
@@ -79,6 +92,7 @@
 
   MouseNippel.prototype.read = function (reg) {
     this.polls++;
+    this.regs[reg & 15]++;
     switch (reg) {
       case 0x8: case 0xc: return this.x & 0x0f;
       case 0x9: return ((this.x >> 4) & 0x07) | ((this.btn & 2) ? 0x08 : 0);
@@ -115,7 +129,7 @@
   function Parallel(name) {
     this.isMouse = true;
     this.name = name;
-    this.polls = 0;                    // reads of any register; see App.describe
+    countersFor(this);
     this.fx = 0;
     this.fy = 0;
     this.btn = 0;                      // bit 0 button A, bit 1 button B
@@ -137,6 +151,7 @@
 
   Parallel.prototype.read = function (reg, now) {
     this.polls++;
+    this.regs[reg & 15]++;
     switch (reg & 3) {
       case 0: return this.portA;       // an 8255 output port reads back its latch
       case 1: return this.portB;

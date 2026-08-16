@@ -604,10 +604,19 @@ reason the audio queue would otherwise drift.
 |---|---|
 | `recordSound(seconds)` | capture speaker edges and `PLAY500`'s zero page |
 | `soundReport()` | group them into notes: frequency, length, interrupts per flip |
+| `mouseReport()` | both halves of the mouse, and which slots the program pokes |
 
 `soundReport()` reports each zero-page byte's values **with an occurrence
 count**, sampled at interrupt cadence. A value the handler holds only briefly is
 invisible to a 60 Hz sampler, which cost a round trip to discover.
+
+`mouseReport()` exists because a mouse has two halves that fail identically on
+screen — the page not feeding the card and the program not reading it — and the
+cursor sitting still says nothing about which. It counts both directions, breaks
+the machine's side down by register, and lists which slots the program touches
+at all, which is what separates a mouse in a slot the program never scans from
+one it scans and rejects. Called twice, it also reports the difference, so
+waving the mouse between two calls is the test.
 
 ---
 

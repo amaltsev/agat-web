@@ -92,6 +92,71 @@
     return null;
   };
 
+  // Why a mouse is doing nothing, in one line each. A mouse has two halves that
+  // fail identically on screen — the page not feeding the card, and the program
+  // not reading it — and the machine cannot tell you which, so this counts both
+  // and says which one is at zero. Call it, wave the mouse, call it again: the
+  // second call reports the difference as well as the totals.
+  //
+  //   agat.mouseReport()
+  App.prototype.mouseReport = function () {
+    var m = this.machine, card = this.mouseCard(), out = [], n, i, reads;
+    var slots = [], seen = [];
+    for (n in this.slots) slots.push(n + ':' + this.slots[n].card);
+    out.push('machine   Agat-' + this.model + ' ' + (this.ramSize >> 10) + 'K, slots ' +
+             slots.sort().join(' '));
+    if (!card) {
+      out.push('mouse     none fitted — pick one in the gear popup');
+      console.log(out.join('\n'));
+      return 'no mouse';
+    }
+    out.push('card      ' + card.name + ' in slot ' + card.slot +
+             ' ($C0' + (0x80 + card.slot * 16).toString(16).toUpperCase() + '-$C0' +
+             (0x8f + card.slot * 16).toString(16).toUpperCase() + ')');
+
+    // The host half. Movement only reaches the card while the pointer is held,
+    // which is the commonest reason for this to be zero.
+    var prev = this.mouseLast || {};
+    out.push('pointer   ' + (this.mouseCaptured ? 'held' : 'NOT held — click the screen first'));
+    out.push('host→card ' + card.moves + ' moves, ' + card.counts + ' counts' +
+             (prev.moves === undefined ? '' : '   (+' + (card.moves - prev.moves) +
+              ' moves, +' + (card.counts - prev.counts) + ' counts since last report)'));
+    out.push('buttons   ' + (card.btn & 1 ? 'A' : '-') + (card.btn & 2 ? 'B' : '-') +
+             '   (host left is A, right is B)');
+
+    // The machine half, per register, so a program reading the wrong ones shows
+    // up as plainly as a program reading none.
+    reads = [];
+    for (i = 0; i < 16; i++) {
+      if (card.regs[i]) reads.push('$C0' + (0x80 + card.slot * 16 + i).toString(16).toUpperCase() +
+                                   '×' + card.regs[i]);
+    }
+    out.push('card→cpu  ' + card.polls + ' reads' +
+             (prev.polls === undefined ? '' : '   (+' + (card.polls - prev.polls) +
+              ' since last report)'));
+    out.push('registers ' + (reads.length ? reads.join(' ') : 'NONE — the program has never read this card'));
+
+    // And which slots the program does poke, which is how a mouse in a slot the
+    // program never scans tells itself apart from one it scans and rejects.
+    var per = {}, addr, s, e;
+    for (n in m.ioSeen) {
+      addr = parseInt(n.slice(1), 16);
+      if (addr < 0xc090 || addr > 0xc0ef) continue;
+      s = ((addr & 0xff) >> 4) - 8;    // as ioRead decodes it: the low byte
+      e = per[s] || (per[s] = { r: 0, w: 0 });
+      if (n.charAt(0) === 'R') e.r += m.ioSeen[n];
+      else e.w += m.ioSeen[n];
+    }
+    for (i = 1; i <= 7; i++) {
+      if (per[i]) seen.push('s' + i + ' r' + per[i].r + '/w' + per[i].w);
+    }
+    out.push('slot i/o  ' + (seen.length ? seen.join('   ') : 'none'));
+    out.push('program   pc=$' + m.cpu.pc.toString(16).toUpperCase());
+    this.mouseLast = { moves: card.moves, counts: card.counts, polls: card.polls };
+    console.log(out.join('\n'));
+    return card.name + ': host→card ' + card.moves + ' moves, card→cpu ' + card.polls + ' reads';
+  };
+
   // (Re)create the machine for the current model. Media already inserted is
   // carried across, so switching machines does not mean re-dropping your disks.
   App.prototype.build = function () {
