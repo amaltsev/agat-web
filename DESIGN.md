@@ -67,6 +67,7 @@ Load order matters only in that a module's dependencies must already be on
 | `disk140.js` | 140K Shugart controller |
 | `video.js` | painters and `render()` |
 | `font.js` | glyph blitting; keeps `{font, m0}` together |
+| `mouse.js` | the three mouse cards, and the pointer capture that feeds them |
 | `keyboard.js` | browser `code` → scancode → Agat keymap, and the same table read backwards |
 | `keyview.js` | the on-screen keyboard: three boards over that one table, and the container's controls as a card |
 | `audio.js` | `$C030` edges → PCM |
@@ -117,6 +118,28 @@ carries no slots at all.
 
 `Machine.SLOTS` is derived from the profiles and answers "which slot is the 140K
 drive in", so nothing else has to know.
+
+A mouse is the one card that is never in a profile — nothing that came with
+either machine expects one — so it exists only as an override, and
+`Machine.MOUSE_SLOTS` says where one goes when the gear popup or a tool asks for
+it rather than naming the slot itself.
+
+### The pointer has to be captured, not tracked
+
+All three mice report movement and none reports position, so there is no way to
+tell the guest where the host's pointer is; its own cursor is somewhere else,
+and the two drift apart the first time the guest's stops at the edge of its
+screen while the host's keeps going. `AGAT.attachMouse` therefore takes the
+pointer with `requestPointerLock` on a click and feeds `movementX/movementY` to
+whichever card is fitted — agat-emulator does the same, and for the same reason
+(`support.cpp:491-525`). Scale comes from the canvas as displayed, so a sweep
+across it is a sweep across the screen whatever size the window is.
+
+The cards take fractional counts and keep the remainder themselves, because a
+host pixel is not a step of a ball and the program may zero the counter between
+any two of them. Everything above the card deals in counts and nothing above it
+knows which mouse is fitted: `App.mouseCard()` finds it by `isMouse`, and all
+three answer `move()` and carry the same two button bits.
 
 ### Reset has to reach the cards
 
@@ -605,6 +628,8 @@ node tools/check.js sniff  <file…>  # what the sniffer makes of each
 node tools/check.js keys   <.agc>   # the controls panel and the winnowed board
 node tools/check.js write  <image> --keys=…    # boot unlocked, say what was written
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
+node tools/shot.js <image> --mouse=nippel --click=R --hold=L --move=60,0
+                                    # ...and drive a mouse over it
 node tools/corpus.js <dir> --md     # walk a directory, boot everything
 node tools/debug.js …               # dump / trace / run-to-PC
 
@@ -639,6 +664,21 @@ same reason, and that is what drives the factory memory test — see
 that declares the configuration and then verifies it is worth more than any
 number of assertions written from the same reading of the source that produced
 the bug.
+
+Its `--mouse=`, `--click=`, `--hold=` and `--move=` do the same job for the
+mice, and MouseGraf is the oracle: it draws its cursor's coordinates on screen,
+so a run that says `--move=60,40` and comes back with a cursor 60 across and 40
+down, with a line behind it where the button was held, has checked the card, the
+counts and the buttons in one picture.
+
+**What it does not check is the browser.** Those flags reach into the card and
+set `btn` and `move()` directly, which is the whole point headlessly and is also
+the seam every browser-side bug hides behind: pointer capture, the scale taken
+off the canvas, which host button is which, and whether a click reaches the
+machine at all. `tools/vectors.js` drives `attachMouse` against a stub DOM,
+which catches a typo and nothing else — it cannot tell you that swallowing the
+first click leaves MouseGraf looking dead, because the stub has no MouseGraf
+behind it. Anything about the page itself has to be tried in a page.
 
 `corpus.js` takes `--ram=` and `--nocards` too, which is how a table that has
 moved gets attributed. Run it at the old size and diff: if the old table comes

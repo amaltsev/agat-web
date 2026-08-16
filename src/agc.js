@@ -44,7 +44,10 @@
   // Cards a `machine.slots` entry may name. Anything else is dropped, entries
   // without a `card` included: a container from a newer emulator should run on
   // the hardware this one has rather than fail.
-  var CARDS = { psrom: 1, xram: 1, xram9: 1, fdd140: 1, fdd840: 1 };
+  var CARDS = {
+    psrom: 1, xram: 1, xram9: 1, fdd140: 1, fdd840: 1,
+    'mouse-nippel': 1, 'mouse-mars': 1, 'mouse-mm8031': 1,
+  };
 
   // Base64 characters per line. 76 is the MIME width, and 57 bytes; being a
   // multiple of 4 it is a whole number of base64 groups, so every line decodes

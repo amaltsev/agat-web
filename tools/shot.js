@@ -2,8 +2,20 @@
 //
 //   node tools/shot.js <image> [keys] [cycles-per-key] [out.png] [--model=7|9]
 //                      [--ram=32|64|128] [--psrom=KB] [--xram=KB]
+//                      [--mouse=nippel|mars|mm8031] [--click=L|R] [--hold=L|R]
+//                      [--move=dx,dy]
 //
 // keys: ~ = Return, _ = Space, ^ = Escape, anything else is that character.
+//
+// The mouse flags run in that order once the keys have been typed: a click, a
+// button held down, then the movement, in counts — one count is one pixel of
+// MouseGraf's cursor. Which is how a mouse gets tested without a browser:
+//
+//   node tools/shot.js MGR4_4.aim --mouse=nippel --click=R --move=40,40
+//
+// clicking the button MouseGraf starts on and then drawing with the other one:
+//
+//   node tools/shot.js MGR4_4.aim --mouse=nippel --click=R --hold=L --move=60,0
 //
 // The three size flags are kilobytes and override the Agat-7's stock memory;
 // `0` pulls a card out. They are what drives the factory memory test, which
@@ -98,6 +110,9 @@ H.loadRoms(ctx).then((roms) => {
   };
   card(2, 'psrom', flags.psrom);
   card(4, 'xram', flags.xram);
+  if (flags.mouse) {
+    slots[ctx.AGAT.Machine.MOUSE_SLOTS[model]] = { card: 'mouse-' + flags.mouse };
+  }
   const m = H.makeMachine(ctx, roms, {
     model: model,
     ramSize: flags.ram ? Number(flags.ram) * 1024 : undefined,
@@ -116,6 +131,29 @@ H.loadRoms(ctx).then((roms) => {
   const run = (n) => { const e = cpu.cycles + n; while (cpu.cycles < e && !cpu.halted) cpu.step(); };
   run(per * 2);
   for (const c of keys) { m.keyDown(keyCode(c)); run(per); }
+
+  // The mouse, if one is fitted. Movement goes in a step at a time with a slice
+  // of CPU after each: the counters are seven bits wide and the program has to
+  // be given the chance to read them before they wrap, which is the constraint
+  // the real cards impose too.
+  const mouse = m.cards.find((c) => c && c.isMouse);
+  if (mouse) {
+    const bit = (b) => (String(b).toUpperCase() === 'R' ? 2 : 1);
+    if (flags.click) {
+      mouse.btn |= bit(flags.click); run(per / 4);
+      mouse.btn = 0; run(per);
+    }
+    if (flags.hold) mouse.btn |= bit(flags.hold);
+    if (flags.move) {
+      const [dx, dy] = String(flags.move).split(',').map(Number);
+      const steps = Math.max(Math.abs(dx || 0), Math.abs(dy || 0)) || 1;
+      for (let i = 0; i < steps; i++) {
+        mouse.move((dx || 0) / steps, (dy || 0) / steps);
+        run(per / 16);
+      }
+    }
+    if (flags.hold) { mouse.btn = 0; run(per / 4); }
+  }
 
   const v = new ctx.AGAT.Video(model === 7 ? roms.font7 : roms.font9, roms.palette, { m0: model === 7 ? 0x80 : 0x40 });
   v.render(m);

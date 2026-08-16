@@ -128,6 +128,180 @@ function eq(what, got, want) {
      [big.slots[4].ram, big.slots[2]], [0x20000, undefined]);
   eq('App slotDiff reports it in kilobytes',
      big.slotDiff(), { 2: null, 4: { card: 'xram', ram: 128 } });
+
+  // A mouse is never stock, so it is a slot override and comes back out of
+  // slotDiff() as one — which is what puts it in a saved container.
+  const mouse = mk({ model: 9, slots: { 4: { card: 'mouse-nippel' } } });
+  eq('App fits a mouse where it was asked for',
+     cards(mouse), ['2:xram9', '4:mouse-nippel', '5:fdd840', '6:fdd140']);
+  eq('App mouse survives the round trip',
+     mouse.slotDiff(), { 4: { card: 'mouse-nippel' } });
+}
+
+// --- the mice ---------------------------------------------------------------
+// nippelmouse.c and mouse9.c. Both are relative: what a program can read is how
+// far the mouse has moved, never where it is.
+{
+  // Ниппель: two 7-bit counters, read as nibbles, with a button in bit 3 of
+  // each high one. This is MouseGraf 4.4's probe at $84F4, in order.
+  const n = new A.MouseNippel();
+  const rd = (r) => n.read(r);
+  n.write(0xc);
+  eq('nippel clears both counters', [rd(8), rd(9), rd(0xa), rd(0xb)], [0, 0, 0, 0]);
+  n.write(0x8);
+  eq('nippel presets both to $22', [rd(8), rd(9), rd(0xa), rd(0xb)], [2, 2, 2, 2]);
+
+  n.write(0xc);
+  n.move(5, 0);
+  eq('nippel counts X up as the pointer goes right', [rd(8), rd(9)], [5, 0]);
+  n.move(0, 3);
+  eq('nippel counts Y down as the pointer goes down', [rd(0xa), rd(0xb)], [0x0d, 7]);
+  n.move(0, -3);
+  eq('nippel Y comes back', [rd(0xa), rd(0xb)], [0, 0]);
+
+  // The counter is seven bits and wraps; a program that reads slower than the
+  // mouse moves cannot tell 130 counts from 2, which is the hardware's own
+  // limit and not something to paper over.
+  n.write(0xc);
+  n.move(130, 0);
+  eq('nippel X wraps at seven bits', [rd(8), rd(9)], [2, 0]);
+
+  // The sub-count remainder lives outside the counter, so clearing does not
+  // throw it away: ten moves of a third of a count are three counts, whenever
+  // the program happens to look.
+  n.reset();
+  for (let i = 0; i < 10; i++) n.move(0.5, 0);
+  eq('nippel accumulates sub-count movement', rd(8), 5);
+  n.reset();
+  n.move(0.5, 0);
+  n.write(0xc);                       // the program has read it and zeroed it
+  n.move(0.5, 0);
+  eq('nippel keeps the fraction across a clear', rd(8), 1);
+
+  n.btn = 1;
+  eq('nippel button A is bit 3 of the Y high nibble', [rd(0xb) & 8, rd(9) & 8], [8, 0]);
+  n.btn = 2;
+  eq('nippel button B is bit 3 of the X high nibble', [rd(0xb) & 8, rd(9) & 8], [0, 8]);
+  n.btn = 0;
+  eq('nippel decodes nothing else in the page', n.read(0), 0xff);
+
+  // «Марсианка»: four direction lines in the bottom of port C, active low, one
+  // pulse per step. The bit-to-direction mapping is MouseGraf 1.6's own table
+  // at $6317, read out of the running program: bit 3 x+1, bit 2 x-1, bit 1
+  // y-1, bit 0 y+1, against a value the driver inverts before it looks.
+  const mars = new A.MouseMars();
+  const lines = (t) => (~mars.read(2, t)) & 0x0f;
+  eq('mars idles with no line asserted', lines(0), 0);
+  mars.move(2, 0);
+  eq('mars pulses x+ for a step right', lines(100), 8);
+  eq('mars holds the line until the pulse is over', lines(120), 8);
+  eq('mars drops it again, so the next step is a change', lines(200), 0);
+  eq('mars pulses the second step', lines(300), 8);
+  eq('mars has nothing left to send', lines(500), 0);
+  mars.move(-1, 1);
+  eq('mars sends both axes in one state', lines(700), 4 | 1);
+  mars.move(0, -1);
+  eq('mars idles between two steps', lines(900), 0);
+  eq('mars pulses y- upward', lines(1000), 2);
+
+  // The two buttons sit where the ММ-8031's do, and the driver reads them
+  // through the same inversion.
+  mars.btn = 1;
+  eq('mars button A is bit 7, active low', mars.read(2, 1100) & 0xc0, 0x40);
+  mars.btn = 2;
+  eq('mars button B is bit 6', mars.read(2, 1200) & 0xc0, 0x80);
+  mars.btn = 0;
+
+  // ММ-8031: port C, read after a write to port A that says which axis and
+  // latches it. A standing mouse reads $20 in the delta field, which is what
+  // MouseGraf 4.4 tests for at $84D4.
+  const p = new A.MouseMM8031();
+  const latch = (axis) => { p.write(0, axis ? 0x80 : 0); return p.read(2); };
+  eq('mm8031 idle X reads as no motion', latch(0) & 0x3c, 0x20);
+  eq('mm8031 idle Y reads as no motion', latch(1) & 0x3c, 0x20);
+  eq('mm8031 idle has both buttons up', latch(0) & 0xc0, 0xc0);
+
+  // The scale is companded, so the reading is an index into the table rather
+  // than a count: six counts is index 3, and the three that the index cannot
+  // express stay behind for the next read.
+  p.move(6, 0);
+  eq('mm8031 reports six counts as index 3', (latch(0) >> 2) & 15, 8 + 3);
+  eq('mm8031 has nothing left to report', (latch(0) >> 2) & 15, 8);
+  p.move(-1, 0);
+  eq('mm8031 reports a step back as index -1', (latch(0) >> 2) & 15, (8 - 1) & 15);
+
+  // Index 4 is as far as it goes in one read — 15 counts — however far the
+  // mouse has actually moved.
+  p.move(400, 0);
+  eq('mm8031 clamps a long sweep to index 4', (latch(0) >> 2) & 15, 8 + 4);
+
+  p.reset();
+  p.move(0, 6);
+  eq('mm8031 reports Y inverted', (latch(1) >> 2) & 15, (8 - 3) & 15);
+
+  p.btn = 1;
+  eq('mm8031 buttons are active low, A in bit 7', p.read(2) & 0xc0, 0x40);
+  p.btn = 2;
+  eq('mm8031 button B is bit 6', p.read(2) & 0xc0, 0x80);
+  p.btn = 0;
+  p.write(1, 0x87);
+  eq('mm8031 port B reads back its latch', p.read(1), 0x87);
+}
+
+// --- pointer capture --------------------------------------------------------
+// attachMouse against a stub DOM. Not a unit test of a pure function, but the
+// alternative is a claim about the browser that nothing checks — and the bits a
+// button lands on are exactly the kind of thing that is wrong silently.
+{
+  const bags = { canvas: {}, win: {}, doc: {} };
+  const on = (bag) => (t, f) => { (bag[t] = bag[t] || []).push(f); };
+  const fire = (bag, t, e) => (bag[t] || []).forEach((f) => f(e || {}));
+  const click = (button) => fire(bags.canvas, 'mousedown', { button, preventDefault() {} });
+
+  const doc = { pointerLockElement: null, addEventListener: on(bags.doc) };
+  const canvas = {
+    ownerDocument: doc,
+    addEventListener: on(bags.canvas),
+    requestPointerLock() { doc.pointerLockElement = canvas; fire(bags.doc, 'pointerlockchange'); },
+    getBoundingClientRect: () => ({ width: 512, height: 512 }),
+  };
+  const hadListener = ctx.window.addEventListener;
+  ctx.window.addEventListener = on(bags.win);
+
+  const card = new A.MouseNippel();
+  const app = { mouseCard: () => card, mouseCaptured: false };
+  A.attachMouse(canvas, app);
+
+  // The click that hands the pointer over is a press as well. Swallowing it
+  // left MouseGraf — which draws no cursor until a button arrives — looking
+  // dead in the browser while every headless test passed.
+  click(0);
+  eq('first click captures and presses', [app.mouseCaptured, card.btn], [true, 1]);
+  fire(bags.win, 'mouseup', { button: 0 });
+
+  click(0);
+  eq('the host left button is button A', card.read(0xb) & 8, 8);
+  click(2);
+  eq('the host right button is button B', card.read(9) & 8, 8);
+  fire(bags.win, 'mouseup', { button: 0 });
+  eq('a release clears only its own bit', [card.read(0xb) & 8, card.read(9) & 8], [0, 8]);
+  fire(bags.win, 'mouseup', { button: 2 });
+
+  // 512 CSS pixels across a 256-count screen is half a count each, and the
+  // halves have to survive being added up.
+  card.write(0xc);
+  for (let i = 0; i < 8; i++) fire(bags.win, 'mousemove', { movementX: 1, movementY: 0 });
+  eq('eight host pixels are four counts', card.read(8), 4);
+
+  // Nothing will report the release of a button held when the pointer goes.
+  click(0);
+  doc.pointerLockElement = null;
+  fire(bags.doc, 'pointerlockchange');
+  eq('losing the pointer releases the buttons', [app.mouseCaptured, card.btn], [false, 0]);
+  fire(bags.win, 'mousemove', { movementX: 20, movementY: 0 });
+  eq('and stops the movement', card.read(8), 4);
+
+  ctx.window.addEventListener = hadListener;
 }
 
 // --- image sniffing ---------------------------------------------------------
@@ -1190,9 +1364,11 @@ function eq(what, got, want) {
       eq('and deselecting leaves nothing behind it', small.read(0x8000), 0xff);
 
       // Neither memory card decodes $C080+16n — psrom7.c and xram7.c fill
-      // io_sel and never baseio_sel, so those pages read as nothing.
-      eq('$C0A0 is not a window into the ЭмПЗУ', s.read(0xc0a0), 0);
-      eq('$C0C0 is not a window into the expansion', s.read(0xc0c0), 0);
+      // io_sel and never baseio_sel — so those pages are open bus, the same
+      // $FF an empty slot gives (memory.c:4).
+      eq('$C0A0 is not a window into the ЭмПЗУ', s.read(0xc0a0), 0xff);
+      eq('$C0C0 is not a window into the expansion', s.read(0xc0c0), 0xff);
+      eq('an empty slot answers the same', s.read(0xc090), 0xff);
     }
 
     // --- slot overrides, and the container that carries them -----------------

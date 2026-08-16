@@ -86,9 +86,28 @@ the tab loses them; **Save AGC** lights up while there are any, and keeps them
 as patches on the image they came from. The 840K drive does not write.
 
 The **⚙** holds the settings a machine is run under rather than driven by: the
-volume, and the machine's memory sizes. The video interrupt is not among them — it
-comes off the line counter, exactly as the boards produce it, and there is
-nothing to choose. See [HARDWARE.md](HARDWARE.md#the-delivery-model).
+volume, the machine's memory sizes, and whether it has a mouse. The video
+interrupt is not among them — it comes off the line counter, exactly as the
+boards produce it, and there is nothing to choose. See
+[HARDWARE.md](HARDWARE.md#the-delivery-model).
+
+**Mouse** is off unless you ask, because nothing that came with either machine
+expects one, and it asks *which*: the three Soviet mice speak different
+protocols and a program drives the one it was written for. Pick the wrong one
+and the program gives no sign whatever — the status line is what says the card
+is not being read. A container is the better place to settle it, since the
+program is what knows: an `.agc` names the mouse along with the rest of the
+machine, and then nobody has to guess.
+
+Click the screen to hand the pointer over and Esc to take it back — none of
+these mice can report a position, so there is no way to point them at anything,
+and the page has to capture the pointer the way a real one moved a ball. That
+first click is passed to the machine as well, so a single click both takes the
+pointer and reaches the program. The host's left button is the card's button A
+and its right is button B; which one a program wants is its own business, and a
+program that draws no cursor until it has been given a button looks exactly like
+a mouse that does not work. MouseGraf, for the record, starts on the right
+button and draws with the left.
 
 Every one of those settings rides in the address, so a machine that runs a
 program properly is a bookmark:
@@ -99,7 +118,8 @@ program properly is a bookmark:
 `model` is 7 or 9; `ram` is base RAM in KB — 32, 64 or 128, Agat-7 only, since
 the Agat-9 is always 128K; and `psrom` and `xram` size the two Agat-7 memory
 cards in KB, appearing only when they are not the stock 32K (`0` leaves the slot
-empty). A machine named in the URL is treated as chosen, so a `7a`/`9a` filename
+empty); `mouse` is `nippel`, `mars` or `mm8031`, and is absent when there is
+none. A machine named in the URL is treated as chosen, so a `7a`/`9a` filename
 does not override it.
 
 `agc=` names a container, which carries the file itself:

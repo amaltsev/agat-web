@@ -242,18 +242,27 @@ because the bank field is four bits wide whatever is behind it.
 | ОЗУ expansion | 4 | 2 |
 | 140K Shugart | 3 | 6 |
 | 840K Teac | 5 | 5 |
+| mouse, if asked for | 6 | 4 |
 
 This is the stock complement, in `Machine.PROFILES`; an `.agc` or the gear popup
-can move a card or resize it.
+can move a card or resize it. A mouse is never part of it — see
+[Mice](#mice) — and the slot above is only where one goes by default.
 
-An **empty slot's `$Cn00` page reads `$FF`** — open bus, as agat-emulator leaves
-it (`empty_read`, apple2.c:22). That is not a detail: a memory card's state
-register lives in that page and reads back what was last written to it, so a
-program hunting for one writes `$Cn00` to every slot and keeps the pages that
-answer `$00`. An empty slot that answered `$00` would be indistinguishable from
-an ОЗУ card sitting deselected in bank 0, and MouseGraf 1.6 picks the *last*
-such slot it finds — so it would patch its loader to write to a slot with
-nothing in it and load 16K over the top of itself.
+An **empty slot reads `$FF`**, both its `$Cn00` page and its `$C080+16n`
+registers — open bus, as agat-emulator leaves both (`empty_read`, apple2.c:22
+and memory.c:4). That is not a detail in either place, because a program looking
+for a card asks a question and reads the answer back, and `$00` is an answer a
+card can give:
+
+- A memory card's state register **is** its `$Cn00` page and reads back what was
+  last written to it, so a program hunting for one writes `$Cn00` to every slot
+  and keeps the pages that answer `$00`. An empty slot answering `$00` is
+  indistinguishable from an ОЗУ card sitting deselected in bank 0, and MouseGraf
+  1.6 picks the *last* such slot it finds — so it would patch its loader to
+  write to a slot with nothing in it and load 16K over the top of itself.
+- MouseGraf 1.6 takes any slot whose `$C0n1` is not `$FF` for a printer card
+  with a mouse on it. With `$00` there it stops at slot 1 and never reaches the
+  slot the mouse is actually in.
 
 ---
 
@@ -481,6 +490,125 @@ normal` reaches `$27 $2C $2F $3B` (`' , / ;`), which `РУС` cannot.
 
 ---
 
+## Mice
+
+A mouse was bought separately and nothing that came with the machine expects
+one, so no profile fits a mouse: the gear popup or an `.agc` puts one in the
+slot the model leaves free — 6 on the Agat-7, 4 on the Agat-9
+(`Machine.MOUSE_SLOTS`).
+
+**All three are relative devices, and no register on any of them says where the
+mouse is.** That is the fact everything else follows from, including the page
+having to capture the pointer rather than track it: the guest keeps a cursor of
+its own, the two drift apart the first time the guest's stops at the edge of its
+screen while the host's keeps going, and there is nothing to read back that
+would let the drift be corrected.
+
+Three mice, and the software that proves each one: MouseGraf 4.4 wants the
+Ниппель and 1.6 the «Марсианка». One count is one pixel of MouseGraf's cursor
+in both, measured — 40 counts of Ниппель movement move the coordinates it
+displays by exactly 40 — so the page makes a sweep across the canvas 256 counts.
+
+### Ниппель (`nippelmouse.c`)
+
+A card of its own, with no ROM at all. Each axis is a **7-bit up/down counter**
+clocked by the ball, read as two nibbles, with a button riding in bit 3 of each
+high one:
+
+| | read | write |
+|---|---|---|
+| `$C0n8` | X counter, bits 0-3 | preset both counters to `$22` |
+| `$C0n9` | X counter, bits 4-6; bit 3 = button B | |
+| `$C0nA` | Y counter, bits 0-3 | |
+| `$C0nB` | Y counter, bits 4-6; bit 3 = button A | |
+| `$C0nC` | as `$C0n8` | clear both counters |
+
+Y counts *down* as the pointer goes down the screen. The preset is what a
+program identifies the card by, and MouseGraf 4.4's probe at `$84F4` is exactly
+that: sweep slots 6 down to 1, write `$C0nC` and require both counters to read
+zero, write `$C0n8` and require both to read back `$22`.
+
+Seven bits is the whole range, so the counter **wraps at 128 counts** and a
+program that reads slower than the mouse moves cannot tell 130 from 2. That is
+the hardware's limit and not something to paper over. What *is* ours is the
+sub-count remainder — a host pixel is rarely exactly one step of a ball — and it
+has to be kept outside the counter, because MouseGraf zeroes the counter through
+`$C0nC` after reading it and a fraction kept inside would be thrown away every
+time. Left inside, roughly a third of the movement goes missing.
+
+### «Марсианка» and ММ-8031 (`mouse9.c`)
+
+Neither is a card of its own: the mouse hangs off the **Agat-9 printer card's
+КР580ВВ55 (8255)**, which is why agat-emulator's `mouse9.c` is `printer9.c` with
+the cable swapped.
+
+| | |
+|---|---|
+| `$C0n0` | port A, output |
+| `$C0n1` | port B, output — the mouse's control lines |
+| `$C0n2` | port C, input — the reading |
+| `$C0n3` | control, written `$89`: A out, B out, C in |
+
+Port C's top two bits are the buttons on both, **active low**: bit 7 button A,
+bit 6 button B. The rest is where they part company.
+
+The **«Марсианка»** is the crudest wire protocol there is: four direction lines
+in the bottom of port C, active low, one asserted per step of the ball. Nothing
+is latched and nothing is addressed. MouseGraf 1.6 samples port C in a tight
+loop at `$6039`, notices it has changed, and indexes a table of sixteen
+`(dx, dy)` pairs at `$6317` with the four bits inverted. Read out of the running
+program, that table is
+
+    bit 3 → x+1    bit 2 → x−1    bit 1 → y−1    bit 0 → y+1
+
+which is agat-emulator's `read_mars` confirmed from the other end. Because it is
+the *change* the driver counts, a step has to be a pulse — assert, then idle. How
+fast the pulses come is the ball's business on a real mouse and the emulator's
+here; the rule that has to hold is that a driver reading port C twice in quick
+succession sees the same state, since MouseGraf reads it once to notice the
+change and again to decode it.
+
+The **ММ-8031** is an intelligent mouse by comparison. A write to port A picks
+an axis — bit 7 clear for X, set for Y — and latches how far that axis has moved
+since it was last asked; port C then reads bits 5-2 as a signed number biased by
+8, so a standing mouse reads `$20`, with bits 1-0 high. The number is
+**companded** rather than linear — index 0-7 is 0, 1, 3, 6, 15, 35, 70, 100
+counts, clamped to ±4 (`mouse9.c:129-147`) — which makes the mouse ballistic:
+the further it has moved since the last read, the more each step of the reported
+figure is worth. Whether that table is the hardware's or a reconstruction is not
+established; it appears in agat-emulator and nowhere else found.
+
+Nothing here exercises the ММ-8031. MouseGraf 4.4 is the only program known to
+speak it, and it will not look at a parallel mouse whose `$Cn00` page does not
+start `$18 $90` — the printer card's ROM, which is not ours to ship. With that
+ROM supplied it is found and driven, which is how the model above was checked;
+without one the card is fitted and detected but silent.
+
+### Which button
+
+MouseGraf **starts on button B and draws with button A**, on both cards and both
+versions — measured by dragging each in turn and seeing which left a line. Its
+startup wait reads only the register B sits in, so a press of A there is not
+merely ignored, it is never looked at. The page maps A to the host's left button
+and B to its right, which puts the drawing button under the finger that expects
+it and makes "press the right button to begin" the price.
+
+Until that button comes, MouseGraf draws **no cursor at all** — its title screen
+polls the one register and nothing else. A mouse that is working perfectly is
+therefore indistinguishable, on screen, from one that is not, which is why the
+click that captures the pointer is also delivered to the machine rather than
+being spent on the capture.
+
+Choosing the mouse a program was not written for fails just as quietly, and
+worse: 4.4's wait loop polls the parallel port whether or not it found a mouse
+there, so a «Марсианка» will start it, the editor will come up, and the cursor
+will sit at 128:128 for ever. The status line reports a card that has gone
+fifteen emulated seconds without being read, which catches a Ниппель under 1.6
+but not that case — nothing distinguishes "read and not understood" from
+"read and understood" from outside the program.
+
+---
+
 ## Floppies
 
 ### 840K "Teac" (slot 5, both machines)
@@ -612,4 +740,6 @@ so. The 140K controller writes; see above.
 
 Also absent: the Agat-7 ДопОЗУ extra-RAM card, NTSC artefact colour for the
 Apple modes, 80-column/Videoterm/DHGR and Apple //e modes, cycle-accurate raster
-splits, mouse, printer, SCSI, tape and clock.
+splits, printer, SCSI, tape and clock. The printer card is emulated only as far
+as the mice that hang off it need — its 8255 without a cable, and without the
+ROM that would let a program find it.

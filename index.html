@@ -257,7 +257,7 @@
     <option value="pc">PC keyboard</option>
     <option value="used">Only mapped keys</option>
   </select>
-  <button id="gear" title="Memory sizes and volume" aria-expanded="false">⚙</button>
+  <button id="gear" title="Memory sizes, mouse and volume" aria-expanded="false">⚙</button>
   <span class="lamps" id="lamps"></span>
   <span id="status">loading…</span>
 </div>
@@ -294,6 +294,15 @@
       <option value="64">64K ОЗУ</option>
       <option value="128">128K ОЗУ</option>
       <option value="0">no ОЗУ</option>
+    </select>
+  </div>
+  <div class="row">
+    <span class="key">Mouse</span>
+    <select id="mouse" title="A mouse was bought separately and nothing that came with the machine expects one, so the standard machine has none. Ниппель is a card of its own; the other two hang off the printer card's parallel port. The three speak different protocols and a program drives the one it was written for, so if a program does not answer the mouse, try another — the status line says when the card is not being read at all. The ММ-8031 needs the printer card's ROM, which is not ours to ship, so a program that looks for that ROM will not find the card. Click the screen to hand the pointer over, Esc to get it back: these are relative devices and cannot be pointed at anything. The host's left button is the card's button A and its right is button B; which of them a program wants is the program's own business.">
+      <option value="">no mouse</option>
+      <option value="nippel">Ниппель mouse</option>
+      <option value="mars">«Марсианка» mouse</option>
+      <option value="mm8031">ММ-8031 mouse</option>
     </select>
   </div>
   <div class="row">
@@ -350,7 +359,21 @@
       patches on the disk they came from.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
-      The machine's memory sizes and the volume.
+      The machine's memory sizes, the mouse and the volume.
+    </td></tr>
+    <tr><td><b>Mouse</b></td><td>
+      Off unless you ask: nothing that came with either machine expects
+      one. The three speak different protocols and a program drives the
+      one it was written for, so if a program does not answer, try
+      another — a program that meets the wrong mouse gives no sign at
+      all, and the status line is what says the card is not being read.
+      Click the screen to hand the pointer over and <b>Esc</b> to take it
+      back; none of these mice can report a position, so the pointer has
+      to be captured rather than followed. The click that captures is
+      passed to the machine as well, and the host's left button is the
+      card's button A, its right button B. A program may draw no cursor
+      until it has had the button it is waiting for, so a still screen is
+      not by itself a broken mouse.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
       The Agat-9 is 128K in 8K banks on the motherboard, which is
@@ -396,6 +419,7 @@
 <script src="src/disk140.js"></script>
 <script src="src/video.js"></script>
 <script src="src/font.js"></script>
+<script src="src/mouse.js"></script>
 <script src="src/keyboard.js"></script>
 <script src="src/keyview.js"></script>
 <script src="src/audio.js"></script>
@@ -411,6 +435,7 @@
   var psromSel = document.getElementById('psrom');
   var xramSel = document.getElementById('xram');
   var xram9Sel = document.getElementById('xram9');
+  var mouseSel = document.getElementById('mouse');
   var kbdSel = document.getElementById('kbd');
   var layoutBtn = document.getElementById('layout');
   var gearBtn = document.getElementById('gear');
@@ -488,6 +513,12 @@
       out[e[0]] = kb ? { card: e[1], ram: kb * 1024 } : null;
       any = true;
     });
+    // No mouse is the stock machine, so picking one is the only thing here that
+    // has anything to say. Its slot is whichever the model leaves free.
+    if (mouseSel.value) {
+      out[AGAT.Machine.MOUSE_SLOTS[model]] = { card: 'mouse-' + mouseSel.value };
+      any = true;
+    }
     return any ? out : null;
   }
 
@@ -502,6 +533,7 @@
       var kb = Number(MEM_SEL[e[1]].value);
       if (kb !== stockKb(Number(modelSel.value), e[0])) q.push(e[1] + '=' + kb);
     });
+    if (mouseSel.value) q.push('mouse=' + mouseSel.value);
     // Which board is up is part of a working configuration too: a bookmark for
     // a game whose keys are a puzzle should open with the keyboard showing.
     // Encoded, unlike the rest: a control group is named by the container's
@@ -525,6 +557,7 @@
   pick(psromSel, url.psrom);
   pick(xramSel, url.xram);
   pick(xram9Sel, url.xram9);
+  pick(mouseSel, url.mouse);
   // A board cut to a control group cannot be picked yet — the container that
   // names the groups has not been read. syncKbd applies it once it has.
   var wantKbd = pick(kbdSel, url.kbd) ? '' : (url.kbd || '');
@@ -557,6 +590,12 @@
     MEM_CARDS[app.model].forEach(function (e) {
       var n = AGAT.Machine.slotOf(app.slots, e[1]);
       pick(MEM_SEL[e[1]], String(n < 0 ? 0 : (app.slots[n].ram || 0) >> 10));
+    });
+    // A container can put a mouse in any slot it likes; the menu says which
+    // mouse, not where, so it follows whichever slot the card turned up in.
+    mouseSel.value = '';
+    ['nippel', 'mars', 'mm8031'].forEach(function (kind) {
+      if (AGAT.Machine.slotOf(app.slots, 'mouse-' + kind) >= 0) mouseSel.value = kind;
     });
     syncMemEnabled();
     document.title = 'Agat-' + app.model + ' ' + (app.ramSize >> 10) + 'K — emulator';
@@ -685,6 +724,7 @@
   psromSel.addEventListener('change', applyModel);
   xramSel.addEventListener('change', applyModel);
   xram9Sel.addEventListener('change', applyModel);
+  mouseSel.addEventListener('change', applyModel);
 
   // ---- the layout, and the keyboard that draws it ----------------------------
   //
@@ -1021,12 +1061,15 @@
   //
   // Through pick() for its answer rather than the values themselves, so a key
   // no control offers is ignored instead of overriding the container with a
-  // default. `psrom`/`xram` are the Agat-7's, and so is slotOverrides().
+  // default. `psrom`/`xram` are the Agat-7's, `mouse` is either machine's, and
+  // all three arrive as slots, so slotOverrides() answers for the lot.
   function urlOverrides() {
     var o = {};
     if (url.model && pick(modelSel, url.model)) o.model = Number(modelSel.value);
     if (url.ram && pick(ramSel, Number(url.ram) * 1024)) o.ramSize = Number(ramSel.value);
-    if (url.psrom !== undefined || url.xram !== undefined) o.slots = slotOverrides();
+    if (url.psrom !== undefined || url.xram !== undefined || url.mouse !== undefined) {
+      o.slots = slotOverrides();
+    }
     return o;
   }
 

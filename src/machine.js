@@ -195,6 +195,17 @@
     return out;
   })();
 
+  // Where a mouse goes when one is asked for. Never stock — a mouse was bought
+  // separately, and nothing that came with the machine expects one — so it is
+  // an override like any other, and this is only the slot the gear popup and
+  // the tools reach for by default.
+  //
+  // Slot 6 on the Agat-7 and slot 4 on the Agat-9 are what the stock complement
+  // leaves free, and each is a slot the software of its machine looks in:
+  // MouseGraf 1.6 probes exactly slots 1 and 6 for a parallel mouse, and 4.4
+  // sweeps 6 down to 1.
+  Machine.MOUSE_SLOTS = { 7: 6, 9: 4 };
+
   // A profile's slots with overrides merged over them. An override may name a
   // different card, a different size, or both; `null` empties the slot. Keys
   // are slot numbers, and sizes are bytes — the .agc that carries them speaks
@@ -250,6 +261,15 @@
               rom: this.model === 7 ? roms.shugart7 : roms.shugart9,
             });
           }
+          break;
+        case 'mouse-nippel':
+          if (AGAT.MouseNippel) card = new AGAT.MouseNippel();
+          break;
+        case 'mouse-mars':
+          if (AGAT.MouseMars) card = new AGAT.MouseMars();
+          break;
+        case 'mouse-mm8031':
+          if (AGAT.MouseMM8031) card = new AGAT.MouseMM8031();
           break;
         default: break;
       }
@@ -501,8 +521,18 @@
       // The memory cards decode their $Cn00 page and nothing else — neither
       // xram7.c nor psrom7.c ever fills baseio_sel — so $C0Ax and $C0Cx are open
       // bus on an Agat-7, not a window into whichever card sits in that slot.
+      //
+      // Open bus is $FF, as it is for the $Cn00 page above it: agat-emulator
+      // leaves baseio_sel filled with empty_read (memory.c:4). A program
+      // looking for a card in a slot asks it a question and reads the answer
+      // back, and $00 is an answer a card can give — MouseGraf 1.6 takes any
+      // slot whose $C0n1 is not $FF for a printer card with a mouse on it, and
+      // with $00 here it stops at slot 1 and never reaches the one the mouse
+      // is in.
       else if (card && card.read && card.ioRegs !== false) {
         v = card.read(reg, this.cpu.cycles);
+      } else {
+        v = 0xff;
       }
       this.note(a, v, false);
       return v;

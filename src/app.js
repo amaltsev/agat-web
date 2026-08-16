@@ -6,6 +6,7 @@
 
   var CPU_HZ = AGAT.CPU_HZ;
   var MAX_CATCHUP_MS = 60;      // after a stall, drop the backlog rather than sprint
+  var MOUSE_QUIET = 15 * CPU_HZ;   // no read for this long: the program is not using it
 
   function App(opts) {
     opts = opts || {};
@@ -47,6 +48,13 @@
     this.notes = '';
     this.fromAgc = '';                    // the container's filename, if any
     this.lastTime = 0;
+    // Whether the page is holding the pointer for the machine. A mouse card is
+    // a standing choice like the RAM size; being captured is not, and the
+    // status line has to say so — a captured pointer is one the rest of the
+    // page has stopped receiving.
+    this.mouseCaptured = false;
+    this.mousePolls = -1;                 // the card's read count, last status line
+    this.mouseSeen = 0;                   // and the cycle it last went up
     this.soundLog = null;
     this.onStatus = opts.onStatus || function () {};
     // What the on-screen keyboard watches: the byte a host key produced, the
@@ -71,7 +79,17 @@
         onKeyUp: function (info) { self.onKeyUp(info); },
         onMods: function (m) { self.onMods(m); },
       });
+      if (AGAT.attachMouse) AGAT.attachMouse(self.canvas, self);
     });
+  };
+
+  // The mouse card, if one is fitted. All three answer move() and carry the
+  // same two button bits, so nothing outside src/mouse.js has to know which.
+  App.prototype.mouseCard = function () {
+    var m = this.machine, s;
+    if (!m) return null;
+    for (s = 0; s < 8; s++) if (m.cards[s] && m.cards[s].isMouse) return m.cards[s];
+    return null;
   };
 
   // (Re)create the machine for the current model. Media already inserted is
@@ -634,6 +652,25 @@
       : (AGAT.MODE_NAMES[m.videoMode().vtype] || 'mode ?'));
     for (var s in this.drives) {
       bits.push('S' + s + ' ' + this.drives[s].kind);
+    }
+    var mouse = this.mouseCard();
+    if (mouse) {
+      // How long since the program last read the card. It is the one thing that
+      // tells "busy, or waiting for a button" apart from "this program does not
+      // speak to this mouse", and nothing else says so: MouseGraf 4.4 wants the
+      // Ниппель and will not look at a parallel mouse, 1.6 is the other way
+      // round, and both sit there looking perfectly alive either way.
+      //
+      // Measured in emulated seconds and generously, because a program that is
+      // loading is a program not reading its mouse, and MouseGraf spends ten
+      // seconds pulling the editor off the disk.
+      if (mouse.polls !== this.mousePolls) {
+        this.mousePolls = mouse.polls;
+        this.mouseSeen = m.cpu.cycles;
+      }
+      bits.push('mouse ' + mouse.name +
+        (this.mouseCaptured ? ' held — Esc releases' : ' — click the screen') +
+        (m.cpu.cycles - this.mouseSeen > MOUSE_QUIET ? ', not read by this program' : ''));
     }
     return bits.join(' · ');
   };

@@ -20,6 +20,7 @@ const MODULES = [
   'src/disk140.js',
   'src/video.js',
   'src/font.js',
+  'src/mouse.js',
   'src/keyboard.js',
   'src/keyview.js',
   'src/audio.js',
