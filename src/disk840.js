@@ -5,11 +5,14 @@
 // registers at $C080 + slot*16. What the ROM at $C500 and the on-disk drivers
 // actually use:
 //
+//   +2 r/w     8255 #1 port C, the drive lines themselves: bit2 step
+//              direction, bit3 drive select, bit4 side, bit6 write mode,
+//              bit7 motor. Readable, and drivers do read it back
 //   +3 write   8255 #1 control: mode words, and PC bit set/reset ($0x)
 //   +7 write   8255 #2 control: same
 //   +9 write   strobe — step pulse / drive command latch
 //   +A write   strobe — clear the "sync seen" latch
-//   +1 read    drive status: bit7 busy, bit6 index/error
+//   +1 read    drive status: bit7 busy, bit6 the track-0 sensor, bit4 index
 //   +4 read    data byte from the head, clears "ready"
 //   +6 read    bit7 = a byte is waiting, bit6 = no sync mark seen since the strobe
 //
@@ -43,6 +46,9 @@
   var A_END = 0x02;
   var A_INDEX_START = 0x03;
   var A_INDEX_END = 0x13;
+
+  // How much of a track without an index attribute reads as "index".
+  var INDEX_WIDTH = 0x40;
 
   // 250 kbit/s MFM is one byte every 32 µs; the Agat's 6502 runs at 1.02 MHz.
   var CYCLES_PER_BYTE = 1020484 / 31250;
@@ -115,15 +121,20 @@
     this.ready = false;
   };
 
+  // Port C itself, which is also readable at +2: drivers set the motor line and
+  // read it straight back to see whether a controller is there at all.
+  Disk840.prototype.setPortC = function (v) {
+    this.portC = v & 0xff;
+    this.side = (this.portC >> PC_SIDE) & 1;
+  };
+
   // 8255 control port. Values with bit 7 clear are the chip's bit set/reset
   // command for port C: bits 3-1 pick the bit, bit 0 is the value. Values with
   // bit 7 set are mode words, which say nothing about the drive lines.
   Disk840.prototype.control = function (v) {
     if (v & 0x80) return;
     var bit = (v >> 1) & 7;
-    if (v & 1) this.portC |= 1 << bit;
-    else this.portC &= ~(1 << bit);
-    if (bit === PC_SIDE) this.side = (this.portC >> PC_SIDE) & 1;
+    this.setPortC(v & 1 ? this.portC | (1 << bit) : this.portC & ~(1 << bit));
   };
 
   // Spin the disk forward to `now`. Bytes the CPU was too slow to collect are
@@ -137,6 +148,7 @@
     var steps = 1 + Math.floor((now - this.nextByteAt) / CYCLES_PER_BYTE);
     if (steps > len) steps = len;
     var base = m.trackBase(track);
+    var marked = m.hasIndexMark(track);
     for (var i = 0; i < steps; i++) {
       this.pos = this.pos + 1 >= len ? 0 : this.pos + 1;
       var a = m.attrs[base + this.pos];
@@ -144,6 +156,11 @@
       else if (a === A_INDEX_START) this.atIndex = true;
       else if (a === A_INDEX_END) this.atIndex = false;
     }
+    // A track with no index attribute still has to say where it begins, or
+    // software that waits for the index before counting sectors off has nothing
+    // to wait for and starts wherever the head happened to be. agat-emulator
+    // calls the first 64 bytes of such a track the index (fdd.c, `no_mark`).
+    if (!marked) this.atIndex = this.pos < INDEX_WIDTH;
     this.data = m.bytes[base + this.pos];
     this.ready = true;
     this.nextByteAt = now + CYCLES_PER_BYTE;
@@ -153,11 +170,14 @@
     this.tick(now);
     switch (reg) {
       case 1:
-        // Drive status: bit7 busy, bit6 the track-0 sensor. The boot ROM steps
-        // four times, spins until bit7 clears, then reverses if bit6 is still
-        // set. Answering "ready, and bit6 clear once we are home" makes that
+        // Drive status: bit7 busy, bit6 the track-0 sensor, bit4 the index —
+        // low while the index hole is under the sensor. The boot ROM steps four
+        // times, spins until bit7 clears, then reverses if bit6 is still set,
+        // so answering "ready, and bit6 clear once we are home" makes that
         // recalibrate terminate on cylinder 0.
-        return this.cyl === 0 ? 0x00 : 0x40;
+        return (this.cyl === 0 ? 0x00 : 0x40) | (this.atIndex ? 0x00 : 0x10);
+      case 2:
+        return this.portC;
       case 4:
         this.ready = false;
         this.lastByteAt = now;
@@ -175,6 +195,7 @@
     this.tick(now);
     if (this.trace) this.trace(reg, val, now);
     switch (reg) {
+      case 0x02: this.setPortC(val); break;     // port C written whole
       case 0x03: this.control(val); break;      // 8255 #1 — the drive lines
       case 0x09: this.step(); break;            // step pulse
       case 0x0a: this.syncSeen = false; break;  // clear the sync latch

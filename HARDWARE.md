@@ -443,12 +443,28 @@ normal` reaches `$27 $2C $2F $3B` (`' , / ;`), which `РУС` cannot.
 
 ### 840K "Teac" (slot 5, both machines)
 
-Two 8255s at `$C0D0-$C0DF`. The disk surface is described by `.aim` images: 160
+Two 8255s at `$C0D0-$C0DF`. Port C of the first is the drive itself — bit 2 step
+direction, bit 3 drive select, bit 4 side, bit 6 write mode, bit 7 motor — and it
+is **readable at `$C0D2`** as well as settable a bit at a time through the
+control port at `$C0D3`. MouseGraf's driver raises the motor line and reads it
+straight back to decide whether there is a controller in the slot at all; a
+register that always answers `$00` sends it into a retry loop it never leaves.
+
+The disk surface is described by `.aim` images: 160
 tracks of 6464 16-bit little-endian words, where the low byte is data and the
 high byte is an attribute — `0x01`/`0x80` desync (the hardware sync detector
 fired), `0x02` end of track, `0x03`/`0x13` index mark start/end.
 
 The sector checksum is an **ADC-with-carry chain**, not an XOR.
+
+The status register at `$C0D1` carries bit 4 as the **index**, low while the
+start of the track is under the head. Loaders that count sectors off rather than
+matching sector numbers — MouseGraf 4.4's is one — poll `AND #$90` on it before
+they read, and without it they begin wherever the head happens to be and load a
+whole track's worth of data out of phase. Almost no `.aim` in circulation
+carries the `0x03`/`0x13` attribute pair, so the signal has to come from
+somewhere else: agat-emulator calls the first `0x40` bytes of an unmarked track
+the index (`fdd/fdd.c`, `no_mark`), and so do we.
 
 ### 140K "Shugart" (slot 3 on Agat-7, slot 6 on Agat-9)
 

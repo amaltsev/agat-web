@@ -35,6 +35,9 @@
     // rather than per byte because saving works a track at a time: a written
     // track is decoded back to its 16 sectors whole.
     this.written = new Uint8Array(opts.tracks);
+    // Per track: 0 not looked at, 1 no index mark, 2 index mark present. Filled
+    // in by hasIndexMark().
+    this.indexed = null;
     this.name = opts.name || '';
   }
 
@@ -44,7 +47,10 @@
     get: function () { return this.locked; },
   });
 
-  Media.prototype.markWritten = function (t) { this.written[t] = 1; };
+  Media.prototype.markWritten = function (t) {
+    this.written[t] = 1;
+    if (this.indexed) this.indexed[t] = 0;      // the attributes may have moved
+  };
 
   Media.prototype.isWritten = function () {
     for (var t = 0; t < this.written.length; t++) if (this.written[t]) return true;
@@ -57,6 +63,23 @@
   }
 
   Media.prototype.trackBase = function (t) { return t * this.stride; };
+
+  // Does this track carry an index mark — a 0x03/0x13 attribute pair? Most .aim
+  // images do not, and every stream synthesised from sectors or nibbles has
+  // none, so the controller has to fall back to the start of the track for the
+  // index signal. Scanned once per track and cached.
+  Media.prototype.hasIndexMark = function (t) {
+    if (!this.attrs) return false;
+    if (!this.indexed) this.indexed = new Uint8Array(this.tracks);
+    if (!this.indexed[t]) {
+      var base = this.trackBase(t), len = this.trackLen[t] || this.stride;
+      this.indexed[t] = 1;
+      for (var i = 0; i < len; i++) {
+        if ((this.attrs[base + i] & 0xef) === 0x03) { this.indexed[t] = 2; break; }
+      }
+    }
+    return this.indexed[t] === 2;
+  };
 
   Media.NIB140_TRACK = NIB140_TRACK;
   Media.NIB140_TRACKS = NIB140_TRACKS;
