@@ -289,7 +289,7 @@
       <option value="128">128K ОЗУ</option>
       <option value="0">no ОЗУ</option>
     </select>
-    <select id="xram9" title="ОЗУ expansion in slot 2 — 128K addressed through the same eight 8K windows as the motherboard's RAM, each window taken over one at a time. MouseGraf will not start without it.">
+    <select id="xram9" title="ОЗУ expansion in slot 2 — 128K addressed through the same eight 8K windows as the motherboard's RAM, each window taken over one at a time.">
       <option value="32">32K ОЗУ</option>
       <option value="64">64K ОЗУ</option>
       <option value="128">128K ОЗУ</option>
@@ -298,7 +298,7 @@
   </div>
   <div class="row">
     <span class="key">Mouse</span>
-    <select id="mouse" title="A mouse was bought separately and nothing that came with the machine expects one, so the standard machine has none. Ниппель is a card of its own; the other two hang off the printer card's parallel port. The three speak different protocols and a program drives the one it was written for, so if a program does not answer the mouse, try another — the status line says when the card is not being read at all. The two parallel mice differ in one more thing: the ММ-8031 is fitted with the printer card's ROM, because the programs that drive it look for that ROM before they look at the ports, and the «Марсианка» is fitted without it, because the programs that drive it want the page empty. Click the screen to hand the pointer over, Esc to get it back: these are relative devices and cannot be pointed at anything. The host's left button is the card's button A and its right is button B; which of them a program wants is the program's own business.">
+    <select id="mouse" title="A mouse was bought separately and nothing that came with the machine expects one, so the standard machine has none. Ниппель is a card of its own; the other two hang off the printer card's parallel port, and differ in one thing beyond their protocol: the ММ-8031 is fitted with the printer card's ROM, because the programs that drive it look for that ROM before they look at the ports, and the «Марсианка» is fitted without it, because the programs that drive it want the page empty.">
       <option value="">no mouse</option>
       <option value="nippel">Ниппель mouse</option>
       <option value="mars">«Марсианка» mouse</option>
@@ -330,6 +330,13 @@
       Caps can be clicked, and hovering one names every host key that
       reaches it.
     </td></tr>
+    <tr><td><b>Mouse</b></td><td>
+      Off by default.  The three mice speak different protocols.  If a
+      program does not answer, try another (the status line is what says
+      the card is not being read).  Click the screen to hand the pointer
+      over and <b>Esc</b> to take it back. The host left button is A,
+      right is B.
+    </td></tr>
     <tr><td><b>Takes</b></td><td>
       <code>.aim</code> tagged track images, <code>.dsk</code> sector images and
       <code>.nib</code> nibble images — 140K and 840K of each — plus
@@ -360,20 +367,6 @@
     </td></tr>
     <tr><td><b>⚙</b></td><td>
       The machine's memory sizes, the mouse and the volume.
-    </td></tr>
-    <tr><td><b>Mouse</b></td><td>
-      Off unless you ask: nothing that came with either machine expects
-      one. The three speak different protocols and a program drives the
-      one it was written for, so if a program does not answer, try
-      another — a program that meets the wrong mouse gives no sign at
-      all, and the status line is what says the card is not being read.
-      Click the screen to hand the pointer over and <b>Esc</b> to take it
-      back; none of these mice can report a position, so the pointer has
-      to be captured rather than followed. The click that captures is
-      passed to the machine as well, and the host's left button is the
-      card's button A, its right button B. A program may draw no cursor
-      until it has had the button it is waiting for, so a still screen is
-      not by itself a broken mouse.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
       The Agat-9 is 128K in 8K banks on the motherboard, which is

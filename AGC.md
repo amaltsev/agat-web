@@ -117,10 +117,11 @@ puts there; `null` empties it.
 `card` is required: an entry that gives only a size names no card, and is
 ignored.
 
-A mouse is in no stock machine, so a program that wants one has to say so — and
-which one, since the three speak different protocols and a program supports the
-one it was written for. MouseGraf 4.4 wants `mouse-nippel`, 1.6 `mouse-mars`.
-The slot is the container's to choose; the page puts one in slot 6 on an Agat-7
+A mouse is in no stock machine, so a program that wants one has to say
+so — and which one, since the three speak different protocols and a
+program supports the one it was written for (for example, MouseGraf 4.4
+wants `mouse-nippel`, 1.6 `mouse-mars`).  The slot is the container's to
+choose; the page puts one in slot 6 on an Agat-7
 and slot 4 on an Agat-9, which is what each model leaves free.
 
 ### The keyboard: `keys` and `controls`
