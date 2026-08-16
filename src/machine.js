@@ -50,7 +50,13 @@
   function Machine(opts) {
     opts = opts || {};
     this.rom = opts.sysmon || new Uint8Array(0x800);
-    this.slotRom = new Uint8Array(0x800);                // $C000-$C7FF window
+    // $C000-$C7FF window. An empty slot's page is open bus and reads $FF
+    // (agat-emulator fills io_sel with empty_read, apple2.c:22) — not $00,
+    // which is a value the memory cards' state registers can legitimately hold
+    // and so would make every empty slot look like an ОЗУ card to a program
+    // scanning for one.
+    this.slotRom = new Uint8Array(0x800);
+    for (var i = 0; i < this.slotRom.length; i++) this.slotRom[i] = 0xff;
 
     // Agat-7 puts its 2K monitor at $F800-$FFFF and leaves $D000-$F7FF open;
     // Agat-9 maps the same 2K as 4K, mirrored, covering $F000-$FFFF. See the

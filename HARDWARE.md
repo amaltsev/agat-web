@@ -213,6 +213,15 @@ window into whichever card sits in that slot.
 This is the stock complement, in `Machine.PROFILES`; an `.agc` or the gear popup
 can move a card or resize it.
 
+An **empty slot's `$Cn00` page reads `$FF`** — open bus, as agat-emulator leaves
+it (`empty_read`, apple2.c:22). That is not a detail: a memory card's state
+register lives in that page and reads back what was last written to it, so a
+program hunting for one writes `$Cn00` to every slot and keeps the pages that
+answer `$00`. An empty slot that answered `$00` would be indistinguishable from
+an ОЗУ card sitting deselected in bank 0, and MouseGraf 1.6 picks the *last*
+such slot it finds — so it would patch its loader to write to a slot with
+nothing in it and load 16K over the top of itself.
+
 ---
 
 ## Video
