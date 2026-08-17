@@ -786,15 +786,14 @@ function eq(what, got, want) {
      [...drawn].filter((s) => !want.has(s)).map(hex), []);
 }
 
-// --- the `keys` reference table, in both docs -------------------------------
-// AGC.md and AGC.ru.md list every name `keys` accepts and what each sends when
-// it is not remapped. A hundred rows of transcription in two languages is
-// exactly the kind of thing that rots quietly, so read them back and put every
-// cell through resolveCode — the same reader a container's own codes go
-// through — against the shipped table.
+// --- the `keys` reference table in the docs ---------------------------------
+// AGC.md lists every name `keys` accepts and what each sends when it is not
+// remapped. A hundred rows of transcription is exactly the kind of thing that
+// rots quietly, so read them back and put every cell through resolveCode — the
+// same reader a container's own codes go through — against the shipped table.
 {
   const K = A.keyboard;
-  const docs = ['AGC.md', 'AGC.ru.md'].map(
+  const docs = ['AGC.md'].map(
     (f) => [f, fs.readFileSync(path.join(H.ROOT, f), 'utf8')]);
 
   // The four-plane tables put one key on a row and four cells after it; the
@@ -820,8 +819,6 @@ function eq(what, got, want) {
   const cell = (v) => v.split(/\s+/).pop().replace(/`/g, '');
 
   const named = docs.map(([f, text]) => [f, rows(text)]);
-  eq('both AGC docs list the same keys',
-     [...named[0][1].keys()].filter((k) => !named[1][1].has(k)), []);
   eq('every key the tables map is listed',
      [...Object.keys(K.SCAN), ...Object.keys(K.EXT_SCAN)]
        .filter((k) => !named[0][1].has(k)), []);

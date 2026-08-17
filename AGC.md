@@ -1,7 +1,5 @@
 # AGC — the Agat Container
 
-*По-русски: [AGC.ru.md](AGC.ru.md).*
-
 Having the disk is not the same as knowing how to run it. Which machine — an
 Agat-7 or an Agat-9, and with how much RAM? And which key on the keyboard in
 front of you sends the byte the program is waiting for? None of that is in a
