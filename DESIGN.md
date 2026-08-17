@@ -666,7 +666,7 @@ node tools/mkagc.js <image> …       # pack an image and its settings into an .
 node tools/mkagc.js a.dsk --diff=b.dsk    # ...with the difference as patches
 
 node tools/tone.js "3,12,0" 16      # RISE OUT's PLAY500 handler on a bare machine
-python3 tools/mkirqtest.py          # rebuild examples/irqtest.dsk
+python3 tools/mkirqtest.py [out]    # the cross-emulator interrupt & sound test
 python3 tools/build_roms.py --data <dir>
 ```
 

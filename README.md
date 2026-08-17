@@ -197,8 +197,8 @@ drives, the model and its memory, and the live remap. Cards are written down
 only where they differ from the stock machine, so a container for an ordinary
 Agat-7 stays short. It asks nothing. A container that was loaded from a file
 keeps its own title and filename; one made from a bare image takes the image's
-name for both, so
-`irqtest.dsk` saves as `irqtest.agc` titled `irqtest.dsk` — rename it
+name for both, so `TESTOZU7_140.dsk` saves as `TESTOZU7_140.agc` titled
+`TESTOZU7_140.dsk` — rename it
 afterwards if it deserves better. From the command line:
 
 ```sh
@@ -227,19 +227,6 @@ Agat-7 passes all three of its branches, and base RAM passes at all three
 fittings. Its menu, transcribed from the 1986 manual, is in
 [examples/TESTOZU7_140.md](examples/TESTOZU7_140.md); the short version is that
 **исполнение starts at 0**, where `0` is 32K — so the stock 64K board is `1`.
-
-`examples/irqtest.dsk` is an interrupt and sound test, and it is meant to be run
-under **other** emulators too — it is a bootable 140K disk because every Agat
-emulator boots one, and it installs its handler through the monitor so it needs
-no particular slot configuration. It flips the speaker every *n* interrupts for
-exactly 1000 interrupts, then is silent for 500, for *n* = 1, 2, 4, round and
-round. Both pitch and duration derive from the interrupt alone, so it reports
-the rate *and* whether the counting matches. Here it gives three brief tones near
-7400, 3950 and 2050 Hz — the carrier is the handler's own length, so those hold
-wherever the interrupt is a level — with the whole round taking about 0.7 s.
-Three leisurely one-second tones at 500, 250 and 125 Hz instead mean that
-emulator is treating the IRQ as an edge, one handler entry per assertion, where
-the hardware re-enters throughout.
 
 ---
 

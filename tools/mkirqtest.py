@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
-"""Build examples/irqtest.dsk — a sound and interrupt test for any Agat emulator.
+"""Build a sound and interrupt test disk for any Agat emulator.
 
 The point is to take RISE OUT out of the picture. It installs its own IRQ handler
 on the sub-frame video interrupt, counts interrupts, and flips the speaker every
 N of them for exactly 1000 interrupts, then stays silent for 500, then moves to
-the next N. The table is 1, 2, 4, so on an Agat-7 whose sub-frame interrupt is
-1 kHz you hear, over and over:
-
-    500 Hz for 1.0 s   -  silence 0.5 s
-    250 Hz for 1.0 s   -  silence 0.5 s
-    125 Hz for 1.0 s   -  silence 0.5 s
+the next N. The table is 1, 2, 4, round and round.
 
 Every number is derived from the interrupt alone, so the pitches say what the
-interrupt rate is and the 1.0 s tones say whether the counting is right. Two
-emulators that disagree about either will not sound the same.
+interrupt rate is and the tone lengths say whether the counting is right. Two
+emulators that disagree about either will not sound the same — which is the whole
+reason for the disk, since the emulator under test cannot be asked to measure
+itself.
+
+Where the sub-frame interrupt is a level, as it is on the hardware and here, the
+handler re-enters for as long as the line counter holds IRQ down, so the carrier
+is the handler's own length and not the assertion rate: three brief tones near
+7400, 3950 and 2050 Hz, the whole round about 0.7 s. An emulator that takes the
+IRQ as an edge enters once per assertion instead and drops to that rate over 2, 4
+and 8 — for the 1 kHz free-running timer some of them use, three leisurely
+one-second tones at 500, 250 and 125 Hz.
+
+The disk is not shipped: it is a diagnostic to be carried to another emulator,
+and it is a few seconds to rebuild. It writes to $TMPDIR unless given a path.
 
 It installs its handler the Apple way, through the monitor: the Agat-7's IRQ
 vector at $FFFE points into ROM at $FA26, which saves A in $45 and then does
@@ -21,7 +29,7 @@ JMP ($03FE). So the handler address goes in $03FE/$03FF and the program needs no
 ЭмПЗУ card and no particular slot configuration — which matters, because a test
 that depends on the machine's setup cannot be used to compare two emulators.
 """
-import sys, os
+import sys, os, tempfile
 
 # --- a two-pass assembler, only the modes this program uses ------------------
 
@@ -206,7 +214,7 @@ img = bytearray(35 * 16 * 256)
 img[0:len(boot)] = boot
 
 dest = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'examples', 'irqtest.dsk')
+    tempfile.gettempdir(), 'irqtest.dsk')
 with open(dest, 'wb') as f:
     f.write(img)
 print(f'{dest}: {len(code)} bytes of code at ${ORG:04X}, bootable from track 0 sector 0')
