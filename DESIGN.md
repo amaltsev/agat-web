@@ -615,8 +615,17 @@ controls card and the keyboard go when there is nothing to draw.
 
 The `url` becomes an `<a>` only where it is `http`/`https`. A container is a file
 from somewhere else, and a `javascript:` URL made clickable would be that file
-running code on this page; anything else is printed as the text it is. The link
-drops the scheme and a trailing slash, which on a line this short are noise.
+running code on this page; anything else is printed as the text it is. On its own
+row the link drops the scheme and a trailing slash, which there are noise.
+
+`info` and `hint` go through `prose()`, which finds bare addresses in them and
+links those the same way. The match has to start at a scheme, so nothing else in
+a sentence can become one, and `trimTail` gives back a trailing `.,;:!?»` and a
+closing bracket the address did not open — `see https://x/y.` ends in a full
+stop, and `https://x/a_(b)` does not. Text and links are appended as separate
+nodes, never as markup, so the paragraph stays the plain text AGC.md promises;
+in prose the address keeps the scheme, because there it is part of a sentence
+rather than a field of its own.
 
 `node tools/check.js keys <file.agc>` draws the card under the panel, and
 `tools/vectors.js` builds it against a stub DOM — the card is what the page shows

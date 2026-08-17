@@ -144,7 +144,14 @@ function keysCmd(loaded) {
     set innerHTML(v) { this.children = []; },
     get innerHTML() { return ''; },
   });
-  ctx.document = { createElement: el, addEventListener() {}, removeEventListener() {} };
+  ctx.document = {
+    createElement: el,
+    // The card's prose is text nodes and links side by side, so a stub that
+    // only makes elements cannot draw a container that wrote an address into
+    // its `info`.
+    createTextNode: (t) => Object.assign(el(), { textContent: t }),
+    addEventListener() {}, removeEventListener() {},
+  };
 
   // Either a container's keys and controls, or a map written on the command line
   // the way the container writes it: KeyW=^ names a remap, a bare Space declares
@@ -189,12 +196,16 @@ function keysCmd(loaded) {
   // And the card below the panel: what the container says it is, ending in the
   // hint, which is the other half of what a player is shown. Read back off the
   // built nodes rather than off the fields above, so this says what the page
-  // draws — a row is its own children, spaced the way the flex line spaces them.
+  // draws. A row is its own children: the author-date-url line is spaced the
+  // way the flex line spaces it, and the prose runs together, a link in a
+  // sentence being part of the sentence.
   const card = el();
   A.drawInfo(card, about);
   for (const kid of card.children) {
     console.log('  ' + (kid.children.length
-      ? kid.children.map((k) => k.textContent).join(' ') : kid.textContent));
+      ? kid.children.map((k) => k.textContent)
+                    .join(kid.className === 'info-who' ? ' ' : '')
+      : kid.textContent));
   }
 
   const app = { machine: { kbdLatch: 0, cyrillic: !!flags.rus }, reset() {} };

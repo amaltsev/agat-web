@@ -193,7 +193,8 @@ which is what the program is at whatever length that takes, and a **hint** —
 one line of plain text, printed heavier because it is the line worth acting on,
 for what no list of codes says, like which layout the program comes up in or
 which disk to boot from. A key's own `hint` is the same word on the on-screen
-board.
+board. Both are plain text, with one thing recognised in them: a bare
+`http`/`https` address becomes a link.
 Nothing but `agc` and `media` is required.
 
 **Save .agc** writes one out from the machine as it stands: what is in the

@@ -308,7 +308,12 @@ in it changed — the things a title has no room for and `notes` used to have to
 swallow. A container that carries only this gets a card with only this on it.
 
 Same **plain text** rule as the hint below, and the same reason: whitespace
-collapses to one paragraph, and markup is printed rather than obeyed.
+collapses to one paragraph, and markup is printed rather than obeyed. One thing
+in it is recognised: a bare `http`/`https` address becomes a link, in the hint
+as well as here, because a container that says where a program is written up
+says it in the middle of a sentence as often as in its `url`. The text is left
+as it was typed, scheme and all — in prose the address is part of the sentence —
+and the full stop that ends the sentence stays out of the link.
 
 `info` and `notes` are easy to mix up, and the split is who is reading. `info`
 is shown, so it is written for whoever opens the program; `notes` is not, so it
@@ -330,6 +335,8 @@ for any one of the six things on it.
 **Plain text.** No paragraph breaks, no Markdown, no HTML: the page prints it as
 text, so a `<b>` shows up as `<b>`. Whitespace collapses, so a hint wrapped
 across lines in the file is one line on the screen and is written back as one.
+A bare `http`/`https` address in it becomes a link, as it does in
+[`info`](#info--what-the-program-is), and nothing else is interpreted.
 
 It is the same word as a key's `hint`, and the same rule: a hint is shown. This
 one is the container's, and `keys.<key>.hint` is one key's. `notes` is the other

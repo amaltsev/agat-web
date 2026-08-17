@@ -375,11 +375,17 @@ function eq(what, got, want) {
     get innerHTML() { return ''; },
   });
   const had = ctx.document;
-  ctx.document = { createElement: (t) => Object.assign(el(), { tag: t }) };
+  ctx.document = {
+    createElement: (t) => Object.assign(el(), { tag: t }),
+    createTextNode: (t) => Object.assign(el(), { tag: '#text', textContent: t }),
+  };
   // A row is its own children when it has any, so the card reads back as the
-  // lines the page draws.
+  // lines the page draws. The prose rows run their pieces together, since a
+  // link in a sentence is part of the sentence; the author-date-url row is
+  // spaced, since its separators are drawn rather than written.
   const lines = (host) => host.children.map((k) => k.children.length
-    ? k.children.map((c) => c.textContent).join(' ') : k.textContent);
+    ? k.children.map((c) => c.textContent).join(k.className === 'info-who' ? ' ' : '')
+    : k.textContent);
   const classes = (host) => host.children.map((k) => k.className);
 
   const host = el();
@@ -405,6 +411,36 @@ function eq(what, got, want) {
   eq('a url that is not the web is printed and not linked',
      [host.children[1].children[0].tag, host.children[1].children[0].href],
      ['span', undefined]);
+
+  // A bare address in the prose is the one thing recognised in it. The text
+  // stays as the container wrote it — scheme and all, because there it is part
+  // of a sentence — and the full stop after it belongs to the sentence.
+  A.drawInfo(host, {
+    info: 'Written up at https://agatcomp.ru/agat/x.shtml. Worth a read.',
+    hint: 'See https://example.org/help',
+  });
+  eq('the prose is unchanged by being linked', lines(host),
+     ['Written up at https://agatcomp.ru/agat/x.shtml. Worth a read.',
+      'See https://example.org/help']);
+  eq('and the address in it is a link, without the sentence around it',
+     host.children[0].children.map((k) => k.tag + '|' + (k.href || '')),
+     ['#text|', 'a|https://agatcomp.ru/agat/x.shtml', '#text|']);
+  eq('a hint links the same way',
+     host.children[1].children.map((k) => k.tag + '|' + (k.href || '')),
+     ['#text|', 'a|https://example.org/help']);
+
+  // A bracket the address opened is the address's own; one it did not is the
+  // sentence's. Both addresses in a paragraph are links.
+  A.drawInfo(host, { info: '(see https://a.ru/x) and https://b.ru/a_(b)!' });
+  eq('a link stops where the sentence resumes',
+     host.children[0].children.filter((k) => k.tag === 'a').map((k) => k.href),
+     ['https://a.ru/x', 'https://b.ru/a_(b)']);
+
+  // Only a scheme starts a link, and only the two the page will follow.
+  A.drawInfo(host, { info: 'Try javascript:alert(1) or agatcomp.ru today' });
+  eq('nothing else in a sentence becomes a link',
+     [host.children[0].children.length, lines(host)[0]],
+     [1, 'Try javascript:alert(1) or agatcomp.ru today']);
 
   // Only what the container named: no empty rows, and no separators around
   // something that is not there.
