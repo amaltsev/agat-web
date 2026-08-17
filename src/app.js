@@ -381,14 +381,37 @@
   // `over` is what beats a container about the machine — the page hands it what
   // the address said. It reaches the container branch and nowhere else, and
   // never travels with `from`: a container inside a container is refused.
+  //
+  // A promise, because a container's payload may be gzipped: everything a
+  // caller does after a load — the status line, the address, the keyboard —
+  // waits on it, and every failure arrives as a rejection rather than as a
+  // throw out of a function that had already returned.
   App.prototype.load = function (bytes, name, from, over) {
-    var s = AGAT.sniff(bytes, name);
+    var self = this;
+    return Promise.resolve().then(function () {
+      return self.loadOne(bytes, name, from, over);
+    });
+  };
+
+  // The load itself. `load` is the wrapper that turns everything this can throw
+  // into a rejection; `applyAgc` calls this one directly because it is already
+  // inside the chain that catches them.
+  App.prototype.loadOne = function (bytes, name, from, over) {
+    var s = AGAT.sniff(bytes, name), self = this;
     if (!s.kind) {
       throw new Error(name + ': not a recognised Agat image (' + bytes.length + ' bytes)');
     }
     if (s.kind === 'agc') {
       if (from) throw new Error(name + ': a container inside a container');
-      return this.applyAgc(s.agc, over);
+      return AGAT.agc.parse(bytes, name).then(function (c) {
+        // `looks` said this was one and the JSON says otherwise: some other
+        // file that mentions `agc` in its first few lines.
+        if (!c) {
+          throw new Error(name + ': not a recognised Agat image (' +
+                          bytes.length + ' bytes)');
+        }
+        return self.applyAgc(c, over);
+      });
     }
     // A file dropped on its own belongs to no container, and the last one's
     // title and remap are about a different program: a game's movement keys
@@ -507,9 +530,19 @@
     this.notes = c.notes;
     this.hint = c.hint;
     this.fromAgc = c.name;
-    for (var i = 0; i < c.media.length; i++) {
-      this.load(c.media[i].payload, c.media[i].name, c.media[i]);
-    }
+    // In order, and one at a time: the media are loaded into a machine that
+    // each of them changes — a drive is taken, a model is settled — and the
+    // status line below is about all of them together.
+    var self = this, chain = Promise.resolve();
+    c.media.forEach(function (m) {
+      chain = chain.then(function () { return self.loadOne(m.payload, m.name, m); });
+    });
+    return chain.then(function () { return self.agcLoaded(c, keys, ctl); });
+  };
+
+  // The line a container's load leaves behind: what it is, and what it brought
+  // with it that the page will be drawing.
+  App.prototype.agcLoaded = function (c, keys, ctl) {
     this.onStatus(this.credit() +
                   (keys.ok ? ' — ' + keys.ok + ' key' + (keys.ok > 1 ? 's' : '') +
                              (keys.remapped ? ', ' + keys.remapped + ' remapped' : '')
@@ -592,6 +625,8 @@
 
   // The machine as it stands, as a container: what is in the drives, the model
   // and RAM it is running as, the live remap and the controls it came in with.
+  // A promise: what a payload is written as is decided by trying it, and the
+  // platform's gzip is a stream.
   App.prototype.toAgc = function () {
     var media = [], k;
     for (k in this.sources) media.push(this.writeBack(k));

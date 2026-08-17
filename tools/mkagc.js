@@ -19,6 +19,12 @@
 //   --patch=AT:HEX        patch, repeatable: --patch=45312:A96085
 //   --diff=FILE           derive the patches by comparing FILE with the image
 //   --width=N             base64 line width, a multiple of 4
+//   --plain               never compress: a container to be hand-edited or
+//                         read in a diff, whatever it costs
+//   --gz                  always compress, even where it barely pays
+//
+// Left alone, a payload or a patch is compressed when that makes it smaller by
+// a tenth, which for a disk image is nearly always and by a factor of ten.
 //
 // The writer is src/agc.js, the same one the page's Save button goes through,
 // so a container written here and one written there are the same file.
@@ -72,13 +78,25 @@ for (const k of flags.key || []) {
                     : (hint ? { hint: hint } : null);
 }
 
+// Patches are bytes everywhere but in the file, so a --patch is decoded here
+// and written back out by the same rule that decides every other record.
 const explicit = (flags.patch || []).map((p) => {
   const at = p.indexOf(':');
   if (at < 0) { console.error('--patch wants AT:HEX, got ' + p); process.exit(2); }
-  return { at: Number(p.slice(0, at)), hex: p.slice(at + 1) };
+  try {
+    return { at: Number(p.slice(0, at)), bytes: A.agc.fromHex(p.slice(at + 1)) };
+  } catch (e) {
+    console.error('--patch=' + p + ': ' + e.message);
+    return process.exit(2);
+  }
 });
 
-try {
+// undefined lets the size rule decide, which is what the Save button does.
+const gz = flags.gz ? true : (flags.plain ? false : undefined);
+
+main().catch((e) => { console.error(e.message); process.exit(1); });
+
+async function main() {
   let modelHint = 0;                 // not the container's `hint`: the 7a/9a
   const media = files.map((f, i) => {
     const bytes = new ctx.Uint8Array(fs.readFileSync(f));
@@ -92,8 +110,7 @@ try {
     if (flags.diff) {
       if (i > 0) throw new Error('--diff applies to one image, and this is ' + f);
       patches = patches.concat(
-        diff(bytes, new ctx.Uint8Array(fs.readFileSync(flags.diff)),
-             Number(flags.width) || 0));
+        diff(bytes, new ctx.Uint8Array(fs.readFileSync(flags.diff))));
     }
     // The patches have to apply to what is being packed, or the container is
     // broken in a way only whoever loads it would find out.
@@ -102,7 +119,7 @@ try {
   });
 
   const model = Number(flags.model) || modelHint || 7;
-  process.stdout.write(A.agc.build({
+  process.stdout.write(await A.agc.build({
     title: flags.title || '',
     author: flags.author || '',
     date: flags.date || '',
@@ -114,8 +131,6 @@ try {
     keys: keys,
     media: media,
     width: Number(flags.width) || 0,
+    gz: gz,
   }));
-} catch (e) {
-  console.error(e.message);
-  process.exit(1);
 }

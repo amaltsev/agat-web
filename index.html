@@ -411,6 +411,7 @@
 <script src="src/drive.js"></script>
 <script src="src/aim840.js"></script>
 <script src="src/gcr140.js"></script>
+<script src="src/unpack.js"></script>
 <script src="src/agc.js"></script>
 <script src="src/image.js"></script>
 <script src="src/disk840.js"></script>
@@ -421,7 +422,6 @@
 <script src="src/keyboard.js"></script>
 <script src="src/keyview.js"></script>
 <script src="src/audio.js"></script>
-<script src="src/unpack.js"></script>
 <script src="src/fil.js"></script>
 <script src="src/app.js"></script>
 <script>
@@ -682,8 +682,8 @@
     }, function (e) {
       throw new Error(path + ': ' + e.message + ' — on file:// use Open…');
     }).then(function (b) {
-      app.load(new Uint8Array(b), path.split('/').pop(), null, over);
-      afterLoad();
+      return app.load(new Uint8Array(b), path.split('/').pop(), null, over)
+        .then(afterLoad);
     }).catch(function (e) { say(e.message, true); });
   }
 
@@ -889,13 +889,19 @@
   document.getElementById('save').addEventListener('click', function () {
     var name = app.agcName();
     if (!name) { say('nothing loaded to save', true); return; }
-    var text = app.toAgc();
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-    a.download = name;
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
-    say('saved ' + name + ' — ' + Math.round(text.length / 1024) + 'K');
+    // Writing is asynchronous — a payload is compressed if that makes it
+    // smaller — so the download starts a moment after the click rather than
+    // inside it. That is the one thing here a browser policing downloads
+    // outside a user gesture could take against, and where to look first if a
+    // save ever goes quiet on one.
+    app.toAgc().then(function (text) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      a.download = name;
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+      say('saved ' + name + ' — ' + Math.round(text.length / 1024) + 'K');
+    }).catch(function (e) { say(e.message, true); });
   });
 
   document.getElementById('boot').addEventListener('click', function () { app.boot(); });

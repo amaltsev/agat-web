@@ -14,6 +14,7 @@ const MODULES = [
   'src/drive.js',
   'src/aim840.js',
   'src/gcr140.js',
+  'src/unpack.js',
   'src/agc.js',
   'src/image.js',
   'src/disk840.js',
@@ -24,7 +25,6 @@ const MODULES = [
   'src/keyboard.js',
   'src/keyview.js',
   'src/audio.js',
-  'src/unpack.js',
   'src/fil.js',
   'src/app.js',
 ];

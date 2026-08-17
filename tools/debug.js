@@ -49,10 +49,10 @@ function runTo(m, targetPC, maxCycles) {
   return false;
 }
 
-loadRoms(ctx).then((roms) => {
+loadRoms(ctx).then(async (roms) => {
   // Same boot path as tools/check.js: insert the media, enter the controller's
   // ROM in whichever slot took it.
-  const sniffed = H.sniffFile(ctx, image);
+  const sniffed = await H.sniffFile(ctx, image);
   const model = Number(process.env.AGAT_MODEL) || sniffed.hintModel || 9;
   const m = makeMachine(ctx, roms, { model: model });
   let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;

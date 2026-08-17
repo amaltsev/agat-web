@@ -167,14 +167,20 @@ unfamiliar game actually has.
 `date` is **text**, not a number: what is known about an old program is as often
 `"circa 1985"` or `"1990-92"` as it is a year.
 
-`media[].data` is plain base64 in short lines, and the payload is the image
-**as it was found**. Anything changed goes in `media[].patches` as
+`media[].data` is base64 in short lines, and the payload is the image **as it
+was found**. Anything changed goes in `media[].patches` as
 `{ "at": 45312, "hex": "A9 60 85 84" }`, applied after decoding — so a container
 carries a pristine copy of what it came from and a small change stays legible.
 A patch past 32 bytes is base64 like the payload instead. What a program writes
 to an unlocked disk is saved the same way: the written track is read back into
 the sectors it was built from, so a saved game costs a patch and not a second
 copy of the disk.
+
+Bulk is gzipped where that helps: a payload or a patch that gets at least a
+tenth smaller is written as `gz` instead of `data`, base64 either way. An Agat
+disk is mostly empty, so a 140K game is around 20K of container rather than
+217K — while everything a person reads or edits stays text, and a short patch
+stays hex.
 
 `title`, `author`, `date`, `url` and `notes` are for the record — often the
 container is the only place left that says who wrote a program and when. A

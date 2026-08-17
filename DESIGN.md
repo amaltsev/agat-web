@@ -61,7 +61,8 @@ Load order matters only in that a module's dependencies must already be on
 | `drive.js` | normalised `Media` container, head position, write lock |
 | `aim840.js` | DSK840/NIB840 → AIM words |
 | `gcr140.js` | 4-and-4 and 6-and-2 track synthesis, and reading it back |
-| `agc.js` | the `.agc` container: read, write, base64, patches |
+| `unpack.js` | gzip both ways, and the embedded ROM blobs |
+| `agc.js` | the `.agc` container: read, write, base64, gzip, patches |
 | `image.js` | sniff and normalise any dropped file |
 | `disk840.js` | 840K Teac controller |
 | `disk140.js` | 140K Shugart controller |
@@ -71,7 +72,6 @@ Load order matters only in that a module's dependencies must already be on
 | `keyboard.js` | browser `code` → scancode → Agat keymap, and the same table read backwards |
 | `keyview.js` | the on-screen keyboard: three boards over that one table, and the container's controls as a card |
 | `audio.js` | `$C030` edges → PCM |
-| `unpack.js` | embedded ROM decompression |
 | `fil.js` | `.fil` loading |
 | `app.js` | browser glue: run loop, media routing, diagnostics |
 
@@ -299,12 +299,22 @@ result, and the controllers only ever see a `Media`.
 
 The format itself is specified in [AGC.md](AGC.md); this is how it is wired in.
 
-An `.agc` is JSON, so `sniff` asks `agc.parse` before it consults the size
-table — a table of disk sizes has no business being asked about text. What comes
-out is a machine and a list of media, and `App.applyAgc` sets the model, the RAM
-size and both interrupt settings *before* build(), so the machine is taken apart
-once rather than four times, and then hands each medium to the ordinary `load()`
-path. A `.fil` in a container therefore works because `.fil` already works.
+An `.agc` is JSON, so `sniff` asks `agc.looks` before it consults the size
+table — a table of disk sizes has no business being asked about text. `looks` is
+the cheap half: the file starts with `{` and says `"agc":` in its first 4K.
+Reading it is `agc.parse`, which is a **promise**, because a payload may be
+gzipped and the platform's gzip is a stream — so `App.load` is one too, and
+every caller of it waits. What comes out is a machine and a list of media, and
+`App.applyAgc` sets the model, the RAM size and both interrupt settings *before*
+build(), so the machine is taken apart once rather than four times, and then
+hands each medium to the ordinary `load()` path, in order. A `.fil` in a
+container therefore works because `.fil` already works.
+
+Compression lives at those two edges and nowhere else. `parse` decodes each
+payload and each patch — `hex`, `data` or `gz` — and hands back bytes; `build`
+is the only thing that decides how bytes are written, by the size rule in
+[AGC.md](AGC.md#media). In between, a patch is `{ at, bytes }`, so `diff`,
+`applyPatches` and `writeBack` never see an encoding and stay synchronous.
 
 `App.sources` is the other half: the file **as it arrived**, keyed by slot,
 because nothing else keeps it. `drives[slot]` holds a name and a kind, the
@@ -668,8 +678,10 @@ census, and a font case asserting glyph `$C1` renders correctly at `m0 = $80`.
 
 The `.agc` cases pin what a hand-written container may rely on — the line width,
 a build/parse round-trip, that a patch reaches the payload without touching the
-packed copy, and that a `hint` survives beside `notes` and collapses to the one
-line the panel prints — and the remap cases pin both directions of it at once: `W`
+packed copy, that `hex`, `data` and `gz` all say the same bytes and two of them
+at once is refused, which of the three the writer reaches for at each size, that
+a note left on a patch survives being saved, and that a `hint` survives beside
+`notes` and collapses to the one line the panel prints — and the remap cases pin both directions of it at once: `W`
 sending `$DE` in every plane, `$5E` naming `W` as a route, `$57` losing ЛАТ `W`,
 and all three coming back when the remap is dropped.
 

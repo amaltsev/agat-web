@@ -100,8 +100,8 @@ const keyCode = H.keyCode;
 
 if (!target) { console.error('need an image'); process.exit(2); }
 
-H.loadRoms(ctx).then((roms) => {
-  const sniffed = H.sniffFile(ctx, target);
+H.loadRoms(ctx).then(async (roms) => {
+  const sniffed = await H.sniffFile(ctx, target);
   const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
   const slots = {};
   const card = (n, name, kb) => {

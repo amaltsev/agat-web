@@ -42,6 +42,7 @@ const rest = argv.filter((a) => {
 });
 
 const hex = (n, w) => '$' + (n >>> 0).toString(16).toUpperCase().padStart(w || 4, '0');
+const die = (e) => { console.error(e.message || e); process.exit(1); };
 
 // --- subcommands that need no machine ---------------------------------------
 
@@ -61,9 +62,17 @@ if (cmd === 'modules') {
 
 const ctx = H.loadModules();
 
+// The commands that read a container are asynchronous, because reading one is:
+// a payload may be gzipped. Each starts its own chain and then returns, rather
+// than falling through to the boot at the bottom of the file.
 if (cmd === 'sniff') {
+  sniff().catch(die);
+  return;
+}
+
+async function sniff() {
   for (const p of rest) {
-    const s = H.sniffFile(ctx, p);
+    const s = await H.sniffFile(ctx, p);
     const size = fs.statSync(p).size;
     let extra = '';
     if (s.kind === 'fil') {
@@ -106,6 +115,20 @@ if (cmd === 'sniff') {
 // a container will actually put in front of a player, without a browser. Neither
 // touches any DOM until it is built, so a stub document is enough.
 if (cmd === 'keys') {
+  readContainers(rest).then(keysCmd).catch(die);
+  return;
+}
+
+// Every .agc named on the command line, read before anything is drawn: drawing
+// a board is synchronous and reading a container is not.
+function readContainers(args) {
+  const want = args.filter((a) => !/=/.test(a) && /\.agc$/i.test(a));
+  return Promise.all(want.map(
+    (a) => ctx.AGAT.agc.parse(fs.readFileSync(a), path.basename(a))
+  )).then((cs) => new Map(want.map((a, i) => [a, cs[i]])));
+}
+
+function keysCmd(loaded) {
   const A = ctx.AGAT;
   const el = () => ({
     children: [], style: {}, className: '', textContent: '', title: '',
@@ -133,7 +156,7 @@ if (cmd === 'keys') {
   for (const a of rest) {
     if (/=/.test(a)) { const [k, v] = a.split('='); keys[k] = v; continue; }
     if (!/\.agc$/i.test(a)) { keys[a] = null; continue; }
-    const c = A.agc.parse(fs.readFileSync(a), path.basename(a));
+    const c = loaded.get(a);
     Object.assign(keys, c.keys);
     if (Object.keys(c.controls).length) Object.assign(controls = controls || {}, c.controls);
     // Several containers on one line are one panel here, as their keys are.
@@ -208,6 +231,14 @@ if (cmd === 'keys') {
 // browser makes tedious to reach and easy to get wrong. The functions are found
 // by name and fail loudly if they are renamed.
 if (cmd === 'kbdmenu') {
+  // The two containers this drives, read up front for the same reason the
+  // `keys` command reads its own: the menu's logic is synchronous.
+  readContainers(['rise-out.agc', 'snake.agc'].map(
+    (f) => path.join(H.ROOT, 'examples', f))).then(kbdmenuCmd).catch(die);
+  return;
+}
+
+function kbdmenuCmd(loaded) {
   const A = ctx.AGAT;
   const page = fs.readFileSync(path.join(H.ROOT, 'index.html'), 'utf8');
   const grab = (name) => {
@@ -303,7 +334,7 @@ if (cmd === 'kbdmenu') {
     wantKbd = pick(kbdSel, urlKbd) ? '' : (urlKbd || '');
   };
   const load = (f) => {
-    const c = A.agc.parse(fs.readFileSync(path.join(H.ROOT, 'examples', f)), f);
+    const c = loaded.get(path.join(H.ROOT, 'examples', f));
     A.keyboard.setRemap(c.keys);
     A.keyboard.setControls(c.controls);
     app.hint = c.hint;
@@ -431,8 +462,8 @@ const target = rest[0];
 const cycles = Number(rest[1] || 40e6);
 if (!target) { console.error('need an image'); process.exit(2); }
 
-H.loadRoms(ctx).then((roms) => {
-  const sniffed = H.sniffFile(ctx, target);
+H.loadRoms(ctx).then(async (roms) => {
+  const sniffed = await H.sniffFile(ctx, target);
   const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
   const agc = sniffed.agc;
   const m = H.makeMachine(ctx, roms, {
@@ -525,7 +556,7 @@ H.loadRoms(ctx).then((roms) => {
                    ? back.patches.length + ' patch' + (back.patches.length === 1 ? '' : 'es')
                    : 'as nibbles — a track would not decode back to sectors'));
     for (const p of back.patches.slice(0, 24)) {
-      const n = ctx.AGAT.agc.patchBytes(p).length;
+      const n = p.bytes.length;
       const where = sniffed.kind === 'dsk140'
         ? '  T' + Math.floor((p.at - off) / 4096) +
           ' S' + Math.floor(((p.at - off) % 4096) / 256) : '';

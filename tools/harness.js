@@ -9,7 +9,8 @@ const ROOT = path.dirname(__dirname);
 
 function loadModules() {
   const sandbox = {
-    console, atob, btoa, Response, DecompressionStream, TextDecoder, TextEncoder,
+    console, atob, btoa, Response, TextDecoder, TextEncoder,
+    CompressionStream, DecompressionStream,
     Uint8Array, Uint16Array, Uint32Array, Uint8ClampedArray, Int32Array,
     Promise, Math, Date, JSON, Object, Array, String, Number, Error,
     setTimeout, clearTimeout,
@@ -31,7 +32,9 @@ function loadRoms(ctx) {
   return ctx.AGAT.loadRoms(ctx.window.AGAT_ROMS);
 }
 
-// Read a file off disk and classify it exactly as the browser does.
+// Read a file off disk and classify it exactly as the browser does. A promise,
+// because reading a container is one — its payload may be gzipped — and the
+// browser's own load path is a promise for the same reason.
 //
 // An .agc is unwrapped to its first medium, with the container left on the
 // result: a tool wants the image, and the machine the container names is a
@@ -41,17 +44,19 @@ function loadRoms(ctx) {
 function sniffFile(ctx, p, displayName) {
   const bytes = new ctx.Uint8Array(fs.readFileSync(p));
   const s = ctx.AGAT.sniff(bytes, displayName || String(p));
-  if (s.kind !== 'agc') return s;
-  const first = s.agc.media[0];
-  if (!first) throw new Error(p + ': container carries no media');
-  const inner = ctx.AGAT.sniff(first.payload, first.name);
-  inner.hintModel = s.agc.machine.model || inner.hintModel;
-  inner.agc = s.agc;
-  return inner;
+  if (s.kind !== 'agc') return Promise.resolve(s);
+  return ctx.AGAT.agc.parse(bytes, s.name).then((c) => {
+    const first = c.media[0];
+    if (!first) throw new Error(p + ': container carries no media');
+    const inner = ctx.AGAT.sniff(first.payload, first.name);
+    inner.hintModel = c.machine.model || inner.hintModel;
+    inner.agc = c;
+    return inner;
+  });
 }
 
 function mountFile(ctx, p) {
-  return ctx.AGAT.mount(sniffFile(ctx, p));
+  return sniffFile(ctx, p).then((s) => ctx.AGAT.mount(s));
 }
 
 // Build a machine with the stock card complement for its model — the same

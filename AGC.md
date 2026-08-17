@@ -9,8 +9,10 @@ An `.agc` file is one program and everything needed to run it: the disk image
 (with its patches, and with whatever a program has written to it), the machine,
 the settings, and the keyboard.
 
-It is JSON. Drop one on [the emulator](https://amaltsev.github.io/agat-web/) and
-it runs.
+It is JSON: everything a person writes or reads is text in the file, and only
+the disk image inside it is packed — base64, gzipped when that makes it smaller,
+which for an Agat disk is by ten times or more. Drop one on
+[the emulator](https://amaltsev.github.io/agat-web/) and it runs.
 
 The easiest way to get started is to load a bare image into the emulator and
 press **Save AGC**: the container it writes is a text file you can edit.
@@ -56,6 +58,11 @@ press **Save AGC**: the container it writes is a text file you can edit.
 
 Only `agc` is required, and in practice `media`: everything else has a sensible
 default, and a container that carries nothing but an image is a valid one.
+
+The `data` above is a 140K disk, and a real container carries one as `"gz"`
+instead — the same bytes gzipped before the base64 — because that is ten times
+smaller. [`media`](#media) describes both, and which one appears is only ever a
+question of which is shorter.
 
 ---
 
@@ -304,12 +311,29 @@ poked straight into memory.
 |---|---|
 | `name` | the original filename. The **format is detected by size, not by this** — Agat images in the wild are routinely misnamed. |
 | `data` | base64, as an array of lines |
-| `patches` | changes to apply after decoding, in order; hex or base64 |
+| `gz` | the same bytes gzipped, then base64. `data` or `gz`, never both. |
+| `patches` | changes to apply after decoding, in order; hex, base64 or gzipped |
 
-`data` is plain base64 — not compressed, so a container stays a text file that
-ordinary tools can look inside. Lines are 76 characters, which is 57 bytes and a
-whole number of base64 groups, so each line stands on its own. A single long
-string is accepted on reading; hand-wrapped lines of any width are too.
+Lines are 76 characters, which is 57 bytes and a whole number of base64 groups,
+so each line stands on its own. A single long string is accepted on reading;
+hand-wrapped lines of any width are too.
+
+**`data` or `gz` is a size decision**, and the writer makes it: gzip is used
+when it saves at least a tenth, and `data` otherwise. An Agat disk is mostly
+empty and shrinks by ten times or more — a 140K disk that costs 208K as base64
+costs 20K as `gz`, which is the difference between a container that costs more
+than the disk it carries and one that costs a tenth of it. A `.fil` of packed
+code may not clear the bar, and then it stays readable. Nothing else in a
+container is ever compressed: the fields a person reads and edits are text
+either way, and they are a few hundred bytes.
+
+To read a `gz`: base64-decode it, then gunzip. On the command line, taking a
+container's first payload apart is
+
+```sh
+python3 -c 'import json,sys;print("".join(json.load(open(sys.argv[1]))["media"][0]["gz"]))' \
+  game.agc | base64 -d | gunzip > game.dsk
+```
 
 Anything the emulator takes, a container carries: `.aim`, `.dsk` and `.nib` at
 140K and 840K, and `.fil` programs. A container inside a container is refused.
@@ -318,17 +342,25 @@ Anything the emulator takes, a container carries: `.aim`, `.dsk` and `.nib` at
 
 ```json
 "patches": [ { "at": 45312, "hex": "A9 60 85 84" },
-             { "at": 46080, "data": ["…", "…"] } ]
+             { "at": 46080, "data": ["…", "…"] },
+             { "at": 49152, "gz":   ["…", "…"] } ]
 ```
 
-`at` is a byte offset into the decoded payload, and the bytes to write are
-either `hex` — whitespace and commas allowed, so they can be grouped the way
-they mean something — or `data`, base64 in the same wrapped form as a payload.
-A reader takes both. A record that gives both at once is an error, not a
-preference to resolve.
+`at` is a byte offset into the decoded payload, and the bytes to write are one
+of `hex` — whitespace and commas allowed, so they can be grouped the way they
+mean something — `data`, base64 in the same wrapped form as a payload, or `gz`,
+gzipped and then base64. A reader takes all three. A record that gives two at
+once is an error, not a preference to resolve.
 
-The writer picks by size: up to 32 bytes hex, above that base64. A poke stays
-something to read, and a rewritten sector does not cost three characters a byte.
+The writer picks by size, and it is the same rule the payload gets: up to 32
+bytes hex, above that whichever of base64 and gzip is smaller by a tenth. A poke
+stays something to read, a rewritten sector does not cost three characters a
+byte, and a rewritten track — 6K of base64 — drops by a third again. In practice
+dense 6502 code under a kilobyte stays `data`, and a written disk track goes to
+`gz`.
+
+Any other key on a patch record is left alone — a container is hand-edited, and
+a `"why"` beside the bytes should survive being loaded and saved.
 
 The payload stays **the image exactly as it was found**, and changes live here.
 That is the whole point of the split: a container carries a pristine copy of
@@ -356,7 +388,8 @@ this having to know: media are identified by size.
 
 **Save AGC** writes a container from the machine as it stands: what is in the
 drives, the model and RAM, the live remap, and anything a program has written
-to an unlocked disk. It asks nothing.
+to an unlocked disk. It asks nothing — including about compression, which is
+decided per payload and per patch by whether it pays.
 
 A container that was loaded from a file keeps its own title and filename. One
 made from a bare image takes the image's name for both, so `game.dsk` saves as
@@ -376,6 +409,10 @@ node tools/mkagc.js game.dsk \
 `--patch=AT:HEX` states a patch directly; `--diff=<modified image>` works the
 patches out by comparing a changed copy against the original, which is how a
 patch is usually arrived at.
+
+`--plain` writes every payload and patch as base64 whatever it costs, for a
+container meant to be hand-edited or read in a diff; `--gz` compresses even
+where the saving is slight. Left alone, the size rule decides.
 
 ---
 
@@ -527,7 +564,9 @@ which is the machine having one `←`.
 ## Notes for implementers
 
 - The version is `agc`. A reader should refuse a file whose version it does not
-  know rather than guess at it.
+  know rather than guess at it. There is only the one so far: compression
+  arrived without moving it, because which encoding a record uses is written in
+  the record and needs no number to tell it apart.
 - Identify a container by the `agc` key, not by the extension.
 - Unknown fields should be left alone, not dropped. A container is often
   hand-edited, and a reader that silently discards what it does not understand
@@ -536,8 +575,13 @@ which is the machine having one `←`.
   is easy to guess wrong in a second implementation.
 - A `hint` is shown and `notes` is not. Keep both, and do not let one be read
   as the other.
-- A patch carries `hex` or `data`, never both. Read either; refuse a record that
-  gives the two.
+- A payload carries `data` or `gz`, and a patch one of `hex`, `data` or `gz` —
+  never two. Read any of them; refuse a record that gives more than one.
+- Which encoding to *write* is a size decision and nothing else. The forms mean
+  the same bytes, so a reader must take whichever it is handed, and a writer
+  that only ever emitted `data` would still produce files this one reads.
 
-The reference implementation is [`src/agc.js`](src/agc.js) — about 200 lines,
-no dependencies, and the same file reads and writes.
+The reference implementation is [`src/agc.js`](src/agc.js) — about 500 lines,
+no dependencies, and the same file reads and writes. Both directions are
+asynchronous there, because gzip in a browser is a stream; everything between
+them works in plain bytes, and a patch in memory is `{ at, bytes }`.

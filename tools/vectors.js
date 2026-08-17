@@ -10,6 +10,12 @@ const H = require('./harness');
 const ctx = H.loadModules();
 const A = ctx.AGAT;
 
+// An image off disk, sniffed. `H.sniffFile` is a promise because a container's
+// payload may need inflating first; the files here are images, and the sniffer
+// answers for one straight away.
+const sniffImage = (p) =>
+  A.sniff(new ctx.Uint8Array(fs.readFileSync(p)), path.basename(p));
+
 // gcr140's output over the bundled example, whose chain of trust runs back to
 // the encoder being verified byte-for-byte against a compiled dsk2nib. The
 // digest is over an input file, so replacing that example replaces this: the
@@ -361,7 +367,7 @@ function eq(what, got, want) {
 {
   const dsk = path.join(H.ROOT, 'examples', 'rise-out.dsk');
   if (fs.existsSync(dsk)) {
-    const media = ctx.AGAT.mount(H.sniffFile(ctx, dsk));
+    const media = ctx.AGAT.mount(sniffImage(dsk));
     eq('gcr140 track count', [media.tracks, media.stride], [35, 6656]);
     const sha = require('crypto').createHash('sha256')
       .update(Buffer.from(media.bytes)).digest('hex');
@@ -389,7 +395,7 @@ function eq(what, got, want) {
 {
   const dsk = path.join(H.ROOT, 'examples', 'rise-out.dsk');
   if (fs.existsSync(dsk)) {
-    const s = H.sniffFile(ctx, dsk);
+    const s = sniffImage(dsk);
     const media = A.mount(s);
     let short = 0, wrong = 0;
     for (let t = 0; t < media.tracks; t++) {
@@ -434,10 +440,14 @@ function eq(what, got, want) {
 // shift it out with $C0EC. What comes back is checked by denibblizing the track
 // the drive wrote, so the read path, the write path and both codecs have to
 // agree before this passes.
-{
+//
+// A function rather than a block, and run at the end alongside the container
+// tests: it saves what it wrote through `build`, and writing a container is a
+// promise because compressing a payload is one.
+async function diskWriteTests() {
   const dsk = path.join(H.ROOT, 'examples', 'rise-out.dsk');
   if (fs.existsSync(dsk)) {
-    const s = H.sniffFile(ctx, dsk);
+    const s = await H.sniffFile(ctx, dsk);
     const media = A.mount(s);
     const card = new A.Disk140({});
     card.insert(media);
@@ -528,14 +538,19 @@ function eq(what, got, want) {
        [0, true]);
 
     // Out through the container and back in, which is the whole of what the
-    // Save button does. A sector is past `HEX_MAX`, so the record is base64.
-    const file = A.agc.build({ media: [{ name: back.name, bytes: back.bytes,
-                                         patches: back.patches }] });
-    const re = A.agc.parse(Buffer.from(file, 'utf8'), 'rise-out.agc');
+    // Save button does. The sector this wrote is 256 bytes of a pattern that
+    // gzip cannot help, so the patch stays base64 — while the disk it is a
+    // patch to compresses, which is why the file is a fraction of the size of
+    // the disk it carries.
+    const file = await A.agc.build({ media: [{ name: back.name, bytes: back.bytes,
+                                               patches: back.patches }] });
+    const re = await A.agc.parse(Buffer.from(file, 'utf8'), 'rise-out.agc');
     eq('a saved container reopens with the write in it',
-       [Object.keys(back.patches[0]).join('+'),
+       [Object.keys(JSON.parse(file).media[0].patches[0]).join('+'),
         Buffer.compare(Buffer.from(re.media[0].payload), Buffer.from(want256))],
        ['at+data', 0]);
+    eq('and is smaller than the disk it carries', file.length < s.payload.length,
+       true);
 
     // A track that will not decode has no sector image to be a patch against.
     // One data-field prologue struck out is enough to lose that sector.
@@ -845,10 +860,18 @@ function eq(what, got, want) {
 // is pinned is what a hand-written file may rely on: the line shape, that a
 // container round-trips, and that a patch is a diff rather than something baked
 // into the payload.
-{
+async function agcTests() {
   const K = A.keyboard;
   const bytes = new ctx.Uint8Array(200);
   for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 7) & 0xff;
+  const patch = (at, hex, extra) =>
+    Object.assign({ at: at, bytes: A.agc.fromHex(hex) }, extra || {});
+  // What a rejection said, or that there was not one. Every way a container can
+  // be wrong arrives this way now: reading one is a promise, because a payload
+  // may be gzipped.
+  const why = async (p) => {
+    try { await p; return 'no throw'; } catch (e) { return e.message; }
+  };
 
   const lines = A.agc.encode64(bytes);
   eq('base64 wraps at the MIME width', lines.slice(0, -1).map((l) => l.length),
@@ -859,13 +882,13 @@ function eq(what, got, want) {
   eq('base64 reads back as one string too',
      [...A.agc.decode64(lines.join('\n'))], [...bytes]);
 
-  const src = A.agc.build({
+  const src = await A.agc.build({
     title: 'ИГРА', author: 'Кто-то', date: 'circa 1985', url: 'http://x/y',
     notes: 'n', model: 7, ram: 64,
     keys: { KeyW: { code: '^', hint: 'Shoot right' } },
-    media: [{ name: 'x.dsk', bytes: bytes, patches: [{ at: 2, hex: 'AA BB' }] }],
+    media: [{ name: 'x.dsk', bytes: bytes, patches: [patch(2, 'AA BB')] }],
   });
-  const c = A.agc.parse(Buffer.from(src, 'utf8'), 'x.agc');
+  const c = await A.agc.parse(Buffer.from(src, 'utf8'), 'x.agc');
   eq('a container round-trips',
      [c.title, c.author, c.date, c.url, c.notes, c.machine.model, c.machine.ram,
       c.keys.KeyW, c.media.length, c.media[0].name],
@@ -875,7 +898,7 @@ function eq(what, got, want) {
   // come back carrying both: the fields say the same kind of thing to two
   // different readers.
   {
-    const both = A.agc.parse(Buffer.from(A.agc.build({
+    const both = await A.agc.parse(Buffer.from(await A.agc.build({
       notes: 'from a 1989 tape', hint: 'Starts in РУС.', media: [],
     }), 'utf8'));
     eq('a hint and the notes are two fields', [both.notes, both.hint],
@@ -883,17 +906,18 @@ function eq(what, got, want) {
     // One paragraph of plain text: a hand-wrapped hint is one line on the page,
     // so it is one line in the container that was written from it.
     eq('a hint collapses to one line',
-       A.agc.parse(Buffer.from(A.agc.build({
+       (await A.agc.parse(Buffer.from(await A.agc.build({
          hint: '  Hold\n\n  РЕГ   at the title\tscreen. ', media: [],
-       }), 'utf8')).hint,
+       }), 'utf8'))).hint,
        'Hold РЕГ at the title screen.');
     eq('a container with no hint says nothing',
-       /"hint"/.test(A.agc.build({ media: [] })), false);
+       /"hint"/.test(await A.agc.build({ media: [] })), false);
   }
   // A date is what is known, not a year: "circa 1985" has to survive.
   eq('a date stays as it was written',
-     ['1989', 'circa 1985', '1990-92'].map(
-       (d) => A.agc.parse(Buffer.from(A.agc.build({ date: d, media: [] }), 'utf8')).date),
+     await Promise.all(['1989', 'circa 1985', '1990-92'].map(async (d) =>
+       (await A.agc.parse(Buffer.from(await A.agc.build({ date: d, media: [] }),
+                                      'utf8'))).date)),
      ['1989', 'circa 1985', '1990-92']);
   eq('the payload is what was packed', [...c.media[0].bytes], [...bytes]);
   eq('patches reach the image the machine runs',
@@ -906,36 +930,58 @@ function eq(what, got, want) {
   // `tools/mkagc.js` and by the Save button — where there is no container to
   // name. The container's own reader is what adds the name; see below.
   eq('a patch off the end is refused', (() => {
-    try { A.agc.applyPatches(bytes, [{ at: 199, hex: 'AABB' }]); return 'no'; }
+    try { A.agc.applyPatches(bytes, [patch(199, 'AABB')]); return 'no'; }
     catch (e) { return 'threw'; }
   })(), 'threw');
 
-  // The two encodings a patch may be written in. A hand-written file uses hex;
-  // a rewritten sector arrives as base64, and both have to mean the same thing.
+  // The three encodings a record may be written in. A hand-written file uses
+  // hex; a rewritten sector arrives as base64 or gzipped, and all of them have
+  // to mean the same thing. `decodeBytes` is what every payload and every patch
+  // is read through, so this is that one place tested once.
   {
-    const two = A.agc.encode64(new ctx.Uint8Array([0xaa, 0xbb]));
-    const at2 = (p) => [...A.agc.applyPatches(bytes, [p])].slice(1, 5);
-    const want = [bytes[1], 0xaa, 0xbb, bytes[4]];
-    eq('a base64 patch writes the same bytes as a hex one',
-       [at2({ at: 2, hex: 'AA BB' }), at2({ at: 2, data: two }),
-        at2({ at: 2, data: two.join('\n') })],
-       [want, want, want]);
-    const threw = (p) => {
-      try { A.agc.applyPatches(bytes, [p]); return 'no throw'; }
-      catch (e) { return e.message; }
-    };
-    eq('a patch that says both encodings is refused',
-       threw({ at: 2, hex: 'AABB', data: two }),
-       'patch at 2 gives both hex and data');
-    eq('a patch that says neither is refused',
-       threw({ at: 2 }), 'patch at 2 gives neither hex nor data');
-    eq('base64 that will not decode says which patch',
-       threw({ at: 2, data: 'not base64!!' }),
-       'patch at 2: the data is not valid base64');
+    const two = new ctx.Uint8Array([0xaa, 0xbb]);
+    const b64 = A.agc.encode64(two);
+    const gz = A.agc.encode64(await A.gzip(two));
+    const read = async (rec) => [...await A.agc.decodeBytes(rec, 'patch at 2')];
+    eq('hex, base64 and gz all say the same bytes',
+       [await read({ hex: 'AA BB' }), await read({ data: b64 }),
+        await read({ data: b64.join('\n') }), await read({ gz: gz })],
+       [[0xaa, 0xbb], [0xaa, 0xbb], [0xaa, 0xbb], [0xaa, 0xbb]]);
+    eq('a record that gives two encodings is refused',
+       await why(A.agc.decodeBytes({ hex: 'AABB', data: b64 }, 'patch at 2')),
+       'patch at 2 gives hex and data — a record carries one of them');
+    eq('a record that gives none is refused',
+       await why(A.agc.decodeBytes({}, 'patch at 2')),
+       'patch at 2 gives none of hex, data or gz');
+    eq('a gz field that is not gzip says so',
+       await why(A.agc.decodeBytes({ gz: A.agc.encode64(bytes) }, 'patch at 2')),
+       'patch at 2: the gz is not valid gzip');
   }
 
-  // Which encoding the differ reaches for. The boundary is the whole rule, and
-  // it is what keeps a poke readable while a written sector stays small.
+  // Which encoding the writer reaches for, which is the whole rule: hex while a
+  // person can read the bytes, then whichever of the two base64 forms is
+  // smaller by `GAIN`. Dense bytes do not clear that bar and empty ones clear
+  // it by a mile, which is why a poke stays readable and a disk gets small.
+  {
+    const dense = (n) => bytes.slice(0, n);
+    const empty = (n) => new ctx.Uint8Array(n);
+    const pick = async (b, opts) =>
+      Object.keys(await A.agc.encodeBytes(b, opts || { hex: true }))[0];
+    eq('a patch that can be read stays hex', await pick(dense(32)), 'hex');
+    eq('one byte more goes to base64', await pick(dense(33)), 'data');
+    eq('a payload is never hex, however short', await pick(dense(32), {}), 'data');
+    eq('bytes that gzip cannot help stay base64', await pick(dense(200)), 'data');
+    eq('an empty sector is worth compressing', await pick(empty(256)), 'gz');
+    eq('and so is a track of them', await pick(empty(4096)), 'gz');
+    // The two overrides, which are `mkagc --plain` and `mkagc --gz`.
+    eq('gz: false keeps a payload readable whatever it costs',
+       await pick(empty(4096), { gz: false }), 'data');
+    eq('gz: true compresses one that has not earned it',
+       await pick(dense(200), { gz: true, hex: true }), 'gz');
+  }
+
+  // The differ says where the changes are and nothing about how they are
+  // written: one encoder decides that, for a patch and a payload alike.
   {
     const changed = (n) => {
       const mod = new ctx.Uint8Array(bytes);
@@ -943,28 +989,75 @@ function eq(what, got, want) {
       return mod;
     };
     const small = changed(32), big = changed(33);
-    eq('a patch that can be read stays hex', A.agc.diff(bytes, small),
-       [{ at: 10, hex: A.agc.toHex(small.subarray(10, 42)) }]);
-    eq('a patch too big to read goes to base64 lines',
-       A.agc.diff(bytes, big), [{ at: 10, data: A.agc.encode64(big.subarray(10, 43)) }]);
-    eq('either way the patch says what changed',
-       [[...A.agc.applyPatches(bytes, A.agc.diff(bytes, small))],
-        [...A.agc.applyPatches(bytes, A.agc.diff(bytes, big))]],
-       [[...small], [...big]]);
-    eq('the differ wraps base64 to the width it is given',
-       A.agc.diff(bytes, big, 8)[0].data.map((l) => l.length), [8, 8, 8, 8, 8, 4]);
-    // There is one version, and everything the writer can emit is in it.
-    const stamp = (patches) => JSON.parse(
-      A.agc.build({ media: [{ name: 'x.dsk', bytes: bytes, patches: patches }] })).agc;
-    eq('every container is written as agc 1',
-       [stamp([]), stamp(A.agc.diff(bytes, small)), stamp(A.agc.diff(bytes, big))],
-       [1, 1, 1]);
-    eq('a base64 patch survives being written and read back', (() => {
-      const src = A.agc.build({ media: [{ name: 'x.dsk', bytes: bytes,
-                                          patches: A.agc.diff(bytes, big) }] });
-      const m = A.agc.parse(Buffer.from(src, 'utf8'), 'x.agc').media[0];
+    eq('the differ hands back bytes, not an encoding',
+       A.agc.diff(bytes, small).map((p) => [p.at, [...p.bytes].length]),
+       [[10, 32]]);
+    eq('and says what changed', [
+      [...A.agc.applyPatches(bytes, A.agc.diff(bytes, small))],
+      [...A.agc.applyPatches(bytes, A.agc.diff(bytes, big))]],
+      [[...small], [...big]]);
+    const written = async (mod) => Object.keys(JSON.parse(await A.agc.build({
+      media: [{ name: 'x.dsk', bytes: bytes, patches: A.agc.diff(bytes, mod) }],
+    })).media[0].patches[0]).join('+');
+    eq('a small change is written as hex and a bigger one as base64',
+       [await written(small), await written(big)], ['at+hex', 'at+data']);
+    eq('the writer wraps base64 to the width it is given',
+       JSON.parse(await A.agc.build({ width: 8, media: [{ name: 'x', bytes: bytes }] }))
+         .media[0].data.map((l) => l.length),
+       [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+        8, 8, 8, 8, 8, 8, 8, 8, 8, 4]);
+    eq('a base64 patch survives being written and read back', await (async () => {
+      const file = await A.agc.build({ media: [{ name: 'x.dsk', bytes: bytes,
+                                                 patches: A.agc.diff(bytes, big) }] });
+      const m = (await A.agc.parse(Buffer.from(file, 'utf8'), 'x.agc')).media[0];
       return [[...m.bytes], [...m.payload]];
     })(), [[...bytes], [...big]]);
+  }
+
+  // Compression, end to end: what it costs and that it round-trips. A disk
+  // image is mostly empty, which is the whole reason any of this pays.
+  {
+    const disk = new ctx.Uint8Array(4096);
+    for (let i = 0; i < 512; i++) disk[i] = (i * 11) & 0xff;
+    const file = await A.agc.build({ media: [{ name: 'x.dsk', bytes: disk }] });
+    const back = await A.agc.parse(Buffer.from(file, 'utf8'), 'x.agc');
+    eq('a compressible payload is written as gz', /"gz":/.test(file), true);
+    eq('and reads back byte for byte', [...back.media[0].payload], [...disk]);
+    eq('and is a fraction of the size',
+       file.length < (await A.agc.build({ gz: false,
+                                          media: [{ name: 'x.dsk', bytes: disk }] })
+                     ).length / 4, true);
+    // There is one version, and everything the writer can emit is in it:
+    // whether a payload or a patch was compressed is visible in the field it
+    // landed in, and nothing has to be told apart by number.
+    const stamp = async (spec) => JSON.parse(await A.agc.build(spec)).agc;
+    eq('every container is written as agc 1',
+       [await stamp({ media: [] }),
+        await stamp({ media: [{ name: 'x', bytes: bytes }] }),
+        await stamp({ gz: false, media: [{ name: 'x', bytes: disk }] }),
+        await stamp({ media: [{ name: 'x', bytes: disk }] }),
+        await stamp({ media: [{ name: 'x', bytes: bytes,
+                                patches: [{ at: 0, bytes: new ctx.Uint8Array(64) }] }] })],
+       [1, 1, 1, 1, 1]);
+    eq('and reads back as the version it was written as', back.version, 1);
+  }
+
+  // A container is hand-edited, so a reader that drops what it does not
+  // understand will eventually eat somebody's note about a patch.
+  {
+    const file = await A.agc.build({
+      media: [{ name: 'x.dsk', bytes: bytes,
+                patches: [patch(2, 'AA BB', { note: 'the JMP that skips the check' })] }],
+    });
+    const rec = JSON.parse(file).media[0].patches[0];
+    eq('an unknown key on a patch is kept, after the bytes',
+       Object.keys(rec).join('+'), 'at+hex+note');
+    const re = await A.agc.parse(Buffer.from(file, 'utf8'), 'x.agc');
+    eq('and survives being read back', re.media[0].patches[0].note,
+       'the JMP that skips the check');
+    eq('a second save still carries it',
+       JSON.parse(await A.agc.build({ media: re.media }))
+         .media[0].patches[0].note, 'the JMP that skips the check');
   }
 
   // What a broken container says is the whole of what the page can show, so it
@@ -973,45 +1066,48 @@ function eq(what, got, want) {
   // the writer would have produced.
   {
     const broken = (m) => Buffer.from(JSON.stringify({ agc: 1, media: [m] }), 'utf8');
-    const why = (b) => {
-      try { A.agc.parse(b, 'RISE.agc'); return 'no throw'; }
-      catch (e) { return e.message; }
-    };
+    const bad = (b) => why(A.agc.parse(b, 'RISE.agc'));
     eq('an entry that will not decode names the file and the entry',
-       why(broken({ name: 'game.dsk', data: 'not base64!!' })),
+       await bad(broken({ name: 'game.dsk', data: 'not base64!!' })),
        'RISE.agc: media 0 (game.dsk): the data is not valid base64');
     eq('a patch off the end names the file and the entry',
-       why(broken({ name: 'side2.dsk', data: A.agc.encode64(bytes),
-                    patches: [{ at: 199, hex: 'AABB' }] })),
+       await bad(broken({ name: 'side2.dsk', data: A.agc.encode64(bytes),
+                          patches: [{ at: 199, hex: 'AABB' }] })),
        'RISE.agc: media 0 (side2.dsk): patch at 199 (2 bytes) falls outside a ' +
        '200-byte image');
     eq('a patch that will not decode names the file and the entry',
-       why(broken({ name: 'side2.dsk', data: A.agc.encode64(bytes),
-                    patches: [{ at: 4, data: 'not base64!!' }] })),
+       await bad(broken({ name: 'side2.dsk', data: A.agc.encode64(bytes),
+                          patches: [{ at: 4, data: 'not base64!!' }] })),
        'RISE.agc: media 0 (side2.dsk): patch at 4: the data is not valid base64');
     eq('an entry with nothing in it is named the same way',
-       why(broken({ name: 'game.dsk' })),
+       await bad(broken({ name: 'game.dsk' })),
        'RISE.agc: media 0 (game.dsk) has no data');
     eq('an unnamed entry is still placed by its number',
-       why(broken({ data: 'not base64!!' })),
+       await bad(broken({ data: 'not base64!!' })),
        'RISE.agc: media 0: the data is not valid base64');
   }
 
-  eq('a disk is not a container', A.agc.parse(bytes, 'x.dsk'), null);
+  eq('a disk is not a container', await A.agc.parse(bytes, 'x.dsk'), null);
   eq('other JSON is not a container',
-     A.agc.parse(Buffer.from('{"hello":1}', 'utf8'), 'x.json'), null);
-  eq('a broken container says so rather than passing for a disk', (() => {
-    try { A.agc.parse(Buffer.from('{"agc": 1, ', 'utf8'), 'x.agc'); return 'no'; }
-    catch (e) { return 'threw'; }
-  })(), 'threw');
+     await A.agc.parse(Buffer.from('{"hello":1}', 'utf8'), 'x.json'), null);
+  eq('a broken container says so rather than passing for a disk',
+     await why(A.agc.parse(Buffer.from('{"agc": 1, ', 'utf8'), 'x.agc')) !== 'no throw',
+     true);
   // The one thing the version is still for: a file this cannot read is refused
   // rather than read as far as it goes.
-  eq('a container from a newer emulator is refused', (() => {
-    try { A.agc.parse(Buffer.from('{"agc": 2}', 'utf8'), 'next.agc'); return 'no throw'; }
-    catch (e) { return e.message; }
-  })(), 'next.agc: made by a newer emulator (agc 2, this reads 1)');
-  eq('the sniffer prefers the container to the size table',
-     A.sniff(Buffer.from(src, 'utf8'), 'x.agc').kind, 'agc');
+  eq('a container from a newer emulator is refused',
+     await why(A.agc.parse(Buffer.from('{"agc": 2}', 'utf8'), 'next.agc')),
+     'next.agc: made by a newer emulator (agc 2, this reads 1)');
+  // The sniffer answers for every file dropped on the page and cannot wait for
+  // a payload to inflate, so it asks the cheap question and the loader reads it.
+  // The version key is conventionally first and only conventionally: a
+  // hand-edited container that puts its media above it is still one.
+  eq('the sniffer picks a container out without reading it',
+     [A.sniff(Buffer.from(src, 'utf8'), 'x.agc').kind,
+      A.sniff(bytes, 'x.dsk').kind === 'agc',
+      A.sniff(Buffer.from('{ "media": [], "notes": "' + 'x'.repeat(8000) +
+                          '", "agc": 1 }', 'utf8'), 'late.agc').kind],
+     ['agc', false, 'agc']);
 
   // How a code may be written in `keys`. The character form is the one worth
   // having: `"^"` is what a game's instructions say, not `$5E`.
@@ -1262,7 +1358,7 @@ function eq(what, got, want) {
 {
   const fil = path.join(H.ROOT, 'examples', 'snake.fil');
   if (fs.existsSync(fil)) {
-    const s = H.sniffFile(ctx, fil);
+    const s = sniffImage(fil);
     eq('fil sniff', [s.kind, s.loadAddr, s.length, s.filName],
        ['fil', 0x2000, 3874, 'SNAKE']);
   } else {
@@ -1274,7 +1370,7 @@ function eq(what, got, want) {
 // Agat-7 glyphs live in bits 7..1, Agat-9 in bits 6..0. Pairing a font with the
 // wrong mask shifts every character and is maddening to spot on screen.
 {
-  H.loadRoms(ctx).then((roms) => {
+  H.loadRoms(ctx).then(async (roms) => {
     const row = (font, ch, r, m0) => {
       let s = '', m = m0;
       for (let k = 0; k < 7; k++, m >>= 1) s += (font[ch * 8 + r] & m) ? '#' : '.';
@@ -1411,27 +1507,27 @@ function eq(what, got, want) {
       eq('makeMachine honours an override', built.xram.size, 0x20000);
 
       // Round trip: build a container naming slots and read it back.
-      const src = A.agc.build({
+      const src = await A.agc.build({
         title: 'slots', model: 7, ram: 32,
         slots: { 4: { card: 'xram', ram: 128 } },
         media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
       });
-      const back = A.agc.parse(ctx.Uint8Array.from(Buffer.from(src)), 'slots.agc');
+      const back = await A.agc.parse(ctx.Uint8Array.from(Buffer.from(src)), 'slots.agc');
       eq('slots survive the round trip', back.machine.slots[4],
          { card: 'xram', ram: 128 });
 
-      const plain = A.agc.build({
+      const plain = await A.agc.build({
         title: 'plain', model: 7, ram: 64,
         media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
       });
       eq('a container without slots carries no slots field',
-         A.agc.parse(ctx.Uint8Array.from(Buffer.from(plain)), 'p.agc').machine.slots,
+         (await A.agc.parse(ctx.Uint8Array.from(Buffer.from(plain)), 'p.agc')).machine.slots,
          null);
 
       // resolveSlots resizes a stock card from a bare size, but a container
       // cannot ask for that: `card` names what the entry is, and without one
       // there is nothing to fit.
-      const sizeOnly = A.agc.parse(Buffer.from(JSON.stringify(
+      const sizeOnly = await A.agc.parse(Buffer.from(JSON.stringify(
         { agc: 1, machine: { model: 7, slots: { 4: { ram: 128 }, 2: null } } }), 'utf8'),
         's.agc');
       eq('a slot entry with no card is dropped', sizeOnly.machine.slots, { 2: null });
@@ -1451,46 +1547,57 @@ function eq(what, got, want) {
                              putImageData: () => {} }),
       };
       ctx.requestAnimationFrame = () => {};   // App.start() wants one; no frame runs
-      const agc = (spec) => ctx.Uint8Array.from(Buffer.from(A.agc.build(
+      const agc = async (spec) => ctx.Uint8Array.from(Buffer.from(await A.agc.build(
         Object.assign({ media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }] },
                       spec))));
-      const load = (bytes, over) => {
+      const load = async (bytes, over) => {
         const app = new A.App({ canvas, model: 7, onStatus: () => {} });
         app.roms = roms;
         app.build();
-        app.load(bytes, 'x.agc', null, over);
+        await app.load(bytes, 'x.agc', null, over);
         return app;
       };
       // What examples/rise-out.agc says, and the address the page writes for it.
-      const stock = agc({ model: 7, ram: 64 });
+      const stock = await agc({ model: 7, ram: 64 });
 
-      const plain = load(stock);
+      const plain = await load(stock);
       eq('a container builds the machine it names',
          [plain.model, plain.ramSize], [7, 0x10000]);
       eq('...and boots its medium', [plain.drives[3].name, plain.machine.cpu.pc],
          ['x.dsk', 0xc300]);
 
-      const same = load(stock, { model: 7, ramSize: 0x10000 });
+      const same = await load(stock, { model: 7, ramSize: 0x10000 });
       eq('an address agreeing with the container changes nothing',
          [same.model, same.ramSize], [7, 0x10000]);
       eq('...and still leaves the medium booting', same.machine.cpu.pc, 0xc300);
 
-      const other = load(stock, { ramSize: 0x20000, slots: { 2: null } });
+      const other = await load(stock, { ramSize: 0x20000, slots: { 2: null } });
       eq('an address disagreeing with it wins',
          [other.ramSize, other.slots[2]], [0x20000, undefined]);
       eq('...on the machine the medium boots on', other.machine.cpu.pc, 0xc300);
 
-      const nine = load(stock, { model: 9 });
+      const nine = await load(stock, { model: 9 });
       eq('an address may name the other machine',
          [nine.model, nine.ramSize], [9, 0x20000]);
       eq('...where the 140K drive is slot 6', nine.machine.cpu.pc, 0xc600);
 
       // `null` is the profile's own cards, and has to outrank a container that
       // names some — which is not the same as saying nothing at all.
-      const carded = agc({ model: 7, ram: 64, slots: { 4: { card: 'xram', ram: 128 } } });
-      eq('a container sizes its cards', load(carded).slots[4].ram, 0x20000);
+      // And out again, which is the Save button: what was loaded, the machine
+      // it is running as, and the payload it came in with, byte for byte.
+      const saved = await plain.toAgc();
+      const reopened = await A.agc.parse(Buffer.from(saved, 'utf8'), 'x.agc');
+      eq('a container saved from a running machine reopens as itself',
+         [reopened.machine.model, reopened.machine.ram, reopened.media.length,
+          reopened.media[0].name, reopened.media[0].payload.length,
+          [...reopened.media[0].payload].some((b) => b !== 0)],
+         [7, 64, 1, 'x.dsk', 143360, false]);
+
+      const carded = await agc({ model: 7, ram: 64,
+                                 slots: { 4: { card: 'xram', ram: 128 } } });
+      eq('a container sizes its cards', (await load(carded)).slots[4].ram, 0x20000);
       eq('an address of stock sizes puts them back',
-         load(carded, { slots: null }).slots[4].ram, 0x8000);
+         (await load(carded, { slots: null })).slots[4].ram, 0x8000);
     }
 
     // --- the video interrupts ------------------------------------------------
@@ -1531,6 +1638,11 @@ function eq(what, got, want) {
        s9.runs.slice(0, 4), [[false, 7], [true, 1], [false, 7], [true, 1]]);
     eq('Agat-9 takes NMI where blanking ends', s9.nmi, [0]);
 
+    // Last, because they are the two asynchronous ones: everything a container
+    // is read or written through is a promise now that a payload may be
+    // gzipped.
+    await diskWriteTests();
+    await agcTests();
     done();
   }).catch((e) => { console.error(e); process.exit(1); });
 }

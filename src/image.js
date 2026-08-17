@@ -48,8 +48,11 @@
     name = name || '';
     // A container is JSON and everything else here is binary, so it is asked
     // about first: a size table has no business being consulted about text.
-    var agc = AGAT.agc && AGAT.agc.parse(bytes, name);
-    if (agc) return { kind: 'agc', name: name, agc: agc };
+    // Only whether it is one — reading it is asynchronous, since a payload may
+    // be gzipped, and belongs to whoever is going to load it.
+    if (AGAT.agc && AGAT.agc.looks(bytes)) {
+      return { kind: 'agc', name: name, bytes: bytes };
+    }
 
     var head = hasHeader(bytes);
     var body = head ? bytes.subarray(HEADER_SIZE) : bytes;

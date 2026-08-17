@@ -59,13 +59,13 @@ function show(p, base) {
 
 const keyCode = H.keyCode;
 
-H.loadRoms(ctx).then((roms) => {
+H.loadRoms(ctx).then(async (roms) => {
   const files = walk(dir, []).sort();
   const rows = [];
   for (const p of files) {
     let row = { name: show(p, dir), kind: '-', model: '-', note: '' };
     try {
-      const s = H.sniffFile(ctx, p, show(p));
+      const s = await H.sniffFile(ctx, p, show(p));
       row.kind = s.kind || 'unknown';
       if (!s.kind) { rows.push(row); continue; }
       const model = s.hintModel || 9;
