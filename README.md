@@ -197,8 +197,7 @@ drives, the model and its memory, and the live remap. Cards are written down
 only where they differ from the stock machine, so a container for an ordinary
 Agat-7 stays short. It asks nothing. A container that was loaded from a file
 keeps its own title and filename; one made from a bare image takes the image's
-name for both, so `TESTOZU7_140.dsk` saves as `TESTOZU7_140.agc` titled
-`TESTOZU7_140.dsk` — rename it
+name for both, so `game.dsk` saves as `game.agc` titled `game.dsk` — rename it
 afterwards if it deserves better. From the command line:
 
 ```sh
@@ -220,7 +219,7 @@ on `file://` — so they work on the
 [hosted build](https://amaltsev.github.io/agat-web/), and from a local
 file use **Open…** instead.
 
-`examples/TESTOZU7_140.dsk` is the **factory memory test**, which asks you to
+`examples/TESTOZU7_140.agc` is the **factory memory test**, which asks you to
 declare the machine's memory and then verifies that it really is that — so it is
 the one thing here that can tell a wrong card from a wrong emulator. The stock
 Agat-7 passes all three of its branches, and base RAM passes at all three
@@ -312,8 +311,8 @@ and `tools/6502_functional_test.bin`, which is built from Klaus Dormann's
 GPLv3 test sources. None of the three is part of the emulator itself; the test
 binary is read by `tools/cputest.js` and never ships to the browser.
 
-`examples/TESTOZU7_140.dsk` is a 1986 Soviet factory diagnostic from
-[agatcomp.su](https://agatcomp.su/agat/Paper/DocsShtat/A7_K5.shtml). Its licence
+`examples/TESTOZU7_140.agc` is a 1986 Soviet factory diagnostic from
+[agatcomp.ru](https://agatcomp.ru/agat/Software/Test/Testozu7.shtml). Its licence
 is **unknown**; it is included on the assumption that something of that origin
 and age is as close to public domain as anything gets, and it will be removed if
 the rights holder would rather it were not here.

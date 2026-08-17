@@ -916,12 +916,13 @@
   // The bundled examples, when the page is served rather than opened directly.
   // The containers name their own machine, so there is nothing to pick here —
   // and clicking one leaves an address that opens it again. The factory memory
-  // test is a bare disk on purpose: it asks what the machine is and then checks
-  // the answer, so a container declaring it would be answering its own question.
+  // test's container names the stock Agat-7 and nothing more: the configuration
+  // it asks about is still typed at the keyboard, and a wrong answer there is
+  // what it is in the list to catch.
   var EXAMPLES = [
     ['examples/rise-out.agc', 'RISE OUT (Agat-7, 140K disk)'],
     ['examples/snake.agc', 'ПИТОНЧИК / SNAKE (Agat-7, .fil)'],
-    ['examples/TESTOZU7_140.dsk', 'ТЕСТ ПАМЯТИ (factory memory test)'],
+    ['examples/TESTOZU7_140.agc', 'ТЕСТ ПАМЯТИ (factory memory test)'],
   ];
   var ex = document.getElementById('examples');
   ex.appendChild(document.createTextNode('Examples: '));

@@ -22,9 +22,9 @@
 // asks for the configuration and then verifies it — so telling it one thing and
 // the emulator another is how you find out which of the two is wrong:
 //
-//   node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7  # ДОПОЗУ, slot 4
-//   node tools/shot.js examples/TESTOZU7_140.dsk 4201 --model=7  # ЭмПЗУ, slot 2
-//   node tools/shot.js examples/TESTOZU7_140.dsk 101  --model=7  # base RAM
+//   node tools/shot.js examples/TESTOZU7_140.agc 2401 --model=7  # ДОПОЗУ, slot 4
+//   node tools/shot.js examples/TESTOZU7_140.agc 4201 --model=7  # ЭмПЗУ, slot 2
+//   node tools/shot.js examples/TESTOZU7_140.agc 101  --model=7  # base RAM
 //
 // where the digits are конфигурация, then слот for a card, then исполнение
 // (0 = 32K, 1 = 64K, 2 = 128K) and режим 1. See examples/TESTOZU7_140.md.

@@ -67,7 +67,7 @@ Settled, with evidence, and expensive to relearn:
 - `Machine.PROFILES` is the single definition of what each machine is.
   `App.build()` and `tools/harness.js` both go through it; do not spell a card
   list out anywhere else.
-- `examples/TESTOZU7_140.dsk` is the factory memory test: it declares a
+- `examples/TESTOZU7_140.agc` is the factory memory test: it declares a
   configuration and then verifies it, which beats any assertion written from the
   same reading of the source that produced the bug. Its **исполнение is
   0 = 32K, 1 = 64K, 2 = 128K** — it starts at 0, and a probe that starts at 1

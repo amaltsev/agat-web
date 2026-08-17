@@ -1,10 +1,10 @@
 # ТЕСТ ПАМЯТИ — the factory memory test
 
-`TESTOZU7_140.dsk` is the Agat-7 memory test as shipped by the manufacturer: a
-bootable 140K disk that asks you to **declare** the machine's memory
-configuration and then verifies that the machine really is that. That makes it
-worth more than any assertion written here, because it was written against the
-hardware rather than against a reading of an emulator's source.
+`TESTOZU7_140.agc` carries the Agat-7 memory test as shipped by the
+manufacturer: a bootable 140K disk that asks you to **declare** the machine's
+memory configuration and then verifies that the machine really is that. That
+makes it worth more than any assertion written here, because it was written
+against the hardware rather than against a reading of an emulator's source.
 
 It is the reason `src/xram7.js` exists — its **ДОПОЗУ** branch had nothing to
 talk to until the ОЗУ expansion card was emulated.
@@ -13,7 +13,7 @@ talk to until the ОЗУ expansion card was emulated.
 
 Drop it on the page, pick it from the examples line, or:
 
-    index.html#model=7&agc=examples/TESTOZU7_140.dsk
+    index.html#model=7&agc=examples/TESTOZU7_140.agc
 
 It boots straight into the questions. Answer each with a single key; there is no
 Return.
@@ -73,14 +73,14 @@ which is how you confirm the test is really reaching the card rather than
 agreeing with itself:
 
 ```sh
-node tools/shot.js examples/TESTOZU7_140.dsk 111  --model=7   # ОЗУ,    base RAM 64K
-node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7   # ДОПОЗУ, slot 4, 32K
-node tools/shot.js examples/TESTOZU7_140.dsk 4201 --model=7   # ПЗУ,    slot 2, 32K
+node tools/shot.js examples/TESTOZU7_140.agc 111  --model=7   # ОЗУ,    base RAM 64K
+node tools/shot.js examples/TESTOZU7_140.agc 2401 --model=7   # ДОПОЗУ, slot 4, 32K
+node tools/shot.js examples/TESTOZU7_140.agc 4201 --model=7   # ПЗУ,    slot 2, 32K
 
-node tools/shot.js examples/TESTOZU7_140.dsk 101 --model=7 --ram=32    # the 32K board
-node tools/shot.js examples/TESTOZU7_140.dsk 121 --model=7 --ram=128   # the 128K board
+node tools/shot.js examples/TESTOZU7_140.agc 101 --model=7 --ram=32    # the 32K board
+node tools/shot.js examples/TESTOZU7_140.agc 121 --model=7 --ram=128   # the 128K board
 
-node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7 --xram=16   # must fail
+node tools/shot.js examples/TESTOZU7_140.agc 2401 --model=7 --xram=16   # must fail
 ```
 
 All of those pass. `--ram=64` under исполнение 1 used to report `ОШИБКА
@@ -90,7 +90,7 @@ being decoded after the `$C080+16n` slot range and swallowed by the empty slot 7
 
 ## Where it came from
 
-[agatcomp.su — Агат-7, комплект 5](https://agatcomp.su/agat/Paper/DocsShtat/A7_K5.shtml),
+[agatcomp.ru — Агат-7, комплект 5](https://agatcomp.ru/agat/Paper/DocsShtat/A7_K5.shtml),
 which has the disk and the 1986 factory manual it is documented in. The answers
 above are transcribed from that manual.
 

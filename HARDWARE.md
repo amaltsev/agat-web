@@ -137,17 +137,17 @@ the top banks alias.
 
 ### Checking both cards against the factory test
 
-`examples/TESTOZU7_140.dsk` asks for the machine's memory configuration and then
+`examples/TESTOZU7_140.agc` asks for the machine's memory configuration and then
 verifies it, which makes it the one measurement that can tell a wrong card from a
 wrong emulator. Its **исполнение** is the fitting — `0` = 32K, `1` = 64K,
 `2` = 128K — and the stock machine passes all three of its branches:
 
 ```sh
-node tools/shot.js examples/TESTOZU7_140.dsk 111  --model=7            # ОЗУ,    base RAM 64K
-node tools/shot.js examples/TESTOZU7_140.dsk 2401 --model=7            # ДОПОЗУ, slot 4, 32K
-node tools/shot.js examples/TESTOZU7_140.dsk 4201 --model=7            # ПЗУ,    slot 2, 32K
-node tools/shot.js examples/TESTOZU7_140.dsk 101  --model=7 --ram=32   # ОЗУ,    base RAM 32K
-node tools/shot.js examples/TESTOZU7_140.dsk 121  --model=7 --ram=128  # ОЗУ,    base RAM 128K
+node tools/shot.js examples/TESTOZU7_140.agc 111  --model=7            # ОЗУ,    base RAM 64K
+node tools/shot.js examples/TESTOZU7_140.agc 2401 --model=7            # ДОПОЗУ, slot 4, 32K
+node tools/shot.js examples/TESTOZU7_140.agc 4201 --model=7            # ПЗУ,    slot 2, 32K
+node tools/shot.js examples/TESTOZU7_140.agc 101  --model=7 --ram=32   # ОЗУ,    base RAM 32K
+node tools/shot.js examples/TESTOZU7_140.agc 121  --model=7 --ram=128  # ОЗУ,    base RAM 128K
 ```
 
 A clean run shows the pass counter advancing with no error lines. Declaring one
