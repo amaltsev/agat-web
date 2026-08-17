@@ -8,8 +8,9 @@
 //   --url=URL             where it came from, or where it is written up
 //   --notes=TEXT          prose for the record: provenance, credits, what a
 //                         patch does. Nothing shows it.
-//   --hint=TEXT           one line to whoever plays it, printed under the
-//                         controls
+//   --info=TEXT           what the program is, at whatever length it takes,
+//                         printed on the card under the controls
+//   --hint=TEXT           one line to whoever plays it, printed under that
 //   --model=7|9           the machine it wants
 //   --ram=32|64|128       Agat-7 RAM, in K
 //   --key=KEY[:CODE[:HINT]]   a key the program uses, repeatable, the hint
@@ -125,6 +126,7 @@ async function main() {
     date: flags.date || '',
     url: flags.url || '',
     notes: flags.notes || '',
+    info: flags.info || '',
     hint: flags.hint || '',
     model: model,
     ram: Number(flags.ram) || (model === 9 ? 128 : 64),

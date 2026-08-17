@@ -362,6 +362,64 @@ function eq(what, got, want) {
   ctx.window.addEventListener = hadListener;
 }
 
+// --- the info card ----------------------------------------------------------
+// drawInfo against a stub DOM, for the same reason the capture test is here:
+// what a container gets to put on the page is worth checking without one. The
+// stub keeps children and textContent apart, which the card relies on — no node
+// on it carries both.
+{
+  const el = () => ({
+    tag: '', className: '', textContent: '', children: [],
+    appendChild(c) { this.children.push(c); return c; },
+    set innerHTML(v) { this.children = []; },
+    get innerHTML() { return ''; },
+  });
+  const had = ctx.document;
+  ctx.document = { createElement: (t) => Object.assign(el(), { tag: t }) };
+  // A row is its own children when it has any, so the card reads back as the
+  // lines the page draws.
+  const lines = (host) => host.children.map((k) => k.children.length
+    ? k.children.map((c) => c.textContent).join(' ') : k.textContent);
+  const classes = (host) => host.children.map((k) => k.className);
+
+  const host = el();
+  A.drawInfo(host, {
+    title: 'RISE OUT', author: 'Andrew Maltsev', date: '1989',
+    url: 'https://github.com/amaltsev/agat-rise-out/',
+    info: 'A platform game for the Agat-7.', hint: 'Starts in ЛАТ.',
+  });
+  eq('the card is the title, who and when, what it is, and the hint', lines(host),
+     ['RISE OUT', 'Andrew Maltsev · 1989 · github.com/amaltsev/agat-rise-out',
+      'A platform game for the Agat-7.', 'Starts in ЛАТ.']);
+  eq('in four rows of their own', classes(host),
+     ['info-name', 'info-who', 'info-text', 'info-hint']);
+
+  // The address keeps its scheme where it is followed, and is an <a> only
+  // because it is http: a container is a file from elsewhere.
+  const link = host.children[1].children[4];
+  eq('the url is a link to what the container wrote',
+     [link.tag, link.href, link.target, link.rel],
+     ['a', 'https://github.com/amaltsev/agat-rise-out/', '_blank', 'noopener noreferrer']);
+
+  A.drawInfo(host, { title: 'Trojan', url: 'javascript:alert(1)' });
+  eq('a url that is not the web is printed and not linked',
+     [host.children[1].children[0].tag, host.children[1].children[0].href],
+     ['span', undefined]);
+
+  // Only what the container named: no empty rows, and no separators around
+  // something that is not there.
+  A.drawInfo(host, { date: '1992' });
+  eq('a card of one thing is one row of one thing',
+     [lines(host), classes(host)], [['1992'], ['info-who']]);
+
+  // A bare image brings none of the five, and an empty element is what the
+  // stylesheet hides.
+  A.drawInfo(host, {});
+  eq('nothing to say draws nothing', host.children.length, 0);
+
+  ctx.document = had;
+}
+
 // --- image sniffing ---------------------------------------------------------
 {
   const cases = [
@@ -951,10 +1009,20 @@ async function agcTests() {
   // different readers.
   {
     const both = await A.agc.parse(Buffer.from(await A.agc.build({
-      notes: 'from a 1989 tape', hint: 'Starts in РУС.', media: [],
+      notes: 'from a 1989 tape', info: 'A platform game of 1989.',
+      hint: 'Starts in РУС.', media: [],
     }), 'utf8'));
-    eq('a hint and the notes are two fields', [both.notes, both.hint],
-       ['from a 1989 tape', 'Starts in РУС.']);
+    eq('the record, the description and the hint are three fields',
+       [both.notes, both.info, both.hint],
+       ['from a 1989 tape', 'A platform game of 1989.', 'Starts in РУС.']);
+    // `info` is the other shown field and takes the hint's rule with it.
+    eq('an info collapses to one paragraph',
+       (await A.agc.parse(Buffer.from(await A.agc.build({
+         info: '  Written\n\n  in 1989 for the\tAgat-7. ', media: [],
+       }), 'utf8'))).info,
+       'Written in 1989 for the Agat-7.');
+    eq('a container with no info says nothing',
+       /"info"/.test(await A.agc.build({ media: [] })), false);
     // One paragraph of plain text: a hand-wrapped hint is one line on the page,
     // so it is one line in the container that was written from it.
     eq('a hint collapses to one line',

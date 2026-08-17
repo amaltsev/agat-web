@@ -235,7 +235,7 @@
   // difference between a program driving it and a program not seeing it, and
   // the status line is where that gets noticed.
   function MouseMars(rom) {
-    Parallel.call(this, '«Марсианка»' + (rom ? ' (card ROM)' : ''), rom);
+    Parallel.call(this, '«Марсианка»' + (rom ? ' (w/ROM)' : ''), rom);
     this.pendX = 0;                    // steps the ball owes the driver
     this.pendY = 0;
     this.lines = 0;                    // which direction lines are asserted

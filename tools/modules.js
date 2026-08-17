@@ -24,6 +24,7 @@ const MODULES = [
   'src/mouse.js',
   'src/keyboard.js',
   'src/keyview.js',
+  'src/info.js',
   'src/audio.js',
   'src/fil.js',
   'src/app.js',

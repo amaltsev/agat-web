@@ -152,15 +152,20 @@ function keysCmd(loaded) {
   // more than one argument's worth.
   const keys = {};
   let controls = null;
-  let hint = '';
+  const about = { title: '', author: '', date: '', url: '', info: '', hint: '' };
   for (const a of rest) {
     if (/=/.test(a)) { const [k, v] = a.split('='); keys[k] = v; continue; }
     if (!/\.agc$/i.test(a)) { keys[a] = null; continue; }
     const c = loaded.get(a);
     Object.assign(keys, c.keys);
     if (Object.keys(c.controls).length) Object.assign(controls = controls || {}, c.controls);
-    // Several containers on one line are one panel here, as their keys are.
-    if (c.hint) hint = hint ? hint + ' ' + c.hint : c.hint;
+    // Several containers on one line are one panel and one card here, as their
+    // keys are: the first file to name a thing is what the card says it is, and
+    // the hints run together the way the key sets do.
+    for (const f of ['title', 'author', 'date', 'url', 'info']) {
+      about[f] = about[f] || c[f];
+    }
+    if (c.hint) about.hint = about.hint ? about.hint + ' ' + c.hint : c.hint;
     console.log(c.title + (c.author ? ' — ' + c.author : ''));
   }
   const set = A.keyboard.setRemap(Object.keys(keys).length ? keys : null);
@@ -172,7 +177,7 @@ function keysCmd(loaded) {
 
   // The panel as the page draws it, walked back out of the stub nodes: a group
   // is its name and then a line per row, and a line is the codes and the label.
-  const panel = new A.ControlPanel(el(), { hint });
+  const panel = new A.ControlPanel(el(), {});
   const group = flags.group === true ? '' : (flags.group || '');
   for (const g of panel.groups) {
     console.log('  ' + g.name + (g.name === group ? '  ←' : ''));
@@ -181,11 +186,15 @@ function keysCmd(loaded) {
       console.log('    ' + code.textContent.padEnd(14) + (what ? what.textContent : ''));
     }
   }
-  // Whatever the panel put below the groups — the container's hint, which is
-  // the one child that belongs to no group. Read back off the built nodes, so
-  // this says what the page draws rather than what it was handed.
-  for (const kid of panel.el.children) {
-    if (!kid.__group) console.log('  ' + kid.textContent);
+  // And the card below the panel: what the container says it is, ending in the
+  // hint, which is the other half of what a player is shown. Read back off the
+  // built nodes rather than off the fields above, so this says what the page
+  // draws — a row is its own children, spaced the way the flex line spaces them.
+  const card = el();
+  A.drawInfo(card, about);
+  for (const kid of card.children) {
+    console.log('  ' + (kid.children.length
+      ? kid.children.map((k) => k.textContent).join(' ') : kid.textContent));
   }
 
   const app = { machine: { kbdLatch: 0, cyrillic: !!flags.rus }, reset() {} };
@@ -303,10 +312,6 @@ function kbdmenuCmd(loaded) {
   // The page's variables, and the two things syncKbd calls that are not its own.
   let kbdSel, usedOpt, usedBox, wantKbd, panel, kbdChosen, handheld, controlsEl;
   let applied = [], saved = 0;
-  // The App, as much of it as syncKbd touches: the container's hint, which the
-  // panel is handed because it belongs to the container rather than to the
-  // keyboard's tables.
-  const app = { hint: '' };
   function applyKbd() {
     applied.push(kbdSel.value);
     if (panel) panel.mark(groupOf(kbdSel.value));
@@ -337,16 +342,12 @@ function kbdmenuCmd(loaded) {
     const c = loaded.get(path.join(H.ROOT, 'examples', f));
     A.keyboard.setRemap(c.keys);
     A.keyboard.setControls(c.controls);
-    app.hint = c.hint;
   };
   const unload = () => {
-    A.keyboard.setRemap(null); A.keyboard.setControls(null); app.hint = '';
+    A.keyboard.setRemap(null); A.keyboard.setControls(null);
   };
   const menu = () => kbdSel.options.map((o) => o.value);
   const marks = () => panel.groups.map((g) => g.el.className);
-  // Whatever the panel drew that belongs to no group, which is the hint.
-  const hint = () => panel.el.children.filter((k) => !k.__group)
-                          .map((k) => k.textContent).join('');
 
   // A bookmarked group, and the container it belongs to still on its way.
   reset('used:Cheats');
@@ -385,18 +386,13 @@ function kbdmenuCmd(loaded) {
      [kbdSel.value, applied, usedOpt.disabled], ['agat', ['agat'], true]);
   eq('and the panel is empty', panel.groups.length, 0);
 
-  // The hint rides beside the controls rather than in them, so it is the App's
-  // and the panel takes it on every rebuild: a second container's hint replaces
-  // the first one's, and a bare image leaves none.
+  // The panel is the groups and nothing else — the container's hint is drawn on
+  // the info card below it, which tools/vectors.js checks.
   reset('');
   load('rise-out.agc');
-  app.hint = 'Starts in ЛАТ.';
   syncKbd(true);
-  eq('a hint is drawn under the groups', hint(), 'Starts in ЛАТ.');
-  eq('and is not a group the board can be cut to', panel.groups.length, 3);
-  unload();
-  syncKbd(true);
-  eq('and goes when the container that brought it does', hint(), '');
+  eq('every child of the panel is a group a tap can pick',
+     [panel.groups.length, panel.el.children.filter((k) => !k.__group).length], [3, 0]);
 
   // The handheld default is the whole container, never one of its groups.
   reset('');

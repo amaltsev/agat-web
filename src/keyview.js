@@ -896,11 +896,10 @@
   // in every plane by construction, so it is the only host key that does not
   // move under ЛАТ/РУС and the only one this panel can honestly promise.
 
-  // Under the groups goes the container's `hint`, if it wrote one: one line of
-  // plain text, the thing a player has to be told that no list of codes can say
-  // — which layout the program comes up in, that it wants a key held at the
-  // title screen. `opts.hint` rather than the keyboard's tables, because it is
-  // the container talking and not the keyboard.
+  // The container's own line to whoever is about to play — its `hint` — is not
+  // here: it is the container talking rather than the keyboard, and it is drawn
+  // with the rest of what the container says about itself on the info card below
+  // (`info.js`).
   //
   // A group is also a tap target: it cuts the board beside it down to that group,
   // which is the `used:<name>` the keyboard menu offers. `opts.onPick` is how the
@@ -915,7 +914,6 @@
     opts = opts || {};
     this.el = el;
     this.onPick = opts.onPick || function () {};
-    this.hint = opts.hint || '';
     this.groups = [];
     this.active = '';
     this.build();
@@ -990,11 +988,6 @@
       this.groups.push({ name: g.name, el: box });
       this.el.appendChild(box);
     }
-    // Last, and carrying no `__group`, so it sits under the groups and a tap on
-    // it picks nothing. A container with a hint and no controls is a container
-    // with one line to draw, which is why the group loop does not bail out on
-    // an empty set.
-    if (this.hint) this.el.appendChild(span('ctl-hint', this.hint));
   };
 
   // Which group the board beside this panel is currently cut to, so that a board

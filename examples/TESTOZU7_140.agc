@@ -4,7 +4,7 @@
   "url": "https://agatcomp.ru/agat/Software/Test/Testozu7.shtml",
   "author": "НИИВК",
   "hint": "Опции: 7 (конфиг), 1 (64k ОЗУ), 4, 0 (ДопОЗУ разъём, 32k), 2, 0 (ПЗУ разъём, 32k), 0 (режим)",
-  "notes": "Инструкции и другие тесты: https://agatcomp.ru/agat/Paper/DocsShtat/A7_K5.shtml",
+  "info": "Инструкции и другие тесты: https://agatcomp.ru/agat/Paper/DocsShtat/A7_K5.shtml",
   "machine": {
     "model": 7,
     "ram": 64

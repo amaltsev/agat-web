@@ -41,12 +41,13 @@
     this.sources = {};
     // A container's own fields, kept so that loading one and saving it again
     // does not quietly drop what it said about the program.
-    this.title = '';                      // also what the status line shows
+    this.title = '';                      // also the head of the info card
     this.author = '';
     this.date = '';                       // text: "1989", "circa 1985", "1990-92"
     this.url = '';
-    this.notes = '';
-    this.hint = '';                       // the line the controls panel prints
+    this.notes = '';                      // the record; nothing draws it
+    this.info = '';                       // what the program is, at any length
+    this.hint = '';                       // the line at the foot of that card
     this.fromAgc = '';                    // the container's filename, if any
     this.lastTime = 0;
     // Whether the page is holding the pointer for the machine. A mouse card is
@@ -418,7 +419,7 @@
     // silently applying to the next disk would be worse than no remap at all.
     if (!from) {
       this.title = this.author = this.date = this.url = '';
-      this.notes = this.hint = this.fromAgc = '';
+      this.notes = this.info = this.hint = this.fromAgc = '';
       AGAT.keyboard.setRemap(null);
       AGAT.keyboard.setControls(null);
     }
@@ -528,6 +529,7 @@
     this.date = c.date;
     this.url = c.url;
     this.notes = c.notes;
+    this.info = c.info;
     this.hint = c.hint;
     this.fromAgc = c.name;
     // In order, and one at a time: the media are loaded into a machine that
@@ -561,6 +563,23 @@
   App.prototype.credit = function () {
     var who = [this.author, this.date].filter(Boolean).join(', ');
     return (this.title || this.fromAgc) + (who ? ' — ' + who : '');
+  };
+
+  // The same thing standing still, for the card under the controls: the six
+  // fields the container wrote to be read, and nothing the emulator worked out.
+  // `about` rather than `info`, because `info` is one of the six. The title
+  // falls back to the file's name for credit()'s reason — a container that did
+  // not name itself is still called something — and a bare image has none of
+  // them, which is what leaves the card empty and hidden.
+  App.prototype.about = function () {
+    return {
+      title: this.title || this.fromAgc,
+      author: this.author,
+      date: this.date,
+      url: this.url,
+      info: this.info,
+      hint: this.hint,
+    };
   };
 
   // What a saved container should be called: the one it came from, or the
@@ -641,6 +660,7 @@
       slots: this.slotDiff(),
       keys: AGAT.keyboard.remap(),
       controls: AGAT.keyboard.controls(),
+      info: this.info,
       hint: this.hint,
       media: media,
     });
@@ -737,17 +757,20 @@
     requestAnimationFrame(this.frame);
   };
 
-  // What is running, in one line: the program, the machine, the video mode and
-  // what is in the drives. Only what nothing else on the page states — the
-  // keyboard layout is on its own button, which can also change it, and the head
-  // position is on the drive lamp, which is lit because the head is moving.
+  // What is running, in one line: the machine, the video mode and what is in the
+  // drives. Only what nothing else on the page states — the keyboard layout is
+  // on its own button, which can also change it; the head position is on the
+  // drive lamp, which is lit because the head is moving; and what the program is
+  // called is on the info card, which the run loop does not overwrite.
+  //
+  // The bits of that line rather than the line itself: a bit is a string, or
+  // `{text, cls, title}` where it has a colour and a sentence of its own. The
+  // page paints them with a `·` between, and the sentence goes where a sentence
+  // on a line this narrow has to go — the tooltip. Nothing else calls this.
   App.prototype.describe = function () {
     var m = this.machine;
-    if (!m) return '';
+    if (!m) return [];
     var bits = [];
-    // A container's title survives in the status line, which the run loop
-    // otherwise overwrites twice a second with the machine's state.
-    if (this.title) bits.push(this.title);
     bits.push('Agat-' + m.model);
     if (m.model === 7) bits.push((this.ramSize >> 10) + 'K');
     bits.push(m.appleVideo
@@ -771,11 +794,25 @@
         this.mousePolls = mouse.polls;
         this.mouseSeen = m.cpu.cycles;
       }
-      bits.push('mouse ' + mouse.name +
-        (this.mouseCaptured ? ' held — Esc releases' : ' — click the screen') +
-        (m.cpu.cycles - this.mouseSeen > MOUSE_QUIET ? ', not read by this program' : ''));
+      // The card's own name and nothing else: which mouse it is answers what a
+      // word like "mouse" in front of it would have said. Both states are a
+      // colour on that name and a sentence in the tooltip — the line has one row
+      // to fit in, and these are the two things about a mouse worth noticing
+      // from across the desk rather than reading. Quiet takes the colour where
+      // both hold: a pointer that is held and unread is the case that wants the
+      // other mouse, not the other key.
+      var quiet = m.cpu.cycles - this.mouseSeen > MOUSE_QUIET;
+      bits.push({
+        text: mouse.name,
+        cls: quiet ? 'quiet' : (this.mouseCaptured ? 'held' : ''),
+        title: (this.mouseCaptured
+                  ? 'Mouse, holding the pointer — Esc gives it back'
+                  : 'Mouse — click the screen to hand the pointer over') +
+               (quiet ? '\nThis program is not reading the card. If it wants a mouse ' +
+                        'at all, it wants another one.' : ''),
+      });
     }
-    return bits.join(' · ');
+    return bits;
   };
 
   AGAT.MODE_NAMES = {

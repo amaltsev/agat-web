@@ -97,7 +97,8 @@ protocols and a program drives the one it was written for. The «Марсиан�
 offered twice over, once on each of the two cards it hung off, because a program
 looks the card over before it will look at the mouse and they do not agree about
 what it should find. Pick the wrong one and the program gives no sign whatever —
-the status line is what says the card is not being read. A container is the better place to settle it, since the
+the mouse turns red in the status line when nothing is reading the card, and
+green while the machine is holding the pointer. A container is the better place to settle it, since the
 program is what knows: an `.agc` names the mouse along with the rest of the
 machine, and then nobody has to guess.
 
@@ -185,11 +186,14 @@ disk is mostly empty, so a 140K game is around 20K of container rather than
 stays hex.
 
 `title`, `author`, `date`, `url` and `notes` are for the record — often the
-container is the only place left that says who wrote a program and when. A
-**hint** is the other kind, and the rule is that a hint is shown: a key's `hint`
-on the on-screen board, and the container's own `hint` under the controls card —
-one line of plain text, for what no list of codes says, like which layout the
-program comes up in or which disk to boot from.
+container is the only place left that says who wrote a program and when. The
+first four head the info card under the controls; `notes` is not drawn at all,
+and nothing reads it. Under them go the two fields written to be read: `info`,
+which is what the program is at whatever length that takes, and a **hint** —
+one line of plain text, printed heavier because it is the line worth acting on,
+for what no list of codes says, like which layout the program comes up in or
+which disk to boot from. A key's own `hint` is the same word on the on-screen
+board.
 Nothing but `agc` and `media` is required.
 
 **Save .agc** writes one out from the machine as it stands: what is in the

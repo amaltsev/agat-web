@@ -9,6 +9,10 @@
     color-scheme: dark;
     --bg: #14161a; --panel: #1d2026; --edge: #2c313a;
     --ink: #d7dbe2; --dim: #8b93a1; --accent: #79c0ff;
+    /* The status line's two colours: something to be told, and something that
+       is going right. Nowhere else on the page — a lamp is red because a drive
+       LED is, and a keycap is red because the machine's own is. */
+    --warn: #ff9c8a; --ok: #6fd08c;
     /* 768 of canvas — three 256-pixel columns — plus the panel's padding and
        border, so the picture lands on a whole multiple of its own raster. */
     --page: 790px;
@@ -210,19 +214,52 @@
     min-width: 5.5em; white-space: nowrap;
   }
   .ctl-what { color: var(--dim); }
-  /* The container's own line to whoever is about to play. A whole row of its
-     own below the groups, since it is a sentence and not a column, and it is
-     the only thing in the panel that is not a tap target. */
-  .ctl-hint {
-    flex: 0 1 100%; text-align: center; color: var(--dim); font-size: 12.5px;
+  /* What the container says it is: its title, who wrote it and when, where it
+     came from, and its one line to whoever is about to play. Below the controls
+     card, because the keys are what a player needs first and this is the
+     record. Empty for a bare image, and then it is not there at all. */
+  #info {
+    width: min(94vw, var(--page)); margin-top: 10px; text-align: center;
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
   }
+  #info:empty { display: none; }
+  .info-name { font-size: 13.5px; font-weight: 600; }
+  /* Author, date and address on one line, spaced by their own separators so a
+     card naming only one of the three carries none of them. */
+  .info-who {
+    display: flex; gap: .5em; flex-wrap: wrap; justify-content: center;
+    color: var(--dim); margin-top: 2px;
+  }
+  .info-sep { opacity: .5; }
+  .info-url { word-break: break-all; }
+  /* What the program is, at whatever length the container took. Held to a
+     readable measure and centred in the card, since the two lines above it are
+     centred and a paragraph across the full 790px is a paragraph nobody
+     finishes. */
+  .info-text {
+    color: var(--dim); margin: 6px auto 0; max-width: 68ch; text-wrap: pretty;
+  }
+  /* The hint is the line worth acting on rather than reading, so it is the one
+     thing on the card in the page's own ink and weight. */
+  .info-hint { font-weight: 600; margin-top: 6px; }
   #status {
     color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-    /* Wide enough for the longest line the run loop builds: a container title,
-       the machine, its RAM, the video mode and two drives. */
-    margin-left: auto; text-align: right; max-width: 60ch;
+    /* The longest line the run loop can build measures 73 characters — an
+       Agat-7 at 128K in `text 64 inv` with both drives loaded and a «Марсианка»
+       on the card with the ROM — and the two to spare are for the Cyrillic in
+       it, which is only one `ch` wide while it is coming from the monospace
+       face. Wider than the bar has to spare, so the line takes a row of its
+       own rather than wrapping inside one. */
+    margin-left: auto; text-align: right; max-width: 75ch;
   }
-  #status.err { color: #ff9c8a; }
+  #status.err { color: var(--warn); }
+  /* The two things about a mouse that are worth seeing rather than reading: the
+     machine is holding the pointer, and the program is not reading the card.
+     The sentence behind each is on the bit itself, as a tooltip, because this
+     line has one row to fit in. */
+  #status .held { color: var(--ok); }
+  #status .quiet { color: var(--warn); }
   .help {
     width: min(94vw, var(--page)); margin-top: 16px; color: var(--dim);
     font-size: 12.5px; border-top: 1px solid var(--edge); padding-top: 12px;
@@ -320,6 +357,7 @@
 
 <div id="keyboard"></div>
 <div id="controls"></div>
+<div id="info"></div>
 
 <div class="help">
   <p>
@@ -339,10 +377,11 @@
     </td></tr>
     <tr><td><b>Mouse</b></td><td>
       Off by default.  The three mice speak different protocols.  If a
-      program does not answer, try another (the status line is what says
-      the card is not being read).  Click the screen to hand the pointer
-      over and <b>Esc</b> to take it back. The host left button is A,
-      right is B.
+      program does not answer, try another: the mouse goes red in the
+      status line while nothing is reading the card, and green while the
+      machine has the pointer.  Click the screen to hand the pointer over
+      and <b>Esc</b> to take it back. The host left button is A, right
+      is B.
     </td></tr>
     <tr><td><b>Takes</b></td><td>
       <code>.aim</code> tagged track images, <code>.dsk</code> sector images and
@@ -352,9 +391,10 @@
     </td></tr>
     <tr><td><b>AGC</b></td><td>
       An Agat Container: one of those images plus the machine it wants,
-      a keyboard remap, and the controls themselves, grouped, which is
-      the card under the screen — with the container's own hint under
-      them, where it has one. <b>Save AGC</b> writes one from the
+      a keyboard remap, the controls themselves, grouped, which is
+      the card under the screen, and what the program is — title, author,
+      date, where it came from, a description, and one line to whoever is
+      about to play, which is the card below that. <b>Save AGC</b> writes one from the
       machine as it stands. The format is written up in
       <a href="https://github.com/amaltsev/agat-web/blob/main/AGC.md">AGC.md</a>.
     </td></tr>
@@ -422,6 +462,7 @@
 <script src="src/mouse.js"></script>
 <script src="src/keyboard.js"></script>
 <script src="src/keyview.js"></script>
+<script src="src/info.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/fil.js"></script>
 <script src="src/app.js"></script>
@@ -441,6 +482,7 @@
   var settingsEl = document.getElementById('settings');
   var keyboardEl = document.getElementById('keyboard');
   var controlsEl = document.getElementById('controls');
+  var infoEl = document.getElementById('info');
   var kbView = null;
   var panel = null;
 
@@ -617,7 +659,8 @@
 
   // The run loop says the same line twice a second, and most of the time it is
   // the line already shown; write only what differs, so a repaint means the
-  // machine changed.
+  // machine changed. What "differs" means is `shown`, since the line is more
+  // than its text: a bit can carry a colour and a tooltip.
   //
   // An error holds the line against that traffic. A failed load leaves the
   // machine running, so describe() reaches the line inside the tick and the
@@ -625,13 +668,42 @@
   // load, or until the user touches a control — which says it has been read.
   // A later error replaces an earlier one; ordinary traffic does not.
   var stuck = false;
+  var shown = null;
 
+  // A sentence, from a load or an error, or the run loop's bits — a string, or
+  // `{text, cls, title}`.
   function say(msg, isError) {
     if (stuck && !isError) return;
     stuck = !!isError;
-    var cls = isError ? 'err' : '';
-    if (statusEl.textContent !== msg) statusEl.textContent = msg;
-    if (statusEl.className !== cls) statusEl.className = cls;
+    paint(typeof msg === 'string' ? [msg] : msg, isError ? 'err' : '');
+  }
+
+  function paint(bits, cls) {
+    var key = cls, i, b, el;
+    for (i = 0; i < bits.length; i++) {
+      b = typeof bits[i] === 'string' ? { text: bits[i] } : bits[i];
+      key += '\u0001' + b.text + '\u0002' + (b.cls || '') + '\u0002' + (b.title || '');
+      bits[i] = b;
+    }
+    if (key === shown) return;
+    shown = key;
+    statusEl.className = cls;
+    statusEl.innerHTML = '';
+    for (i = 0; i < bits.length; i++) {
+      b = bits[i];
+      if (i) statusEl.appendChild(document.createTextNode(' · '));
+      // A bit with nothing to say for itself is text, not an element: the line
+      // is mostly plain and a span per word would be a span per word.
+      if (!b.cls && !b.title) {
+        statusEl.appendChild(document.createTextNode(b.text));
+        continue;
+      }
+      el = document.createElement('span');
+      el.className = b.cls || '';
+      if (b.title) el.title = b.title;
+      el.textContent = b.text;
+      statusEl.appendChild(el);
+    }
   }
 
   function unstick() { stuck = false; }
@@ -643,6 +715,10 @@
     // host key reaches which code, and the menu offers to draw only those.
     if (kbView) kbView.refresh();
     syncKbd(true);
+    // And what it says about itself, which a bare image drops again: the App
+    // clears the six fields on any load that came without a container, so the
+    // card is redrawn empty rather than left describing the program before.
+    AGAT.drawInfo(infoEl, app.about());
     // The address has to stop naming a container the moment something else is
     // loaded, or a bookmark taken afterwards reopens the wrong program.
     saveUrl();
@@ -844,7 +920,7 @@
     if (!kbdSel.value && groupOf(was)) kbdSel.value = 'used';
     if (wantKbd && pick(kbdSel, wantKbd)) wantKbd = '';
     if (panel) panel.destroy();
-    panel = new AGAT.ControlPanel(controlsEl, { onPick: pickGroup, hint: app.hint });
+    panel = new AGAT.ControlPanel(controlsEl, { onPick: pickGroup });
     if (loaded) {
       // A group the address named and this container does not have. It asked for
       // the controls board, so give it the whole of one. Spent here either way:

@@ -16,6 +16,8 @@
 //     "keys":    { "KeyW": { "code": "^" } },
 //     "controls": { "Play": { "Up Down Left Right": "Move",
 //                             "^": "Shoot right" } },
+//     "info": "A platform game for the Agat-7, written in 1989 and restored
+//              from the author's own tape.",
 //     "hint": "Press РУС at the title screen or the menu comes up in Latin.",
 //     "media": [ { "name": "rise-out.dsk", "data": ["…", "…"] } ]
 //   }
@@ -23,9 +25,12 @@
 // `date` is text, not a number: what is known about an old program is as often
 // "circa 1985" or "1990-92" as it is a year.
 //
-// `hint` and `notes` split by who is reading. A hint is shown: this one under
-// the controls, and `keys.<key>.hint` on the on-screen board. `notes` is the
-// record — provenance, credits, what a patch does — and nothing reads it.
+// `info`, `hint` and `notes` split by who is reading. `info` and `hint` are
+// shown, on the card under the controls: `info` is what the program is, as long
+// as it needs to be, and the hint is the one thing whoever is about to play has
+// to be told — `keys.<key>.hint` is the same word for one key on the on-screen
+// board. `notes` is the record — provenance, credits, what a patch does — and
+// nothing reads it.
 //
 // Three encodings, and one rule that picks between them. Hex while a person can
 // still read the bytes as bytes: `{ "at": 45312, "hex": "A9 60 85 84" }`, which
@@ -359,9 +364,11 @@
       },
       keys: c.keys || {},
       controls: c.controls || {},
-      // What the controls panel prints under the groups: the one thing the
-      // container has to say to whoever is about to play, rather than to
-      // whoever is reading the file.
+      // The two the info card prints, in the order it prints them: what the
+      // program is, at whatever length it takes, and then the one thing whoever
+      // is about to play has to be told. Both are the container talking to a
+      // reader rather than to a program, and both collapse to one paragraph.
+      info: oneLine(c.info),
       hint: oneLine(c.hint),
       media: [],
     };
@@ -466,7 +473,7 @@
   // the documented order because JSON.stringify keeps insertion order, and a
   // format people are meant to hand-edit should read the same way every time.
   function build(spec) {
-    var o = { agc: VERSION }, hint = oneLine(spec.hint);
+    var o = { agc: VERSION }, info = oneLine(spec.info), hint = oneLine(spec.hint);
     if (spec.title) o.title = spec.title;
     if (spec.author) o.author = spec.author;
     if (spec.date) o.date = String(spec.date);
@@ -476,8 +483,9 @@
     if (spec.slots) o.machine.slots = spec.slots;
     if (spec.keys && Object.keys(spec.keys).length) o.keys = spec.keys;
     if (spec.controls && Object.keys(spec.controls).length) o.controls = spec.controls;
-    // After the controls, because that is where it is printed and where it
-    // reads as belonging.
+    // After the controls, in the order the card prints them: everything the
+    // file ends with is something a reader is shown.
+    if (info) o.info = info;
     if (hint) o.hint = hint;
     var list = spec.media || [], i, todo = [];
     o.media = [];                    // in place, so the field keeps its order

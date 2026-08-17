@@ -41,6 +41,7 @@ press **Save AGC**: the container it writes is a text file you can edit.
       "^": "Shoot right"
     }
   },
+  "info": "A platform game written for the Agat-7 in 1989 and restored from the author's own tape.",
   "hint": "Press РУС at the title screen or the menu comes up in Latin.",
 
   "media": [
@@ -82,10 +83,22 @@ question of which is shorter.
 These fields are frequently the last place any of this is recorded. Fill them
 in.
 
-`notes` is for the record and nothing reads it. What the page shows is a
-**hint**: [`hint`](#hint--the-line-the-player-is-shown) under the controls, and
-`hint` inside a `keys` entry on the on-screen board. Anything the reader is
-meant to see is a hint; `notes` is the file talking to whoever opens it.
+`title`, `author`, `date` and `url` are drawn on the **info card**, the last
+thing on the page under the controls: the title, then who wrote it and when and
+where it came from, with the `url` a link where it is `http`/`https` and printed
+plainly where it is anything else. A container that names none of them, and
+nothing below either, has no card — which is what a bare image gets.
+
+Two more fields are drawn under that row, and they are the two the card is for:
+[`info`](#info--what-the-program-is), which is what the program is at whatever
+length that takes, and [`hint`](#hint--the-line-the-player-is-shown), the one
+thing whoever is about to play has to be told, printed heavier because it is the
+line worth acting on. `hint` inside a `keys` entry is the same word for one key
+on the on-screen board.
+
+`notes` is the odd one out: it is for the record and nothing reads it. Anything
+the reader is meant to see is `info` or a hint; `notes` is the file talking to
+whoever opens it.
 
 ### `machine`
 
@@ -283,16 +296,36 @@ Two traps worth knowing:
 `node tools/check.js keys <file.agc>` prints the panel and the board together,
 and `--group=NAME` cuts them the way the menu does.
 
+### `info` — what the program is
+
+```json
+"info": "A platform game written for the Agat-7 in 1989 and restored from the author's own tape."
+```
+
+The description, printed under the author-date-url row. As long as it needs to
+be: what the program does, who it was for, which release this is, what a patch
+in it changed — the things a title has no room for and `notes` used to have to
+swallow. A container that carries only this gets a card with only this on it.
+
+Same **plain text** rule as the hint below, and the same reason: whitespace
+collapses to one paragraph, and markup is printed rather than obeyed.
+
+`info` and `notes` are easy to mix up, and the split is who is reading. `info`
+is shown, so it is written for whoever opens the program; `notes` is not, so it
+is written for whoever opens the file.
+
 ### `hint` — the line the player is shown
 
 ```json
 "hint": "Press РУС at the title screen or the menu comes up in Latin."
 ```
 
-One sentence or two, printed under the controls panel. It is for the thing no
-list of codes can say: which layout the program comes up in, that the first
-disk is the one to boot, that the pause key is also the quit key. A container
-with a hint and no `controls` still gets the line — the panel is drawn for it.
+One sentence or two, printed at the foot of the info card, and printed heavier
+than the rest of it: it is the line worth acting on rather than reading. It is
+for the thing no list of codes can say: which layout the program comes up in,
+that the first disk is the one to boot, that the pause key is also the quit key.
+A container with a hint and nothing else still gets the line — the card is drawn
+for any one of the six things on it.
 
 **Plain text.** No paragraph breaks, no Markdown, no HTML: the page prints it as
 text, so a `<b>` shows up as `<b>`. Whitespace collapses, so a hint wrapped
@@ -302,8 +335,8 @@ It is the same word as a key's `hint`, and the same rule: a hint is shown. This
 one is the container's, and `keys.<key>.hint` is one key's. `notes` is the other
 kind — the record, which nothing reads. A container can carry all three.
 
-`node tools/check.js keys <file.agc>` prints it under the panel, where the page
-puts it.
+`node tools/check.js keys <file.agc>` prints the card under the panel, ending in
+the hint, where the page puts both.
 
 ### `media`
 
@@ -404,7 +437,8 @@ author, a date and the keys.
 ```sh
 node tools/mkagc.js game.dsk \
   --title="…" --author="…" --date=1989 --url=https://… \
-  --model=7 --ram=64 --hint="Press РУС at the title screen." \
+  --model=7 --ram=64 --info="A platform game of 1989." \
+  --hint="Press РУС at the title screen." \
   --key="KeyW:^:Shoot right" > game.agc
 ```
 
@@ -576,8 +610,9 @@ which is the machine having one `←`.
   will eventually eat someone's notes.
 - `ram` is in kilobytes and `date` is a string. Both are the kind of thing that
   is easy to guess wrong in a second implementation.
-- A `hint` is shown and `notes` is not. Keep both, and do not let one be read
-  as the other.
+- `info` and `hint` are shown and `notes` is not. Keep all three, and do not let
+  one be read as another: they are the same kind of prose written for different
+  readers, and a reader that folds them together loses which is which for good.
 - A payload carries `data` or `gz`, and a patch one of `hex`, `data` or `gz` —
   never two. Read any of them; refuse a record that gives more than one.
 - Which encoding to *write* is a size decision and nothing else. The forms mean

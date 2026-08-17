@@ -71,6 +71,7 @@ Load order matters only in that a module's dependencies must already be on
 | `mouse.js` | the three mice on their four fittings, and the pointer capture that feeds them |
 | `keyboard.js` | browser `code` → scancode → Agat keymap, and the same table read backwards |
 | `keyview.js` | the on-screen keyboard: three boards over that one table, and the container's controls as a card |
+| `info.js` | the card under the controls: what the container says it is |
 | `audio.js` | `$C030` edges → PCM |
 | `fil.js` | `.fil` loading |
 | `app.js` | browser glue: run loop, media routing, diagnostics |
@@ -565,15 +566,10 @@ The one host-side thing on the panel is a container remap, `^ (W)`. A remap hold
 in every plane by construction, so it is the only host key that does not move
 under ЛАТ/РУС and the only one the panel can honestly promise.
 
-**The container's `hint`** goes under the groups, as one plain-text line with no
-markup in it and none allowed. It reaches the panel through `opts.hint` rather
-than through the keyboard's tables, because it belongs to the container and not
-to the keyboard: `syncKbd` hands it `app.hint`, which is set from the container
-and cleared by a bare image, so the hint is rebuilt and dropped with everything
-else the container brought. A hint with no `controls` is still a panel — the
-group loop does not bail out on an empty set — and the hint carries no
-`__group`, so a tap on it picks nothing. It is the same word as a key's `hint`
-and the same rule: `notes` is the record, and a hint is what is shown.
+**The container's `hint`** is not on this panel: it is the container talking
+rather than the keyboard, and it is drawn on the info card below with the rest of
+what the container says about itself. Every child of the panel is a group, which
+is what lets a tap anywhere inside it pick one.
 
 The panel is also where the prose lives now. `controls` labels are indexed by
 code, which is what the winnowed board's caps are, so `title()` reads them
@@ -594,6 +590,37 @@ code sends that code directly — `press()` uses `cap.sends`, not the legend —
 name `$4B` and `$8B` both: `capsUsed` keeps one code per cap index and the second
 is dropped rather than made unreachable. Nothing in `examples/` does it, and the
 fix would be to let a cap hold a third code, not to add УПР.
+
+### The info card
+
+`info.js` draws the last thing on the page: `title`, `author`, `date` and `url`
+in two rows, then `info` — what the program is, at whatever length the container
+took — and then `hint`. That is everything the container wrote to be read.
+Nothing the emulator worked out goes on it, which is the status line's half, and
+`notes` stays off it too, because it is the record and not something shown.
+
+The hint is drawn in the page's ink and at weight 600, the only thing on the card
+that is: it is the line worth acting on rather than reading, and above two
+paragraphs of prose that has to be visible before the card is.
+
+`drawInfo(el, about)` empties the element and refills it, so a second container's
+identity replaces the first one's, and each of the six is drawn only if it is
+there: a container naming an author and nothing else gets one line with an author
+on it rather than a row of empty separators. `app.about()` is what the page hands
+it — named for what it returns rather than `info()`, since `info` is one of the
+six — and the title falls back the way `credit()` does, so a container that did
+not name itself is still called by its filename. A bare image clears all six, so
+the element ends up empty and `#info:empty` takes it off the page, the way the
+controls card and the keyboard go when there is nothing to draw.
+
+The `url` becomes an `<a>` only where it is `http`/`https`. A container is a file
+from somewhere else, and a `javascript:` URL made clickable would be that file
+running code on this page; anything else is printed as the text it is. The link
+drops the scheme and a trailing slash, which on a line this short are noise.
+
+`node tools/check.js keys <file.agc>` draws the card under the panel, and
+`tools/vectors.js` builds it against a stub DOM — the card is what the page shows
+a player about a program, and it is worth checking without a browser.
 
 ---
 
