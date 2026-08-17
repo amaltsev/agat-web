@@ -122,12 +122,25 @@
   // Port C's top two bits are the buttons on both, active low. What the rest of
   // it means is where they part company.
   //
-  // Whether the card's $Cn00 page — the last 256 bytes of roms/cm6337.rom — is
-  // fitted decides whether a program will look at the card at all, and the two
-  // programs here want opposite answers, so Machine.fit hands the ROM to one of
-  // these and not the other. See HARDWARE.md; the short version is that
-  // MouseGraf 4.4 will not touch a parallel mouse whose page lacks the ROM's
-  // $18 $90, and 1.6 as it starts will not touch one whose page has it.
+  // Two of the four registers say nothing about the mouse and everything about
+  // the card it hangs off, and a program reads them before it will look at the
+  // ports at all:
+  //
+  //   $Cn00  the card's ROM page — the last 256 bytes of roms/cm6337.rom, which
+  //          begin $18 $90 — fitted, or an empty $FF page
+  //   $C0n1  port B before anything has written it. The 8255 comes up with all
+  //          three ports inputs, so this is the card's pins and not a latch
+  //
+  // The two travel together — a card either carries the ROM and answers $FF
+  // there or carries neither — because that is how the programs test it, and
+  // they want opposite cards:
+  //
+  //   MouseGraf 4.4   ROM page required; never reads $C0n1 at all
+  //   Klondike        ROM page and $C0n1 = $FF, both, or the slot is skipped
+  //   MouseGraf 1.6   empty page and $C0n1 ≠ $FF, in the mode it starts in
+  //
+  // So Machine.fit builds the same «Марсианка» on either card and lets the
+  // choice be the machine's; see HARDWARE.md.
   //
   // Only the page, never the 2K: the driver proper lives in the card's
   // $C800-$CFFF expansion window, which nothing here decodes. A program that
@@ -139,9 +152,10 @@
     this.fx = 0;
     this.fy = 0;
     this.btn = 0;                      // bit 0 button A, bit 1 button B
-    this.portA = 0;
-    this.portB = 0;
     this.rom = rom || null;            // the printer card's $Cn00 page
+    this.portBIdle = this.rom ? 0xff : 0x00;
+    this.portA = 0;
+    this.portB = this.portBIdle;
     this.slot = -1;
   }
 
@@ -179,8 +193,8 @@
   // ---- «Марсианка» ----------------------------------------------------------
   //
   // The crudest wire protocol there is: four direction lines in the bottom of
-  // port C, active low, one asserted per step of the ball. Nothing is latched
-  // and nothing is addressed — the driver samples port C in a tight loop,
+  // port C, active low, one asserted per step of the ball. Nothing is addressed
+  // and nothing is counted — the driver samples port C in a tight loop,
   // notices it has changed, and looks the four bits up in a table of sixteen
   // (dx, dy) pairs. MouseGraf 1.6 does exactly that at $6039, and its table,
   // read out of the running program, is
@@ -189,18 +203,39 @@
   //
   // which is agat-emulator's read_mars confirmed from the other end.
   //
-  // A step therefore has to be a *pulse*, because it is the change the driver
-  // counts, not the level. How fast the pulses come is the ball's business on a
-  // real mouse and the emulator's here, and the state advances only on a read
-  // and only after this long — so a slow driver misses nothing, it just drains
-  // the movement more slowly. What the number has to clear is the gap between
-  // the driver's *two* reads, one to notice the change and one to decode it:
-  // ten cycles or so in MouseGraf, which reads again three instructions later,
-  // against the hundred-odd its loop takes to come round.
-  var PULSE_CYCLES = 64;
+  // A step is closer to a level than a pulse: the mouse asserts a direction
+  // line and the driver takes it down through RES, which is what the RES line
+  // is for and why both drivers here clear after every reading — MouseGraf 1.6
+  // 32 cycles after the assert, Klondike 89-103.
+  //
+  // But it cannot be *only* RES, and this is where the number comes from. Two
+  // things have to be true at once:
+  //
+  //   The step outlives the driver's decode window. A driver notices the
+  //   change on one read and decodes the lines on a later one — 14 cycles later
+  //   in MouseGraf 1.6, 102 in Klondike, which goes through its button handler
+  //   on the way — and a step that ends in between is counted by nobody.
+  //
+  //   The step does not outlive the program that ignored it. MouseGraf 1.6
+  //   polls this port on its title screen, waiting on a button, and never
+  //   clears: a line latched until RES would still be up when the editor
+  //   started, the editor would take it for its idle state, and the mouse would
+  //   be dead for the rest of the session. It was not, on the real machine, so
+  //   the УВК-01 lets go of a step by itself as well.
+  //
+  // The same number does for both because it is also the third thing — the
+  // interval to the *next* step, which is how fast the ball rolls. At the
+  // УВК-01's 0.5mm a step (Nippel Mouse Card, руководство программиста §1)
+  // that makes 256 cycles about 2 m/s of hand movement, a little above the
+  // 1.5 m/s the same manual works out as the fastest the card's counters could
+  // follow and calls more than the manipulator itself allows.
+  var STEP_CYCLES = 256;
 
+  // The name carries the card, because which card the same mouse is on is the
+  // difference between a program driving it and a program not seeing it, and
+  // the status line is where that gets noticed.
   function MouseMars(rom) {
-    Parallel.call(this, '«Марсианка»', rom);
+    Parallel.call(this, '«Марсианка»' + (rom ? ' (card ROM)' : ''), rom);
     this.pendX = 0;                    // steps the ball owes the driver
     this.pendY = 0;
     this.lines = 0;                    // which direction lines are asserted
@@ -212,7 +247,8 @@
   MouseMars.prototype.reset = function () {
     this.fx = this.fy = 0;
     this.btn = 0;
-    this.portA = this.portB = 0;
+    this.portA = 0;
+    this.portB = this.portBIdle;
     this.pendX = this.pendY = 0;
     this.lines = 0;
     this.at = 0;
@@ -223,19 +259,30 @@
     this.pendY += iy;
   };
 
-  // Assert, idle, assert: a step and the gap after it, one pulse width apart.
+  // RES — pin A9 on the cable, driven by port A bit 7. A driver that writes $80
+  // and then $00 after reading the lines is asking for the next step rather
+  // than the one it has already counted, and both drivers here do it after
+  // every reading. It is the driver's half of the bargain above: the step it
+  // ends early is a step the interval does not have to end for it.
+  MouseMars.prototype.latch = function () {
+    if (this.portA & 0x80) this.lines = 0;
+  };
+
+  // One step at a time: assert it, hold it for the driver, and take it down
+  // again a step interval later if the driver has not.
   MouseMars.prototype.sample = function (now) {
     var l;
-    if (now - this.at >= PULSE_CYCLES) {
-      this.at = now;
-      if (this.lines) this.lines = 0;
+    if (now - this.at >= STEP_CYCLES) {
+      if (this.lines) { this.lines = 0; this.at = now; }
       else {
         l = 0;
         if (this.pendX > 0) { l |= 8; this.pendX--; }
         else if (this.pendX < 0) { l |= 4; this.pendX++; }
         if (this.pendY > 0) { l |= 1; this.pendY--; }
         else if (this.pendY < 0) { l |= 2; this.pendY++; }
-        this.lines = l;
+        // A ball that is not rolling starts no clock, so the interval is
+        // already open when movement begins and its first step goes out at once.
+        if (l) { this.lines = l; this.at = now; }
       }
     }
     // Bits 5-4 are not the driver's business and read high, as they do out of
@@ -283,7 +330,8 @@
     this.fx = this.fy = 0;
     this.btn = 0;
     this.last[0] = this.last[1] = 0;
-    this.portA = this.portB = 0;
+    this.portA = 0;
+    this.portB = this.portBIdle;
     this.state = 0x23;
   };
 

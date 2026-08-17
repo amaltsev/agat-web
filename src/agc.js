@@ -66,7 +66,7 @@
   // the hardware this one has rather than fail.
   var CARDS = {
     psrom: 1, xram: 1, xram9: 1, fdd140: 1, fdd840: 1,
-    'mouse-nippel': 1, 'mouse-mars': 1, 'mouse-mm8031': 1,
+    'mouse-nippel': 1, 'mouse-mars': 1, 'mouse-mars-rom': 1, 'mouse-mm8031': 1,
   };
 
   // Base64 characters per line. 76 is the MIME width, and 57 bytes; being a

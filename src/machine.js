@@ -270,16 +270,22 @@
         case 'mouse-nippel':
           if (AGAT.MouseNippel) card = new AGAT.MouseNippel();
           break;
-        // The two parallel mice are the same printer card with a different
-        // mouse on the cable, and they differ here only in whether that card's
-        // ROM is fitted — which is a real choice, not a detail. MouseGraf 1.6
-        // looks at the slot's $Cn00 before it will touch the ports, and takes
-        // either an empty page or the ROM's $18 depending on bit 7 of its own
-        // $6F ($8023-$8033); in the mode it starts in it wants the page empty.
-        // 4.4 goes the other way and will not look at a card without the ROM.
-        // So each is fitted as the program that drives it expects.
+        // The parallel mice are the same printer card with a different mouse on
+        // the cable, and the card comes two ways: with its ROM page fitted or
+        // without. That is a real choice and not a detail, because a program
+        // reads the page — and port B with it — before it will touch the ports,
+        // and the programs disagree. MouseGraf 1.6 takes either an empty page
+        // or the ROM's $18 depending on bit 7 of its own $6F ($8023-$8033), and
+        // in the mode it starts in it wants the page empty; 4.4 will not look
+        // at a card without the ROM; Klondike wants the ROM and $FF at $C0n1.
+        //
+        // Hence three fittings for two mice: a «Марсианка» on either card, and
+        // the ММ-8031 on the one its own programs look for.
         case 'mouse-mars':
           if (AGAT.MouseMars) card = new AGAT.MouseMars(null);
+          break;
+        case 'mouse-mars-rom':
+          if (AGAT.MouseMars) card = new AGAT.MouseMars(mouseRom(roms));
           break;
         case 'mouse-mm8031':
           if (AGAT.MouseMM8031) card = new AGAT.MouseMM8031(mouseRom(roms));

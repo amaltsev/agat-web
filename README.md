@@ -93,9 +93,11 @@ boards produce it, and there is nothing to choose. See
 
 **Mouse** is off unless you ask, because nothing that came with either machine
 expects one, and it asks *which*: the three Soviet mice speak different
-protocols and a program drives the one it was written for. Pick the wrong one
-and the program gives no sign whatever — the status line is what says the card
-is not being read. A container is the better place to settle it, since the
+protocols and a program drives the one it was written for. The «Марсианка» is
+offered twice over, once on each of the two cards it hung off, because a program
+looks the card over before it will look at the mouse and they do not agree about
+what it should find. Pick the wrong one and the program gives no sign whatever —
+the status line is what says the card is not being read. A container is the better place to settle it, since the
 program is what knows: an `.agc` names the mouse along with the rest of the
 machine, and then nobody has to guess.
 
@@ -118,8 +120,8 @@ program properly is a bookmark:
 `model` is 7 or 9; `ram` is base RAM in KB — 32, 64 or 128, Agat-7 only, since
 the Agat-9 is always 128K; and `psrom` and `xram` size the two Agat-7 memory
 cards in KB, appearing only when they are not the stock 32K (`0` leaves the slot
-empty); `mouse` is `nippel`, `mars` or `mm8031`, and is absent when there is
-none. A machine named in the URL is treated as chosen, so a `7a`/`9a` filename
+empty); `mouse` is `nippel`, `mars`, `mars-rom` or `mm8031`, and is absent when
+there is none. A machine named in the URL is treated as chosen, so a `7a`/`9a` filename
 does not override it.
 
 `agc=` names a container, which carries the file itself:

@@ -304,10 +304,11 @@
   </div>
   <div class="row">
     <span class="key">Mouse</span>
-    <select id="mouse" title="A mouse was bought separately and nothing that came with the machine expects one, so the standard machine has none. Ниппель is a card of its own; the other two hang off the printer card's parallel port, and differ in one thing beyond their protocol: the ММ-8031 is fitted with the printer card's ROM, because the programs that drive it look for that ROM before they look at the ports, and the «Марсианка» is fitted without it, because the programs that drive it want the page empty.">
+    <select id="mouse" title="A mouse was bought separately and nothing that came with the machine expects one, so the standard machine has none. Ниппель is a card of its own; the other two hang off the printer card's parallel port, and that card comes two ways — with its ROM page fitted or without. A program reads the page before it looks at the ports, and they disagree: MouseGraf 1.6 wants the page empty, MouseGraf 4.4 and Klondike want the ROM. So the «Марсианка» is offered on either card, and the ММ-8031 on the one its own programs look for.">
       <option value="">no mouse</option>
       <option value="nippel">Ниппель mouse</option>
       <option value="mars">«Марсианка» mouse</option>
+      <option value="mars-rom">«Марсианка» mouse (w/ROM)</option>
       <option value="mm8031">ММ-8031 mouse</option>
     </select>
   </div>
@@ -592,7 +593,7 @@
     // A container can put a mouse in any slot it likes; the menu says which
     // mouse, not where, so it follows whichever slot the card turned up in.
     mouseSel.value = '';
-    ['nippel', 'mars', 'mm8031'].forEach(function (kind) {
+    ['nippel', 'mars', 'mars-rom', 'mm8031'].forEach(function (kind) {
       if (AGAT.Machine.slotOf(app.slots, 'mouse-' + kind) >= 0) mouseSel.value = kind;
     });
     syncMemEnabled();

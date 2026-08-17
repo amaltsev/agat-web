@@ -142,6 +142,12 @@ function eq(what, got, want) {
      cards(mouse), ['2:xram9', '4:mouse-nippel', '5:fdd840', '6:fdd140']);
   eq('App mouse survives the round trip',
      mouse.slotDiff(), { 4: { card: 'mouse-nippel' } });
+
+  // The same mouse on the other card is a card of its own in the slot map,
+  // because which card it is decides which programs will look at it.
+  const marsRom = mk({ model: 9, slots: { 4: { card: 'mouse-mars-rom' } } });
+  eq('App fits a «Марсианка» on a card with the ROM',
+     cards(marsRom), ['2:xram9', '4:mouse-mars-rom', '5:fdd840', '6:fdd140']);
 }
 
 // --- the mice ---------------------------------------------------------------
@@ -195,28 +201,74 @@ function eq(what, got, want) {
   // pulse per step. The bit-to-direction mapping is MouseGraf 1.6's own table
   // at $6317, read out of the running program: bit 3 x+1, bit 2 x-1, bit 1
   // y-1, bit 0 y+1, against a value the driver inverts before it looks.
+  const P = 256;                       // STEP_CYCLES in src/mouse.js
   const mars = new A.MouseMars();
   const lines = (t) => (~mars.read(2, t)) & 0x0f;
+  const res = (m, t) => { m.write(0, 0x80); m.write(0, 0x00); return t; };
   eq('mars idles with no line asserted', lines(0), 0);
+  mars.move(1, 0);                     // one step, with nothing queued behind it
+  eq('mars asserts x+ for a step right', lines(P), 8);
+  // Long enough to outlive any decode window — 14 cycles in MouseGraf 1.6, 102
+  // in Klondike, which goes through its button handler first — and no longer
+  // than a step, so a program that never clears is not left holding one.
+  eq('mars holds the line across a decode window', lines(P + 102), 8);
+  eq('mars lets go of it by itself after a step', lines(2 * P), 0);
+  mars.reset();
+  mars.move(1, 0);
+  eq('mars asserts again', lines(3 * P), 8);
+  res(mars);
+  eq('mars RES takes it down early', lines(3 * P + 10), 0);
+
+  // And the next step no sooner than a step interval after the last, which is
+  // the ball rolling rather than anything the driver did.
+  mars.reset();
   mars.move(2, 0);
-  eq('mars pulses x+ for a step right', lines(100), 8);
-  eq('mars holds the line until the pulse is over', lines(120), 8);
-  eq('mars drops it again, so the next step is a change', lines(200), 0);
-  eq('mars pulses the second step', lines(300), 8);
-  eq('mars has nothing left to send', lines(500), 0);
+  eq('mars asserts the first step at once', lines(1000), 8);
+  res(mars);
+  eq('mars sends nothing until the interval is up', lines(1000 + P - 1), 0);
+  eq('mars sends the next step when it is', lines(1000 + P), 8);
+  res(mars);
+  eq('mars has nothing left to send', lines(1000 + 2 * P), 0);
   mars.move(-1, 1);
-  eq('mars sends both axes in one state', lines(700), 4 | 1);
+  eq('mars sends both axes in one state', lines(1000 + 3 * P), 4 | 1);
+  res(mars);
   mars.move(0, -1);
-  eq('mars idles between two steps', lines(900), 0);
-  eq('mars pulses y- upward', lines(1000), 2);
+  eq('mars sends y- upward', lines(1000 + 4 * P), 2);
 
   // The two buttons sit where the ММ-8031's do, and the driver reads them
   // through the same inversion.
   mars.btn = 1;
-  eq('mars button A is bit 7, active low', mars.read(2, 1100) & 0xc0, 0x40);
+  eq('mars button A is bit 7, active low', mars.read(2, 1000 + 4 * P + 10) & 0xc0, 0x40);
   mars.btn = 2;
-  eq('mars button B is bit 6', mars.read(2, 1200) & 0xc0, 0x80);
+  eq('mars button B is bit 6', mars.read(2, 1000 + 4 * P + 20) & 0xc0, 0x80);
   mars.btn = 0;
+
+  // RES is bit 7 of port A and not port A: the ММ-8031 shares these registers
+  // and picks an axis with the same write, so a card that cleared on any of
+  // them would be answering the wrong mouse.
+  const held = new A.MouseMars();
+  held.move(1, 0);
+  eq('mars asserts a step', (~held.read(2, 1000)) & 0x0f, 8);
+  held.write(0, 0x7f);
+  eq('mars keeps it through a port A write without bit 7',
+     (~held.read(2, 1010)) & 0x0f, 8);
+  held.write(1, 0xff);
+  eq('mars keeps it through a port B write', (~held.read(2, 1020)) & 0x0f, 8);
+  held.write(0, 0x80);
+  eq('mars RES takes it down at once', (~held.read(2, 1030)) & 0x0f, 0);
+
+  // The card under either mouse, which is what a program reads before it will
+  // look at the ports at all: with the printer card's ROM page fitted port B
+  // answers $FF until something writes it, and on a bare card $00.
+  const bare = new A.MouseMars(null);
+  const carded = new A.MouseMars(new Uint8Array([0x18, 0x90]));
+  eq('mars on a bare card has no page and $00 at port B',
+     [bare.rom, bare.read(1)], [null, 0x00]);
+  eq('mars on a card with the ROM has $FF at port B', carded.read(1), 0xff);
+  carded.write(1, 0x12);
+  eq('port B is a latch once it has been written', carded.read(1), 0x12);
+  carded.reset();
+  eq('and comes back to what the card answers', carded.read(1), 0xff);
 
   // ММ-8031: port C, read after a write to port A that says which axis and
   // latches it. A standing mouse reads $20 in the delta field, which is what

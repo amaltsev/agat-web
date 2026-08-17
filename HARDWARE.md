@@ -504,8 +504,9 @@ its own, the two drift apart the first time the guest's stops at the edge of its
 screen while the host's keeps going, and there is nothing to read back that
 would let the drift be corrected.
 
-Three mice, and the software that proves each one: MouseGraf 4.4 wants the
-Ниппель and 1.6 the «Марсианка». One count is one pixel of MouseGraf's cursor
+Three mice on four fittings, and software that proves each one: MouseGraf 4.4
+wants the Ниппель, 1.6 the «Марсианка», and Klondike the «Марсианка» on the
+other card. One count is one pixel of MouseGraf's cursor
 in both, measured — 40 counts of Ниппель movement move the coordinates it
 displays by exactly 40 — so the page makes a sweep across the canvas 256 counts.
 
@@ -544,13 +545,21 @@ the cable swapped.
 
 | | |
 |---|---|
-| `$C0n0` | port A, output |
+| `$C0n0` | port A, output — the ММ-8031's axis select, and RES on bit 7 |
 | `$C0n1` | port B, output — the mouse's control lines |
 | `$C0n2` | port C, input — the reading |
 | `$C0n3` | control, written `$89`: A out, B out, C in |
 
 Port C's top two bits are the buttons on both, **active low**: bit 7 button A,
 bit 6 button B. The rest is where they part company.
+
+agatcomp's pin table for the cable — a three-row СНП34, rows A and C — gives the
+УВК-01 its buttons on `C8`/`C9` and its four direction lines on `C2`-`C5`, which
+against the direction bits below fixes the mapping at **C*n* → port C bit *n*−2**
+and puts КН2 (левая) on bit 7. The same table gives the ММ-8031's two buttons the
+other way round, on `C9`/`C8`; that is *not* modelled here, and neither
+agat-emulator nor anything measurable settles it — MouseGraf would then start on
+a different physical button depending on which mouse was plugged in.
 
 The **«Марсианка»** is the crudest wire protocol there is: four direction lines
 in the bottom of port C, active low, one asserted per step of the ball. Nothing
@@ -561,12 +570,51 @@ program, that table is
 
     bit 3 → x+1    bit 2 → x−1    bit 1 → y−1    bit 0 → y+1
 
-which is agat-emulator's `read_mars` confirmed from the other end. Because it is
-the *change* the driver counts, a step has to be a pulse — assert, then idle. How
-fast the pulses come is the ball's business on a real mouse and the emulator's
-here; the rule that has to hold is that a driver reading port C twice in quick
-succession sees the same state, since MouseGraf reads it once to notice the
-change and again to decode it.
+which is agat-emulator's `read_mars` confirmed from the other end, and Klondike's
+own table at `$1EBF` a third time.
+
+The cable's **RES** line (pin `A9`) is **port A bit 7**, and it is the driver's
+way of taking a step down when it has counted it: agatcomp's account has the
+driver reading the directions and then resetting the circuit, agat-emulator does
+it in `printer_io_w` (`regs[2] |= 0x0F` on a write with bit 7 set), and both
+programs here pulse `$80`/`$00` after **every** reading — measured, 120 steps of
+120, MouseGraf 1.6 32 cycles after the step appeared and Klondike 89-103.
+
+### How long a step lasts, and why it is one number
+
+`STEP_CYCLES` is squeezed from three directions at once, and 256 is where they
+meet.
+
+**It has to outlive the driver's decode window.** A driver notices the change on
+one read and decodes the lines on a later one, and since the read that asserts a
+step is the read that notices it, the window starts there — a requirement to be
+met, not a race to be narrowed. Measured with the lines held indefinitely:
+
+| | notices | decodes | window |
+|---|---|---|---|
+| MouseGraf 1.6 | `$603C` | `$620E` | **14 cycles** |
+| Klondike | `$1E58` | `$1E7D` | **102 cycles**, its button handler in between |
+
+At 64 the step ended inside Klondike's window every time — it saw the change,
+went through `$1A8A`, and decoded an idle port, so its cursor never moved however
+far the mouse did, while its buttons worked perfectly.
+
+**It must not outlive the program that ignored it.** The step also ends by
+itself, and that is not a convenience: MouseGraf 1.6 polls this port on its title
+screen waiting for a button and never clears it, so a line latched until RES
+would still be up when the editor started, the editor would take it for its idle
+state, and the mouse would be dead for the rest of the session. Measured, with
+the self-clear removed: wave the mouse at the title screen and 40 counts into the
+editor move the cursor by nought. It cannot have done that on the real machine,
+so the УВК-01 lets go of a step by itself as well.
+
+**And it is the interval to the next step**, which is the ball rolling. At the
+УВК-01's 0.5 mm resolution one step per 256 cycles is about 2 m/s of hand
+movement, a little above the 1.5 m/s the Nippel manual works out as the fastest
+its counters could follow and calls more than the manipulator itself allows.
+MouseGraf 1.6 is indifferent to the width in any case, measured: its own poll
+loop is the slower limit, and a burst of 40 counts moves its cursor 117 pixels
+under 64 or 256 alike, 40 counts fed slowly exactly 40.
 
 The **ММ-8031** is an intelligent mouse by comparison. A write to port A picks
 an axis — bit 7 clear for X, set for Y — and latches how far that axis has moved
@@ -578,31 +626,43 @@ the further it has moved since the last read, the more each step of the reported
 figure is worth. Whether that table is the hardware's or a reconstruction is not
 established; it appears in agat-emulator and nowhere else found.
 
-### The card ROM, and why only one of them has it
+### The card the mouse is on, and why there are two of them
 
-The printer card carries a ROM — `cm6337.rom`, bundled as `mouse`, of which only
-the last 256 bytes are used, that being the card's `$Cn00` page. Whether it is
-fitted decides whether a program will look at the card at all, and the two
-programs here want opposite answers:
+Two registers say nothing about the mouse and everything about the card, and a
+program reads both before it will look at the ports at all:
+
+- the card's **`$Cn00` ROM page** — `cm6337.rom`, bundled as `mouse`, of which
+  only the last 256 bytes are used — fitted, or an empty `$FF` page;
+- **`$C0n1`**, port B before anything has written it. The 8255 comes up with all
+  three ports inputs, so what a program reads there is the card's pins.
+
+The two travel together, and the programs want opposite cards:
 
 - **MouseGraf 4.4** finds a parallel mouse by scanning slot ROM pages from
   `$C700` down for the `$18 $90` that page starts with, and will not touch the
-  ports of a card without it.
+  ports of a card without it. It never reads `$C0n1` at all.
+- **Klondike** (Р. Бадер, `tmp/Klondike.aim`) sweeps slots 2-6 at `$0864` and
+  takes a slot only if `$Cn00` reads `$18` **and** `$C0n1` reads `$FF`. Both, or
+  it moves on — and having found nothing it leaves `$AE` at zero and polls slot
+  0's `$C082` for ever.
 - **MouseGraf 1.6** looks at the same page first and has *two* modes, on bit 7
   of its own `$6F` (`$8023-$8033`): with the bit set it accepts the ROM's `$18`,
   and with it clear — which is how it starts — it accepts only `$FF`, an empty
-  page, and rejects the slot outright otherwise. It never reaches the ports.
+  page, and rejects the slot outright otherwise. It never reaches the ports. Its
+  `$C0n1` test is the other way round from Klondike's: with `$FF` there its poll
+  count drops from 1029 to nought, measured.
 
-So the ROM is fitted to the ММ-8031, which 4.4 drives, and not to the
-«Марсианка», which 1.6 drives. That is a choice about the machine rather than
-about the mouse — the ROM is on the card, not on the cable — and it is made this
-way because each is then the machine its program expects. Fitting the ROM to the
-«Марсианка» measurably stops MouseGraf 1.6 dead: it rejects slot 6 at `$8026`
-and never reads the mouse.
+So there is no one card, and the emulator fits **three**: a «Марсианка» on a
+bare card (`mouse-mars`, `$FF` page and `$00` at port B — what 1.6 wants), the
+same mouse on a card with the ROM (`mouse-mars-rom` — what Klondike wants), and
+the ММ-8031, which is only ever on the second (`mouse-mm8031`). The ROM is on
+the card and not on the cable, so the choice is about the machine rather than
+about the mouse. Fitting the ROM under 1.6 measurably stops it dead: it rejects
+slot 6 at `$8026` and never reads the mouse.
 
 The driver proper is in the card's `$C800-$CFFF` expansion window, which nothing
 here decodes, so a program that calls the ROM instead of driving the ports will
-not work. Neither MouseGraf does.
+not work. Neither MouseGraf does, and neither does Klondike.
 
 ### Which button
 
@@ -626,6 +686,11 @@ will sit at 128:128 for ever. The status line reports a card that has gone
 fifteen emulated seconds without being read, which catches a Ниппель under 1.6
 but not that case — nothing distinguishes "read and not understood" from
 "read and understood" from outside the program.
+
+Choosing the wrong *card* for the right mouse fails the same way and is easier
+to do, since both fittings are the same mouse in the menu: Klondike with a bare
+«Марсианка» simply never finds it, deals its hand, and answers the keyboard.
+The status line names the card as well as the mouse for that reason.
 
 ---
 

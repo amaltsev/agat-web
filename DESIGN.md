@@ -68,7 +68,7 @@ Load order matters only in that a module's dependencies must already be on
 | `disk140.js` | 140K Shugart controller |
 | `video.js` | painters and `render()` |
 | `font.js` | glyph blitting; keeps `{font, m0}` together |
-| `mouse.js` | the three mouse cards, and the pointer capture that feeds them |
+| `mouse.js` | the three mice on their four fittings, and the pointer capture that feeds them |
 | `keyboard.js` | browser `code` → scancode → Agat keymap, and the same table read backwards |
 | `keyview.js` | the on-screen keyboard: three boards over that one table, and the container's controls as a card |
 | `audio.js` | `$C030` edges → PCM |
