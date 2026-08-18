@@ -128,10 +128,14 @@ does not override it.
 `agc=` names a container, which carries the file itself:
 
     index.html#agc=examples/rise-out.agc
+    index.html#agc=https://example.org/games/tetris.agc
 
-A container is fetched, so this needs a served page. The other keys go into the
-machine it builds rather than on top of it, so `#agc=…&model=9` tries the
-program on the other machine and it is the other machine the program boots on.
+A container is fetched, so this needs a served page. The name is a path beside
+the page or an `https://` URL to one hosted anywhere that lets this page fetch
+it — a container needs no copy here to be linked and run, only a host that
+sends `Access-Control-Allow-Origin`. The other keys go into the machine it
+builds rather than on top of it, so `#agc=…&model=9` tries the program on the
+other machine and it is the other machine the program boots on.
 
 ## `.agc` — the Agat Container
 
@@ -223,6 +227,16 @@ machine it wants. The links on the page need a served copy — `fetch` is blocke
 on `file://` — so they work on the
 [hosted build](https://amaltsev.github.io/agat-web/), and from a local
 file use **Open…** instead.
+
+Three more come from [agatcomp.ru](https://agatcomp.ru/), and they are here for
+the mouse, which is the one thing about an Agat program that a disk cannot tell
+you: **Klondike и Pusher** (Р. Бадер, 1992) wants a «Марсианка» on the
+printer card *with* its ROM page, **MouseGraf 1.6** (Бадер и Багашев, 1992)
+measurably needs that page *empty*, and **MouseGraf 4.4** (1994) will not look
+at a card whose page is empty, so it is fitted the way Klondike is. A program
+that finds the wrong card draws no cursor at all, which looks exactly like a
+mouse that does not work — so each container states its fitting, and the status
+line names the card it got once the container is running.
 
 `examples/TESTOZU7_140.agc` is the **factory memory test**, which asks you to
 declare the machine's memory and then verifies that it really is that — so it is
@@ -316,8 +330,10 @@ and `tools/6502_functional_test.bin`, which is built from Klaus Dormann's
 GPLv3 test sources. None of the three is part of the emulator itself; the test
 binary is read by `tools/cputest.js` and never ships to the browser.
 
-`examples/TESTOZU7_140.agc` is a 1986 Soviet factory diagnostic from
-[agatcomp.ru](https://agatcomp.ru/agat/Software/Test/Testozu7.shtml). Its licence
-is **unknown**; it is included on the assumption that something of that origin
-and age is as close to public domain as anything gets, and it will be removed if
-the rights holder would rather it were not here.
+`examples/TESTOZU7_140.agc` is a 1986 Soviet factory diagnostic, and
+`examples/Klondike.agc` and the two `examples/MouseGraf-*.agc` are Р. Бадер's and
+Ю. Багашев's programs of 1992-94, all from
+[agatcomp.ru](https://agatcomp.ru/). Their licences are **unknown**; they are
+included on the assumption that something of that origin and age is as close to
+public domain as anything gets, and any of them will be removed if the rights
+holder would rather it were not here.

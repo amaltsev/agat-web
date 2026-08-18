@@ -267,6 +267,24 @@
   .help b { color: var(--ink); font-weight: 600; }
   .help table { border-collapse: collapse; margin: 8px 0; }
   .help td { padding: 1px 14px 1px 0; vertical-align: top; }
+  /* The bundled examples. A tile each rather than a run of links separated by
+     dots: what distinguishes three of them is the mouse the container fits, and
+     that does not fit on a line already carrying a title. The tiles are the
+     info card's idiom — panel, edge, accent on hover — because they load a
+     program rather than say something about one. */
+  #examplelist { display: grid; gap: 8px; margin: 8px 0 12px;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  a.ex {
+    display: block; text-decoration: none; color: var(--ink);
+    background: var(--panel); border: 1px solid var(--edge);
+    border-radius: 6px; padding: 7px 9px;
+  }
+  a.ex:hover { border-color: var(--accent); }
+  a.ex:active { transform: translateY(1px); }
+  /* The name in the page's link colour, since the tile is one: the panel and
+     the border say "control", and nothing else here would say "link". */
+  .ex-name { font-weight: 600; color: var(--accent); }
+  .ex-by, .ex-kit { color: var(--dim); }
   kbd {
     font: 11px ui-monospace, monospace; background: var(--panel);
     border: 1px solid var(--edge); border-bottom-width: 2px;
@@ -361,7 +379,8 @@
 
 <div class="help">
   <p>
-    Drop an Agat image into the window and it starts running. Most host
+    Drop an Agat image into the window and it starts running, or click one of
+    the <a href="#examples" id="tolist">bundled examples</a> below. Most host
     keys pass through. Keys go through the Agat's own scancode table, so
     <b>ЛАТ/РУС</b> switches to a JCUKEN Cyrillic layout. <b>Boot</b> is the
     equivalent of <code>PR#N</code> — it restarts from the disk.
@@ -396,7 +415,7 @@
       date, where it came from, a description, and one line to whoever is
       about to play, which is the card below that. <b>Save AGC</b> writes one from the
       machine as it stands. The format is written up in
-      <a href="https://github.com/amaltsev/agat-web/blob/main/AGC.md">AGC.md</a>.
+      <a href="https://amaltsev.github.io/agat-web/AGC.html">AGC.md</a>.
     </td></tr>
     <tr><td><b>Drives</b></td><td>
       840K in slot 5 on both machines; 140K in slot 6 on the Agat-9 and slot 3
@@ -426,17 +445,27 @@
       The machine, its memory sizes and which keyboard is up ride in the
       address, so a configuration that runs a program properly can be kept or
       passed on. <code>#agc=</code> names a container, which carries the program
-      itself.
+      itself — a path beside the page, or an <code>https://</code> URL to one
+      hosted anywhere that lets this page fetch it, so a container needs no copy
+      here to be linked and run.
     </td></tr>
   </table>
-  <p id="examples"></p>
+  <div id="examples">
+    <p>
+      <b>Examples</b> — a container each, naming the machine and the mouse it
+      wants. They are fetched, so they want a served page: from a local file
+      use <b>Open…</b> instead.
+    </p>
+    <div id="examplelist"></div>
+  </div>
   <p>
     Source: <a href="https://github.com/amaltsev/agat-web">github.com/amaltsev/agat-web</a>.
   </p>
   <p>
     ROMs, character generators and the palette come from
     <a href="https://sourceforge.net/projects/agatemulator/">Agat Emulator</a>
-    (NOP, GPLv2) and <b>AgatF</b> (Ravodin &amp; co.) — see <code>ROMS.md</code>.
+    (NOP, GPLv2) and <b>AgatF</b> (Ravodin &amp; co.) — see
+    <a href="https://amaltsev.github.io/agat-web/ROMS.html">ROMS.md</a>.
   </p>
 </div>
 
@@ -991,28 +1020,69 @@
 
   // The bundled examples, when the page is served rather than opened directly.
   // The containers name their own machine, so there is nothing to pick here —
-  // and clicking one leaves an address that opens it again. The factory memory
-  // test's container names the stock Agat-7 and nothing more: the configuration
-  // it asks about is still typed at the keyboard, and a wrong answer there is
-  // what it is in the list to catch.
+  // and clicking one leaves an address that opens it again.
   var EXAMPLES = [
-    ['examples/rise-out.agc', 'RISE OUT (Agat-7, 140K disk)'],
-    ['examples/snake.agc', 'ПИТОНЧИК / SNAKE (Agat-7, .fil)'],
-    ['examples/TESTOZU7_140.agc', 'ТЕСТ ПАМЯТИ (factory memory test)'],
+    [ 'examples/rise-out.agc',
+      'Rise Out',
+      'Andrew Maltsev, 1989',
+      'Agat-7'
+    ],
+    [ 'examples/snake.agc',
+      'Питончик / Snake',
+      'Andrew Maltsev, 1988',
+      'Agat-7'
+    ],
+    [ 'examples/Klondike.agc',
+      'Klondike и Pusher',
+      'Роман Бадер, 1992',
+      'Agat-9'
+    ],
+    [ 'examples/MouseGraf-16.agc',
+      'MouseGraf 1.6',
+      'Р.Бадер и Ю.Багашев, 1992',
+      'Agat-9'
+    ],
+    [ 'examples/MouseGraf-44.agc',
+      'MouseGraf 4.4',
+      'Р.Бадер и Ю.Багашев, 1994',
+      'Agat-9'
+    ],
+    [ 'examples/TESTOZU7_140.agc',
+      'Штатный тест ОЗУ',
+      'НИИВК, 1986',
+      'Agat-7'
+    ],
   ];
-  var ex = document.getElementById('examples');
-  ex.appendChild(document.createTextNode('Examples: '));
-  EXAMPLES.forEach(function (e, i) {
+  var exList = document.getElementById('examplelist');
+  EXAMPLES.forEach(function (e) {
     var a = document.createElement('a');
+    a.className = 'ex';
     a.href = '#agc=' + encodeURIComponent(e[0]);
-    a.textContent = e[1];
+    ['ex-name', 'ex-by', 'ex-kit'].forEach(function (cls, i) {
+      var d = document.createElement('div');
+      d.className = cls;
+      d.textContent = e[i + 1];
+      a.appendChild(d);
+    });
     a.addEventListener('click', function (ev) {
       ev.preventDefault();
       agcUrl = e[0];
       loadUrl(e[0]);
+      // Where the same address opened from a bookmark leaves you: at the top,
+      // watching the machine that is now booting. The list is at the foot of a
+      // page of help, and a program loaded out of sight looks like nothing
+      // happened at all.
+      window.scrollTo(0, 0);
     });
-    if (i) ex.appendChild(document.createTextNode(' · '));
-    ex.appendChild(a);
+    exList.appendChild(a);
+  });
+
+  // The intro's way down to that list. Scrolled rather than followed, because
+  // the address is the machine's: a jump to #examples would drop the container
+  // and the settings a bookmark carries.
+  document.getElementById('tolist').addEventListener('click', function (ev) {
+    ev.preventDefault();
+    document.getElementById('examples').scrollIntoView({ behavior: 'smooth' });
   });
 
   // ---- the drive lamps -------------------------------------------------------

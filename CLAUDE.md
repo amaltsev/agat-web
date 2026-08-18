@@ -117,7 +117,9 @@ and say when something else disagrees.
 
 The bundled ROMs are theirs, not ours; see [ROMS.md](ROMS.md). The emulator is
 MIT. `examples/` holds two of Андрей Мальцев's own games, included with his
-permission.
+permission, and four programs of unknown licence from agatcomp.ru — the factory
+memory test, Klondike and the two MouseGrafs — kept on the terms README's
+licence section states.
 
 ## Two traps that look like emulator bugs
 
