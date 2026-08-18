@@ -284,12 +284,15 @@ The full list, and what each one is for, is in
 
 ## Credits
 
-This emulator is a transcription more than an invention. Almost nothing in it
-was worked out from first principles — it was read out of other people's work,
-and it would not exist without any of the following.
+This emulator is a transcription more than an invention. Most of what it knows
+about the hardware was read out of other people's work rather than worked out
+from first principles, and where something *was* worked out here — the raster
+that both interrupts come off, the mouse step timings, the 140K write path — it
+was by disassembling programs and measuring them against those same sources.
+It would not exist without any of the following.
 
 - **Agat Emulator** by NOP — <https://sourceforge.net/projects/agatemulator/>,
-  GPLv2. The reference for nearly every hardware detail: the two memory maps
+  GPLv2. The reference for most hardware details: the two memory maps
   (`baseram.c`), the video modes and painters (`videoprocs.c`, `videosel7.c`,
   `videosel9.c`), both floppy controllers (`fdd.c`, `fdd1.c`) and the sector
   encoders (`dsk2nib.c`, `dsk2hfe.c`). The keyboard's scancode table is its
@@ -299,12 +302,19 @@ and it would not exist without any of the following.
 - **AgatF** by Ravodin & co. — the second reading of the same hardware, and the
   source of the same five ROMs under different names, byte-for-byte identical.
   See [ROMS.md](ROMS.md) for both, with checksums.
-- **agatcomp.ru** — the hardware archive, and the source of two things measured
-  rather than inferred. The [clock-frequency page][clocks] reports 19.97093 ms
-  between frame interrupts, averaged over six boards with a calibrated Ч3-63
-  counter, which is what pins the raster at 312 lines of 672 clocks. And the
-  on-screen keyboard is transcribed from its [photograph of the Клавиатура][kbd],
-  which is what settles that a keycap is a *code* rather than a scancode.
+- **agatcomp.ru** — the hardware archive, and the source of nearly everything
+  here that did not come out of an emulator's source. The scanned factory
+  documentation it publishes — **ФгЗ.032.002 ТО4/ТО5, часть 1**, in [Агат-7,
+  комплект 5][docs] — is what settles fittings, slot assignments and power-on
+  states, the questions about what the machine *was* rather than what it did.
+  The [Ниппель mouse card's manual and schematic][mouse] are the register map
+  and the cable's pin table behind `src/mouse.js`. The
+  [clock-frequency page][clocks] reports 19.97093 ms between frame interrupts,
+  averaged over six boards with a calibrated Ч3-63 counter, which is what pins
+  the raster at 312 lines of 672 clocks. The on-screen keyboard is transcribed
+  from its [photograph of the Клавиатура][kbd], which is what settles that a
+  keycap is a *code* rather than a scancode. And four of the programs in
+  `examples/` are from there.
 - **The Agat hardware replica project** — <https://agat-hardware.sourceforge.io/>.
   Running its PROM images through the Agat-9's video state machine is how the
   312-state cycle and its 39 interrupt lines were established.
@@ -318,6 +328,8 @@ and it would not exist without any of the following.
 Where a transcription is subtle the source file is named in a comment, so a
 disagreement is a lookup rather than an argument.
 
+[docs]: https://agatcomp.ru/agat/Paper/DocsShtat/A7_K5.shtml
+[mouse]: https://agatcomp.ru/agat/Hardware/Key_Joy/MouseUVK.shtml
 [clocks]: https://agatcomp.ru/agat/Hardware/useful/clock.shtml
 [kbd]: https://www.agatcomp.ru/agat/Hardware/Key_Joy/KeyClassic/kbd15.jpg
 
