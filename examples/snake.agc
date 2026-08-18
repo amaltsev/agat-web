@@ -1,6 +1,6 @@
 {
   "agc": 1,
-  "title": "ПИТОНЧИК / SNAKE",
+  "title": "Питончик / Snake",
   "author": "Andrew Maltsev",
   "date": "1988",
   "url": "https://github.com/amaltsev/agat-snake",
