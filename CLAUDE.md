@@ -93,6 +93,13 @@ Settled, with evidence, and expensive to relearn:
   sync field. A write lands on the byte *after* `index`, which is where
   `readData` leaves it.
 - The Agat-7 has **no** Apple video modes; do not add a fallback to them.
+- On the 840K controller a byte written to `+5` lands in the slot **after** the
+  one under the head, and the `+8` sync strobe marks **the byte handed over
+  last** — the `$FF` a driver writes before it strobes, which the read side then
+  discards. Three sources agree (agat-emulator `fdd.c`, agatcomp.ru's
+  `fl840k_write.shtml`, the boot ROM at `$C565`) and
+  `examples/TESTCOM7_840.agc`'s ТЕСТ 'НГМД' formats, verifies and passes on it. The clock keeps turning in write
+  mode; do not carry the 140K's write-driven head over.
 - Every sound in RISE OUT proper goes through `PLAY500` on the interrupt, never
   the busy-wait `PLAY`.
 
@@ -117,8 +124,8 @@ and say when something else disagrees.
 
 The bundled ROMs are theirs, not ours; see [ROMS.md](ROMS.md). The emulator is
 MIT. `examples/` holds two of Андрей Мальцев's own games, included with his
-permission, and four programs of unknown licence from agatcomp.ru — the factory
-memory test, Klondike and the two MouseGrafs — kept on the terms README's
+permission, and six programs of unknown licence from agatcomp.ru — the three
+factory tests, Klondike and the two MouseGrafs — kept on the terms README's
 licence section states.
 
 ## Two traps that look like emulator bugs

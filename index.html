@@ -426,8 +426,7 @@
     </td></tr>
     <tr><td><b>RO / RW</b></td><td>
       Disks are read-only by default. Click <code>RO</code> to allow
-      writing (only 140K writes are supported).  Writes go to memory,
-      and closing the tab loses them.  <b>Save AGC</b> keeps them, as
+      writing.  Writes go to memory, and closing the tab loses them.  <b>Save AGC</b> keeps them, as
       patches on the disk they came from.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
@@ -1162,6 +1161,16 @@
       'НИИВК, 1986',
       'Agat-7'
     ],
+    [ 'examples/TESTCOM7_840.agc',
+      'Штатный комплексный тест',
+      'НИИВК',
+      'Agat-7'
+    ],
+    [ 'examples/TESTKOM9_840.agc',
+      'Штатный комплексный тест',
+      'НИИВК',
+      'Agat-9'
+    ],
   ];
   var exList = document.getElementById('examplelist');
   EXAMPLES.forEach(function (e) {
@@ -1216,9 +1225,7 @@
     var label = d.name ? (open ? 'RW' : 'RO') : '';
     var title = !d.name ? 'no disk'
       : !d.canUnlock
-        ? (d.label === '840K'
-             ? 'The 840K controller does not write'
-             : 'This disk cannot be written')
+        ? 'This disk cannot be written'
         : open
           ? 'Writable. What a program writes stays in memory — Save AGC keeps it'
           : 'Read-only. Click to let a program write to this disk' +

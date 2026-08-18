@@ -717,6 +717,218 @@ async function diskWriteTests() {
   }
 }
 
+// --- writing an 840K disk ---------------------------------------------------
+// Through the register file, the way the factory driver does it (TESTCOM7's
+// НГМД test, $DE5E-$DEFD): port C bit 6 up, bytes into +5 as +6 says the
+// register is free, the sync strobe at +8 straight after the $FF. What comes
+// back is checked by desectorizing the track, so the read path, the write path
+// and both codecs have to agree before this passes — and the marks have to be
+// where the boot ROM's read loop discards them.
+//
+// The three sources come out of one bundled .aim: a .dsk and a .nib are built
+// from its sectors, so all three write-back branches are covered by one file.
+async function disk840WriteTests() {
+  const agc = path.join(H.ROOT, 'examples', 'Klondike.agc');
+  if (!fs.existsSync(agc)) { console.log('skip: 840K writing (no examples/Klondike.agc)'); return; }
+  const c = await A.agc.parse(new ctx.Uint8Array(fs.readFileSync(agc)), 'Klondike.agc');
+  const aimSrc = A.sniff(c.media[0].payload, 'Klondike.aim');
+  const aim = A.aim840;
+  eq('the bundled Klondike is an .aim', aimSrc.kind, 'aim840');
+
+  // The sector image behind the stream, and the .nib laid out from it.
+  const whole = A.mount(aimSrc);
+  const dsk = new ctx.Uint8Array(aim.TRACKS * aim.SECTORS * aim.SECSIZE);
+  const nib = new ctx.Uint8Array(aim.TRACKS * aim.SECTORS * aim.NIB_RECORD);
+  let short = 0;
+  for (let t = 0; t < aim.TRACKS; t++) {
+    const got = aim.desectorizeTrack(whole.bytes, whole.attrs, whole.trackBase(t),
+                                     whole.trackLen[t], t);
+    if (got.got !== aim.SECTORS) short++;
+    dsk.set(got.bytes, t * aim.SECTORS * aim.SECSIZE);
+    for (let sec = 0; sec < aim.SECTORS; sec++) {
+      aim.nibRecord(t, sec, got.bytes.subarray(sec * 256, (sec + 1) * 256), nib,
+                    (t * aim.SECTORS + sec) * aim.NIB_RECORD);
+    }
+  }
+  eq('desectorizeTrack reads all 160 tracks of a real .aim', short, 0);
+  eq('toAim gives a real .aim back byte for byte',
+     Buffer.compare(Buffer.from(aim.toAim(whole)), Buffer.from(aimSrc.payload)), 0);
+  const dskSrc = A.sniff(dsk, 'Klondike.dsk'), nibSrc = A.sniff(nib, 'Klondike.nib');
+  eq('the built images sniff as dsk840 and nib840', [dskSrc.kind, nibSrc.kind], ['dsk840', 'nib840']);
+  {
+    // A synthesised stream reads back to the sectors it was built from, both ways.
+    let wrong = 0;
+    for (const src of [dskSrc, nibSrc]) {
+      const m = A.mount(src);
+      eq('a synthesised ' + src.kind + ' track is one revolution in the .aim slot', [m.stride, m.trackLen[0]], [aim.AIM_TRACK, aim.PHYS_TRACK]);
+      for (let t = 0; t < aim.TRACKS; t += 37) {
+        const got = aim.desectorizeTrack(m.bytes, m.attrs, m.trackBase(t), m.trackLen[t], t);
+        if (got.got !== aim.SECTORS) wrong++;
+        for (let i = 0; i < got.bytes.length; i++) {
+          if (got.bytes[i] !== dsk[t * aim.SECTORS * aim.SECSIZE + i]) { wrong++; break; }
+        }
+      }
+    }
+    eq('dsk840 and nib840 streams desectorize to their sectors', wrong, 0);
+  }
+
+  // One sector rewritten through the controller, per source kind.
+  const T = 10, SEC = 7;
+  const wrote = new ctx.Uint8Array(256);
+  for (let i = 0; i < 256; i++) wrote[i] = (i * 5 + 3) & 0xff;
+  const cs = aim.checksum(wrote, 0);
+  const CPB = A.Disk840.CYCLES_PER_BYTE;
+
+  const rewrite = (src) => {
+    const media = A.mount(src);
+    const card = new A.Disk840({});
+    card.insert(media);
+    let now = 1000;
+    const rd = (r) => card.read(r, now);
+    const wr = (r, v) => card.write(r, v, now);
+    // Poll like the ROM's LDA/BPL, seven cycles a look, so a byte is taken
+    // within a few cycles of arriving — the driver's write of the next byte
+    // 25 cycles later has to come before the boundary after it.
+    const POLL = 7;
+    const untilReady = () => { let n = 0; while (!(rd(6) & 0x80)) { now += POLL; if (++n > 100000) throw new Error('never ready'); } };
+    const untilSync = () => { let n = 0; while (rd(6) & 0x40) { now += POLL; if (++n > 100000) throw new Error('no sync'); } };
+    const next = () => { untilReady(); return rd(4); };
+
+    wr(3, 0x0f);                          // motor on (port C bit 7 set)
+    for (let i = 0; i < T / 2; i++) { wr(3, 0x05); wr(9, 0); }   // step in 5 cylinders
+    eq('stepped to track 10', card.track, T);
+    const before = new ctx.Uint8Array(media.bytes), beforeA = new ctx.Uint8Array(media.attrs);
+
+    // Locked: the status says so, and the write register drops the byte.
+    eq('a locked 840K disk answers status bit 5 clear', rd(1) & 0x20, 0);
+    wr(3, 0x0d);                          // write mode
+    wr(5, 0x96); now += CPB * 4; rd(6);
+    wr(3, 0x0c);                          // read mode
+    eq('a locked 840K disk takes no writes',
+       Buffer.compare(Buffer.from(media.bytes), Buffer.from(before)), 0);
+    media.locked = false;
+    eq('unlocked, status bit 5 is set', rd(1) & 0x20, 0x20);
+
+    // Find sector SEC's address field the ROM's way: strobe +A, wait for the
+    // mark, discard the marked byte, then 95 6A vol trk sec 5A.
+    let found = false, guard = 0;
+    while (!found && guard++ < 200) {
+      wr(0xa, 0); untilSync(); next();
+      if (next() !== 0x95 || next() !== 0x6a) continue;
+      next();                                        // volume
+      const trk = next(), sec = next(), tail = next();
+      if (trk === T && sec === SEC && tail === 0x5a) found = true;
+    }
+    eq('wound to the address field of T10 S7', found, true);
+    const p5a = card.pos;
+
+    // The driver's sequence, $DE5E: write mode, an AA at once, four more on
+    // ready, then the data field with the strobe on the $FF.
+    now += 25;                                       // the driver's few cycles
+    wr(3, 0x0d);
+    wr(5, 0xaa);
+    for (let i = 0; i < 4; i++) { untilReady(); wr(5, 0xaa); }
+    untilReady(); wr(5, 0xa4);
+    untilReady(); wr(5, 0xff); wr(8, 0xff);
+    for (const b of [0x6a, 0x95]) { untilReady(); wr(5, b); }
+    for (let i = 0; i < 256; i++) { untilReady(); wr(5, wrote[i]); }
+    for (const b of [cs, 0x5a, 0xaa]) { untilReady(); wr(5, b); }
+    untilReady();
+    wr(3, 0x0c);
+
+    eq('the track is marked written', [media.written[T], media.isWritten()], [1, true]);
+    const base = media.trackBase(T), len = media.trackLen[T];
+    const at = (k) => base + ((p5a + k) % len);
+    eq('the first byte lands behind the 5A, not on it',
+       [media.bytes[at(0)], media.bytes[at(1)]], [0x5a, 0xaa]);
+    eq('the mark is on the FF before 6A 95, and nowhere else in the field',
+       [media.attrs[at(7)], media.bytes[at(7)], media.bytes[at(8)], media.bytes[at(9)],
+        media.attrs.subarray(at(1), at(7)).some((a) => a & 0x81),
+        media.attrs.subarray(at(8), at(8) + 260).some((a) => a & 0x81)],
+       [1, 0xff, 0x6a, 0x95, false, false]);
+    const got = aim.desectorizeTrack(media.bytes, media.attrs, base, len, T);
+    eq('the written sector reads back', [got.got,
+        Buffer.compare(Buffer.from(got.bytes.subarray(SEC * 256, (SEC + 1) * 256)),
+                       Buffer.from(wrote))], [21, 0]);
+    let elsewhere = 0;
+    for (let k = 0; k < 21; k++) {
+      if (k === SEC) continue;
+      for (let i = 0; i < 256; i++) {
+        if (got.bytes[k * 256 + i] !== dsk[(T * 21 + k) * 256 + i]) elsewhere++;
+      }
+    }
+    eq('the other 20 sectors are untouched', elsewhere, 0);
+    return { media, card, before, beforeA };
+  };
+
+  const want = new ctx.Uint8Array(dsk);
+  want.set(wrote, (T * 21 + SEC) * 256);
+
+  // dsk840: patches against the sector image.
+  {
+    const { media, card } = rewrite(dskSrc);
+    const app = { sources: { 5: { name: 'Klondike.dsk', bytes: dsk, patches: [], kind: 'dsk840', offset: 0 } },
+                  machine: { cards: { 5: card } } };
+    const back = A.App.prototype.writeBack.call(app, 5);
+    eq('dsk840 writeBack patches say what changed',
+       [back.name, back.patches.length,
+        Buffer.compare(Buffer.from(A.agc.applyPatches(back.bytes, back.patches)), Buffer.from(want))],
+       ['Klondike.dsk', 1, 0]);
+    eq('dsk840 writeBack leaves the source alone',
+       [app.sources[5].patches.length,
+        JSON.stringify(A.App.prototype.writeBack.call(app, 5).patches) === JSON.stringify(back.patches)],
+       [0, true]);
+    const file = await A.agc.build({ media: [{ name: back.name, bytes: back.bytes, patches: back.patches }] });
+    const re = await A.agc.parse(Buffer.from(file, 'utf8'), 'Klondike.agc');
+    eq('a saved 840K container reopens with the write in it',
+       Buffer.compare(Buffer.from(re.media[0].payload), Buffer.from(want)), 0);
+    // Strike out a mark and the track no longer decodes: the stream is saved.
+    const base = media.trackBase(T);
+    for (let i = 0; i < media.stride; i++) {
+      if ((media.attrs[base + i] & 0x81) && media.bytes[base + i + 1] === 0x6a) { media.attrs[base + i] = 0; break; }
+    }
+    const fell = A.App.prototype.writeBack.call(app, 5);
+    eq('an undecodable 840K track saves as .aim instead',
+       [fell.name, fell.bytes.length, fell.patches.length], ['Klondike.aim', 2068480, 0]);
+  }
+  // nib840: the records rebuilt from the sectors.
+  {
+    const { card } = rewrite(nibSrc);
+    const app = { sources: { 5: { name: 'Klondike.nib', bytes: nib, patches: [], kind: 'nib840', offset: 0 } },
+                  machine: { cards: { 5: card } } };
+    const back = A.App.prototype.writeBack.call(app, 5);
+    const out = A.agc.applyPatches(back.bytes, back.patches);
+    const rec = (T * 21 + SEC) * aim.NIB_RECORD;
+    let others = 0;
+    for (let i = 0; i < nib.length; i++) {
+      if (i >= rec && i < rec + aim.NIB_RECORD) continue;
+      if (out[i] !== nib[i]) others++;
+    }
+    eq('nib840 writeBack rewrites the one record',
+       [back.name, others, Buffer.compare(Buffer.from(out.subarray(rec + 24, rec + 24 + 256)), Buffer.from(wrote)),
+        out[rec + 24 + 256], out[rec + 24 + 257]],
+       ['Klondike.nib', 0, 0, cs, 0x5a]);
+  }
+  // aim840: the stream itself, as patches.
+  {
+    const { card, media } = rewrite(aimSrc);
+    const app = { sources: { 5: { name: 'Klondike.aim', bytes: aimSrc.payload, patches: [], kind: 'aim840', offset: 0 } },
+                  machine: { cards: { 5: card } } };
+    const back = A.App.prototype.writeBack.call(app, 5);
+    const out = A.agc.applyPatches(back.bytes, back.patches);
+    const re = A.mount(A.sniff(out, 'Klondike.aim'));
+    const got = aim.desectorizeTrack(re.bytes, re.attrs, re.trackBase(T), re.trackLen[T], T);
+    let span = 0;
+    for (const p of back.patches) span += p.bytes.length;
+    eq('aim840 writeBack patches the stream and it reloads with the sector',
+       [back.name, back.patches.length > 0, span < 2 * 300 * 2, got.got,
+        Buffer.compare(Buffer.from(got.bytes.subarray(SEC * 256, (SEC + 1) * 256)), Buffer.from(wrote))],
+       ['Klondike.aim', true, true, 21, 0]);
+    eq('the other 159 tracks of the .aim are as they were',
+       Buffer.compare(Buffer.from(out.subarray(0, T * 6464 * 2)), Buffer.from(aimSrc.payload.subarray(0, T * 6464 * 2))), 0);
+  }
+}
+
 // --- the drive lamps --------------------------------------------------------
 // 0 dark, 1 spinning, 2 transferring. The distinction that matters is the last
 // one: the boot loops poll the data register several times for every byte the
@@ -742,6 +954,30 @@ async function diskWriteTests() {
        [c.lamp(T), c.lamp(T + W - 1), c.lamp(T + W)], [2, 2, 1]);
     c.control(0x0e);
     eq('840 lamp dark again when the motor drops', c.lamp(T), 0);
+  }
+
+  // The 840K byte clock keeps its phase however often the CPU looks. Polled
+  // every 50 cycles — slower than a byte time — the disk still turns 6250
+  // bytes in the 200 ms of one revolution, which is what TESTKOM9's speed
+  // check measures between index pulses; a clock restarted from each poll
+  // would turn one byte per poll and read half again too slow.
+  {
+    const c = new A.Disk840({});
+    const media = blank('aim840', 6464, 160);
+    for (let t = 0; t < 160; t++) media.trackLen[t] = 6250;
+    c.insert(media);
+    c.control(0x0f);
+    const REV = Math.round(6250 * A.Disk840.CYCLES_PER_BYTE);
+    let now = 1000, seen = 0;
+    c.read(6, now);                           // the clock starts here
+    let last = c.pos;
+    while (now < 1000 + 4 * REV) { c.read(6, now); if (c.pos !== last) { seen += (c.pos - last + 6250) % 6250; last = c.pos; } now += 50; }
+    eq('840K turns 6250 bytes a revolution under a slow poll',
+       Math.abs(seen - 4 * 6250) <= 8, true);
+    // And the index: 128 bytes of a track without a mark, 4 ms of the turn.
+    let low = 0;
+    for (let i = 0; i < 6250; i++) { c.read(6, now); if (!(c.read(1, now) & 0x10)) low++; now += A.Disk840.CYCLES_PER_BYTE; }
+    eq('840K index is 128 bytes of an unmarked track', low, 128);
   }
 
   {
@@ -1859,6 +2095,7 @@ async function agcTests() {
     // is read or written through is a promise now that a payload may be
     // gzipped.
     await diskWriteTests();
+    await disk840WriteTests();
     await agcTests();
     done();
   }).catch((e) => { console.error(e); process.exit(1); });

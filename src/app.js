@@ -336,13 +336,11 @@
     return out;
   };
 
-  // Only the 140K controller writes. The 840K models no data-write register at
-  // all, so unlocking one of its disks would promise something that cannot
-  // happen; the lock stays on and the drive says why.
+  // A disk can be unlocked once it is in a drive and its file is remembered,
+  // which is what a save needs in order to keep the writes.
   App.prototype.canUnlock = function (slot) {
     var card = this.machine.cards[slot];
-    return !!(card && card.media && card.media.kind === 'nib140' &&
-              this.sources[slot]);
+    return !!(card && card.media && this.sources[slot]);
   };
 
   App.prototype.setLocked = function (slot, locked) {
@@ -570,12 +568,23 @@
     this.fromAgc = c.name;
     // In order, and one at a time: the media are loaded into a machine that
     // each of them changes — a drive is taken, a model is settled — and the
-    // status line below is about all of them together.
-    var self = this, chain = Promise.resolve();
+    // status line below is about all of them together. Each disk boots as it
+    // goes in, so with two of them the machine is left booting the second;
+    // the first disk in the list is the one meant to boot, and it is booted
+    // again once every drive is loaded.
+    var self = this, chain = Promise.resolve(), disks = [];
     c.media.forEach(function (m) {
-      chain = chain.then(function () { return self.loadOne(m.payload, m.name, m); });
+      chain = chain.then(function () {
+        return self.loadOne(m.payload, m.name, m);
+      }).then(function (r) { if (r.slot !== undefined) disks.push(r.slot); });
     });
-    return chain.then(function () { return self.agcLoaded(c, keys, ctl); });
+    return chain.then(function () {
+      if (disks.length > 1) {
+        self.machine.reset();
+        self.machine.bootSlot(disks[0]);
+      }
+      return self.agcLoaded(c, keys, ctl);
+    });
   };
 
   // The line a container's load leaves behind: what it is, and what it brought
@@ -632,25 +641,27 @@
   // One source as it should be saved: the file it arrived as, plus what has
   // been written to it since.
   //
-  // A written track is decoded back to the 16 sectors it was nibblized from and
-  // the difference comes out as patches, so a container still carries the image
-  // as it was found and what changed stays legible. `this.sources` is left
-  // alone and the baseline is the patched image the machine actually mounted,
-  // so saving twice gives the same file rather than the same patch twice.
+  // A written track is decoded back to the sectors it was built from — 16 on
+  // the 140K, 21 on the 840K — and the difference comes out as patches, so a
+  // container still carries the image as it was found and what changed stays
+  // legible. `this.sources` is left alone and the baseline is the patched image
+  // the machine actually mounted, so saving twice gives the same file rather
+  // than the same patch twice. A stream image (.nib, .aim) is its own baseline
+  // and the patches are simply what moved.
   //
   // A track that will not decode — a disk formatted some other way, a write
   // caught half done — has no sector image to be the difference from. Then the
-  // nibble stream itself is what is saved, which is a bigger and duller file
-  // but not a lossy one.
+  // stream itself is what is saved, as .nib for the 140K and .aim for the 840K,
+  // which is a bigger and duller file but not a lossy one.
   App.prototype.writeBack = function (key) {
     var src = this.sources[key];
     var entry = { name: src.name, bytes: src.bytes, patches: src.patches };
-    var card = this.machine.cards[key], gcr = AGAT.gcr140;
+    var card = this.machine.cards[key], gcr = AGAT.gcr140, aim = AGAT.aim840;
     var media = card && card.media;
     if (!media || !media.isWritten()) return entry;
 
     var base = AGAT.agc.applyPatches(src.bytes, src.patches);
-    var out = new Uint8Array(base), ok = true, t, got;
+    var out = new Uint8Array(base), ok = true, t, got, sec;
     if (src.kind === 'nib140') {
       out.set(media.bytes.subarray(0, gcr.TRACKS * gcr.TRACK_LEN), src.offset);
     } else if (src.kind === 'dsk140') {
@@ -661,13 +672,32 @@
         if (got.got !== gcr.SECTORS) ok = false;
         else out.set(got.bytes, src.offset + t * gcr.SECTORS * 256);
       }
+    } else if (src.kind === 'aim840') {
+      out.set(aim.toAim(media), src.offset);
+    } else if (src.kind === 'dsk840' || src.kind === 'nib840') {
+      for (t = 0; t < media.tracks && ok; t++) {
+        if (!media.written[t]) continue;
+        got = aim.desectorizeTrack(media.bytes, media.attrs, media.trackBase(t),
+                                   media.trackLen[t] || media.stride, t);
+        if (got.got !== aim.SECTORS) { ok = false; break; }
+        if (src.kind === 'dsk840') {
+          out.set(got.bytes, src.offset + t * aim.SECTORS * aim.SECSIZE);
+        } else {
+          for (sec = 0; sec < aim.SECTORS; sec++) {
+            aim.nibRecord(t, sec, got.bytes.subarray(sec * aim.SECSIZE,
+                                                     (sec + 1) * aim.SECSIZE),
+                          out, src.offset + (t * aim.SECTORS + sec) * aim.NIB_RECORD);
+          }
+        }
+      }
     } else {
       ok = false;
     }
     if (!ok) {
+      var raw = media.kind === 'aim840';
       return {
-        name: src.name.replace(/\.[^.\/]*$/, '') + '.nib',
-        bytes: new Uint8Array(media.bytes),
+        name: src.name.replace(/\.[^.\/]*$/, '') + (raw ? '.aim' : '.nib'),
+        bytes: raw ? aim.toAim(media) : new Uint8Array(media.bytes),
         patches: [],
       };
     }

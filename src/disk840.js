@@ -9,12 +9,19 @@
 //              direction, bit3 drive select, bit4 side, bit6 write mode,
 //              bit7 motor. Readable, and drivers do read it back
 //   +3 write   8255 #1 control: mode words, and PC bit set/reset ($0x)
-//   +7 write   8255 #2 control: same
+//   +5 write   data byte to be written; the register is busy until the shift
+//              register takes it, at the next byte boundary
+//   +7 write   8255 #2 control: same as +3, plus the read/write handshake
+//              enables in PC2/PC4, which change nothing here
+//   +8 write   strobe — write a sync mark ("запись синхро") on the byte last
+//              handed over
 //   +9 write   strobe — step pulse / drive command latch
 //   +A write   strobe — clear the "sync seen" latch
-//   +1 read    drive status: bit7 busy, bit6 the track-0 sensor, bit4 index
+//   +1 read    drive status: bit7 busy, bit6 the track-0 sensor, bit5 the disk
+//              is writable, bit4 index
 //   +4 read    data byte from the head, clears "ready"
-//   +6 read    bit7 = a byte is waiting, bit6 = no sync mark seen since the strobe
+//   +6 read    bit7 = a byte is waiting (reading) or the write register is
+//              free (writing), bit6 = no sync mark seen since the strobe
 //
 // The .aim image is exactly this byte stream: one byte per 16-bit word, low byte
 // the data, high byte an attribute. That is why no GCR/MFM decoding appears
@@ -33,6 +40,22 @@
 // A model that re-searched on every strobe would skip from $95 to the next mark
 // and never match the $6A behind it.
 //
+// Writing is the same stream the other way. A byte stored at +5 waits in the
+// 8255 until the byte boundary, when the shift register takes it and it
+// occupies the slot the head is entering — so a byte written just after an
+// address field's $5A lands behind the $5A, not on it. The +8 strobe marks the
+// byte handed over most recently: a driver writes $A4, then $FF, and strobes
+// before waiting for the register (agatcomp.ru, fl840k_write.shtml — the
+// sequencer stitches the sync gap onto the byte in flight, and on read the $FF
+// is lost, the decoder locking on it and delivering the $95 behind it). That is
+// the byte the boot ROM discards after waiting for bit 6 ($C565), and the byte
+// agat-emulator's fdd.c marks with 0x0100 (rotate_sector). A byte the head
+// passes in write mode without a mark loses any old mark, as in fdd.c: a
+// rewritten sector carries only the marks its writer put there. The clock keeps
+// turning in write mode — the factory formatter waits for the index with write
+// mode already set — and a driver that falls behind leaves the old byte in the
+// slot it missed.
+//
 // Media: MFM, 300 rpm, 250 kbit/s — one byte every 32 µs, which at the Agat's
 // 1.02 MHz is 32.66 cycles. 80 cylinders x 2 sides x 21 sectors x 256 bytes =
 // 860,160 bytes, and the two sides interleave: logical track = cylinder*2 + side.
@@ -43,12 +66,17 @@
   var TRACK_WORDS = 6464;
 
   var A_DESYNC = 0x81;      // 0x01 and 0x80 both mark a desync
+  var A_MARK = 0x01;        // the one a write puts down, as fdd.c does
   var A_END = 0x02;
   var A_INDEX_START = 0x03;
   var A_INDEX_END = 0x13;
 
-  // How much of a track without an index attribute reads as "index".
-  var INDEX_WIDTH = 0x40;
+  // How much of a track without an index attribute reads as "index": 128
+  // bytes, 4.2 ms of a 200 ms turn. agat-emulator's `no_mark` says 64; the
+  // factory test says 128 — TESTKOM9's speed check (APTEST1, $7900) counts
+  // 100 µs ticks while the index is high and wants 1980-2020 of them, which
+  // is 200 ms of revolution less a 4 ms pulse, and a 2 ms pulse counts 2023.
+  var INDEX_WIDTH = 0x80;
 
   // 250 kbit/s MFM is one byte every 32 µs; the Agat's 6502 runs at 1.02 MHz.
   var CYCLES_PER_BYTE = 1020484 / 31250;
@@ -72,6 +100,10 @@
     this.nextByteAt = 0;                // cpu cycle when the next byte arrives
     this.lastByteAt = -Infinity;        // cpu cycle the CPU last took a byte
     this.portC = 0;                     // 8255 #1 port C: the drive control lines
+    this.latch = 0;                     // the byte +5 stored, waiting for the boundary
+    this.latched = false;
+    this.latchMark = false;             // a +8 strobe arrived while it waited
+    this.lastWritePos = 0;              // the slot the last written byte went to
     this.trace = null;                  // set to a fn(reg, val, now) to log writes
 
     this.stepOutward = opts.stepOutward === undefined ? 1 : opts.stepOutward;
@@ -83,6 +115,7 @@
     this.pos = 0;
     this.ready = false;
     this.syncSeen = false;
+    this.latched = false;
   };
 
   Disk840.prototype.eject = function () { this.media = null; };
@@ -95,6 +128,7 @@
     this.side = 0;
     this.ready = false;
     this.syncSeen = false;
+    this.latched = false;
   };
 
   // Which of the 160 stored tracks is under the head: cylinder 0 side 0 is
@@ -109,7 +143,12 @@
   var PC_DIR = 2;      // port C bit 2: step direction
   var PC_DRIVE = 3;    // port C bit 3: drive select
   var PC_SIDE = 4;     // port C bit 4: head/side select
+  var PC_WRITE = 6;    // port C bit 6: write mode
   var PC_MOTOR = 7;    // port C bit 7: motor
+
+  Object.defineProperty(Disk840.prototype, 'writeMode', {
+    get: function () { return ((this.portC >> PC_WRITE) & 1) === 1; },
+  });
 
   // One step pulse. Clamping at the end stops is what makes the boot ROM's
   // four-pulse recalibrate land on cylinder 0 no matter where it started.
@@ -138,32 +177,52 @@
   };
 
   // Spin the disk forward to `now`. Bytes the CPU was too slow to collect are
-  // lost, exactly as they would be on the real drive.
+  // lost, exactly as they would be on the real drive. In write mode the byte
+  // waiting in the register goes into the first slot the head enters, and
+  // every slot passed loses its sync mark unless the strobe put one there.
   Disk840.prototype.tick = function (now) {
     var m = this.media;
     if (!m || now < this.nextByteAt) return;
     var track = this.track;
     if (track >= m.tracks) return;
     var len = m.trackLen[track] || m.stride;
+    // Byte boundaries keep their phase: the next one is a whole number of
+    // byte times after the last, however late the CPU came to look. Set from
+    // `now` instead, the disk would turn at the polling rate — a loop that
+    // looks every 50 cycles would see one byte per 50 cycles and a
+    // revolution half again too long, which is what TESTKOM9's speed check
+    // measures.
     var steps = 1 + Math.floor((now - this.nextByteAt) / CYCLES_PER_BYTE);
-    if (steps > len) steps = len;
+    this.nextByteAt += steps * CYCLES_PER_BYTE;
+    if (steps > len) steps = len + steps % len;    // whole turns change nothing
     var base = m.trackBase(track);
     var marked = m.hasIndexMark(track);
+    var writing = this.writeMode && !m.writeProtect;
     for (var i = 0; i < steps; i++) {
       this.pos = this.pos + 1 >= len ? 0 : this.pos + 1;
-      var a = m.attrs[base + this.pos];
+      var at = base + this.pos;
+      if (writing) {
+        m.attrs[at] &= ~A_DESYNC;
+        if (this.latched) {
+          m.bytes[at] = this.latch;
+          if (this.latchMark) m.attrs[at] |= A_MARK;
+          this.lastWritePos = this.pos;
+          this.latched = false;
+          m.markWritten(track);
+        }
+      }
+      var a = m.attrs[at];
       if (a & A_DESYNC) this.syncSeen = true;
       else if (a === A_INDEX_START) this.atIndex = true;
       else if (a === A_INDEX_END) this.atIndex = false;
     }
     // A track with no index attribute still has to say where it begins, or
     // software that waits for the index before counting sectors off has nothing
-    // to wait for and starts wherever the head happened to be. agat-emulator
-    // calls the first 64 bytes of such a track the index (fdd.c, `no_mark`).
+    // to wait for and starts wherever the head happened to be. The first
+    // INDEX_WIDTH bytes of such a track are the index, as in fdd.c's `no_mark`.
     if (!marked) this.atIndex = this.pos < INDEX_WIDTH;
     this.data = m.bytes[base + this.pos];
     this.ready = true;
-    this.nextByteAt = now + CYCLES_PER_BYTE;
   };
 
   Disk840.prototype.read = function (reg, now) {
@@ -175,15 +234,17 @@
         // times, spins until bit7 clears, then reverses if bit6 is still set,
         // so answering "ready, and bit6 clear once we are home" makes that
         // recalibrate terminate on cylinder 0.
-        return (this.cyl === 0 ? 0x00 : 0x40) | (this.atIndex ? 0x00 : 0x10);
+        // Bit 5 is the write-protect sense, set while the disk can be
+        // written: fdd.c's `x |= 0x20`, and what the factory formatter tests
+        // with AND #$20 as soon as it has set write mode.
+        return (this.cyl === 0 ? 0x00 : 0x40) | (this.atIndex ? 0x00 : 0x10) |
+               (this.media && !this.media.writeProtect ? 0x20 : 0x00);
       case 2:
         return this.portC;
       case 4:
         this.ready = false;
         this.lastByteAt = now;
         return this.data;
-      case 5:
-        return this.media && this.media.writeProtect ? 0x80 : 0x00;
       case 6:
         return (this.ready ? 0x80 : 0) | (this.syncSeen ? 0 : 0x40);
       default:
@@ -197,10 +258,38 @@
     switch (reg) {
       case 0x02: this.setPortC(val); break;     // port C written whole
       case 0x03: this.control(val); break;      // 8255 #1 — the drive lines
+      case 0x05: this.writeData(val, now); break;
+      case 0x08: this.writeSync(); break;
       case 0x09: this.step(); break;            // step pulse
       case 0x0a: this.syncSeen = false; break;  // clear the sync latch
-      default: break;                           // 8255 #2 mode words, data port
+      default: break;                           // 8255 #2 mode words
     }
+  };
+
+  // A byte into the write register. It reaches the track at the next byte
+  // boundary, in tick(); until then the register reads busy. A locked disk
+  // takes nothing and says so in the status register.
+  Disk840.prototype.writeData = function (val, now) {
+    if (!this.media || !this.writeMode || this.media.writeProtect) return;
+    if (!((this.portC >> PC_MOTOR) & 1)) return;
+    this.latch = val & 0xff;
+    this.latched = true;
+    this.latchMark = false;
+    this.ready = false;
+    this.lastByteAt = now;
+  };
+
+  // The sync strobe. It marks the byte handed over most recently — the one
+  // still waiting in the register if there is one, otherwise the one the shift
+  // register took at the last boundary.
+  Disk840.prototype.writeSync = function () {
+    var m = this.media;
+    if (!m || !this.writeMode || m.writeProtect) return;
+    if (this.latched) { this.latchMark = true; return; }
+    var track = this.track;
+    if (track >= m.tracks) return;
+    m.attrs[m.trackBase(track) + this.lastWritePos] |= A_MARK;
+    m.markWritten(track);
   };
 
   // The drive lamp: 0 dark, 1 spinning, 2 transferring. The real drive's LED

@@ -705,6 +705,11 @@ control port at `$C0D3`. MouseGraf's driver raises the motor line and reads it
 straight back to decide whether there is a controller in the slot at all; a
 register that always answers `$00` sends it into a retry loop it never leaves.
 
+One byte every 32 µs — 32.66 cycles — and the byte clock keeps its phase
+however often the CPU looks: a loop that polls every 50 cycles still sees 6250
+bytes go by in the 200 ms of a revolution. That is what TESTKOM9's speed check
+counts between index pulses (`APTEST1`, `$7900`), and it prints «200.2».
+
 The disk surface is described by `.aim` images: 160
 tracks of 6464 16-bit little-endian words, where the low byte is data and the
 high byte is an attribute — `0x01`/`0x80` desync (the hardware sync detector
@@ -713,13 +718,61 @@ fired), `0x02` end of track, `0x03`/`0x13` index mark start/end.
 The sector checksum is an **ADC-with-carry chain**, not an XOR.
 
 The status register at `$C0D1` carries bit 4 as the **index**, low while the
-start of the track is under the head. Loaders that count sectors off rather than
+start of the track is under the head, and bit 5 as the **write-protect sense**,
+set while the disk can be written (`fdd.c`, `x |= 0x20`); the factory formatter
+tests it with `AND #$20` the moment it has set write mode. Loaders that count sectors off rather than
 matching sector numbers — MouseGraf 4.4's is one — poll `AND #$90` on it before
 they read, and without it they begin wherever the head happens to be and load a
 whole track's worth of data out of phase. Almost no `.aim` in circulation
 carries the `0x03`/`0x13` attribute pair, so the signal has to come from
 somewhere else: agat-emulator calls the first `0x40` bytes of an unmarked track
-the index (`fdd/fdd.c`, `no_mark`), and so do we.
+the index (`fdd/fdd.c`, `no_mark`); here it is `0x80` — 4.2 ms of a 200 ms
+turn — because TESTKOM9's speed check (`APTEST1`, `$7900`) counts 100 µs ticks
+while the index is high and accepts 1980-2020 of them: 200 ms less a 4 ms
+pulse sits in the middle of that window, and a 2 ms pulse counts 2023 and
+fails.
+
+#### Writing
+
+Port C bit 6 is write mode; `$C0D5` takes the byte to be written and `$C0D8` is
+the **sync strobe** («запись синхро»). The reference driver is the one on the
+factory computer test (`examples/TESTCOM7_840.agc`, ТЕСТ 'НГМД', disassembled at
+`$DE5E-$DEFD`): write mode, one `$AA` at once, then on each "register free" (bit
+7 of `$C0D6`) `$AA` ×4, `$A4`, `$FF` with the strobe **immediately after it**,
+`$6A $95`, 256 data bytes at 27 cycles each, the checksum, `$5A`, `$AA`; then
+the write-protect bit is checked and read mode restored. The formatter is the
+same routine writing address fields too, from the index, and it measures the
+track it reads back to size its gaps.
+
+The model here follows the hardware's two-stage pipeline: a byte stored at
+`$C0D5` waits in the 8255 until the byte boundary, when the shift register takes
+it and it occupies the slot the head is entering. So a byte written just after
+an address field's `$5A` lands behind the `$5A`, not on it, and the rotation
+clock keeps running in write mode — the formatter waits for the index with write
+mode already set. The strobe marks (attribute `0x01`) **the byte handed over
+most recently**: agatcomp.ru's study of the write sequencer
+(`Hardware/DZU/fl840k/fl840k_write.shtml`) shows the sync gap stitched onto the
+end of the byte in flight and the `$FF` lost on read, the decoder locking on it
+and delivering the `$95` behind it; agat-emulator's `fdd.c` marks the same word
+(`rotate_sector`, `|= 0x0100`); and the boot ROM at `$C565` discards exactly
+that byte after waiting for bit 6. A slot the head passes in write mode without
+a strobe loses any old mark, as in `fdd.c`, so a rewritten sector carries only
+the marks its writer put there. Real `.aim` files carry the mark on the byte
+before `$95 $6A` / `$6A $95` throughout.
+
+What settled it was the factory test itself: with the disk unlocked, ТЕСТ 'НГМД'
+formats all 160 tracks, reads them back and answers «ТЕСТ ПРОШЕЛ БЕЗ
+ЗАМЕЧАНИЙ», and every track it wrote decodes back to its 21 sectors.
+
+Every synthesised track — from a `.dsk` or a `.nib` — is one revolution long:
+**6250 bytes**, which is 250 kbit/s for the 200 ms of a turn at 300 rpm, laid
+in the `.aim` slot of 6464 words with an end mark at 6250 and gap behind the
+last sector. That length is what TESTKOM9's speed check measures between index
+pulses (`APTEST1`, `$7900`: 2000 ± 20 counts of its loop, i.e. 300 rpm ± 1%),
+and it is the room a formatter has — the 21 records of a `.nib` come to 5922
+and leave none for the gaps it writes. A `.aim` turns over its own length, the
+end mark's or the whole 6464-word slot; a converter-made one that fills the slot
+turns 3% slow, which is what the image says.
 
 ### 140K "Shugart" (slot 3 on Agat-7, slot 6 on Agat-9)
 
@@ -762,8 +815,8 @@ writing therefore lands on the gap behind it rather than on top of its own
 prologue.
 
 Every disk is mounted **locked**, whatever the image says about itself, and
-`$C0EE` reports it; the drive's `RO` control in the page is what clears it. The
-840K controller models no data-write register at all and cannot be unlocked.
+`$C0EE` reports it (`$C0D1` bit 5 on the 840K); the drive's `RO` control in the
+page is what clears it.
 
 ### Image formats
 
@@ -818,12 +871,7 @@ configuration.
 
 ## Not emulated
 
-Disk writing on the **840K** controller — its second 8255's data port is
-decoded and dropped, and the desync plane an `.aim` write would have to author
-has no oracle here. Those images stay read-only and the write-protect bit says
-so. The 140K controller writes; see above.
-
-Also absent: the Agat-7 ДопОЗУ extra-RAM card, NTSC artefact colour for the
+The Agat-7 ДопОЗУ extra-RAM card, NTSC artefact colour for the
 Apple modes, 80-column/Videoterm/DHGR and Apple //e modes, cycle-accurate raster
 splits, printer, SCSI, tape and clock. The printer card is emulated only as far
 as the mice that hang off it need — its 8255 without a cable, and without the

@@ -24,12 +24,14 @@
 //
 // --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
 // --cold skips the boot and cold-starts into the monitor instead,
-// --keys=STR types a string once the machine is up (~ Return, _ Space, ^ Esc)
-// and --per=N is how many cycles each keystroke gets.
+// --keys=STR types a string once the machine is up (~ Return, _ Space, ^ Esc,
+// ↑↓←→ the arrows) and --per=N is how many cycles each keystroke gets.
 //
 // `write` is what turns "the save worked" into something measurable:
 //
 //   node tools/check.js write dos33.dsk --keys='~SAVE_X~'
+//   node tools/check.js write examples/TESTCOM7_840.agc 400000000 \
+//        --keys='_↓↓↓↓↓↓~_' --per=3000000     # the factory 840K formatter
 const fs = require('fs');
 const path = require('path');
 const H = require('./harness');
@@ -783,9 +785,10 @@ H.loadRoms(ctx).then(async (roms) => {
                    : 'as nibbles — a track would not decode back to sectors'));
     for (const p of back.patches.slice(0, 24)) {
       const n = p.bytes.length;
-      const where = sniffed.kind === 'dsk140'
-        ? '  T' + Math.floor((p.at - off) / 4096) +
-          ' S' + Math.floor(((p.at - off) % 4096) / 256) : '';
+      const per = { dsk140: 4096, dsk840: 21 * 256 }[sniffed.kind];
+      const where = per
+        ? '  T' + Math.floor((p.at - off) / per) +
+          ' S' + Math.floor(((p.at - off) % per) / 256) : '';
       console.log('  at ' + String(p.at).padStart(7) + '  ' + String(n).padStart(4) +
                   ' bytes' + where);
     }

@@ -1,7 +1,3 @@
-* Floppy write support on the 840K drive. The 140K one writes, and Save
-  AGC keeps what it wrote as patches on the sector image; the 840K models
-  no data-write register at all, and an `.aim` write would have to author
-  the desync plane, which nothing here can check.
 * Disk change support for writes. For when an editor is loaded from
   one disk, but the result wants to be written to another. For example
   to be able to actually edit some ASM code and save it. Maybe instead
@@ -14,3 +10,4 @@
   check the fetched copy against, would let a container dropped on the page put
   itself back into the address: today a dropped one cannot be named there at
   all, so the address carries its machine in full and not the program.
+* What does "Boot" do exactly? Fix or document better.

@@ -380,6 +380,9 @@ python3 -c 'import json,sys;print("".join(json.load(open(sys.argv[1]))["media"][
 
 Anything the emulator takes, a container carries: `.aim`, `.dsk` and `.nib` at
 140K and 840K, and `.fil` programs. A container inside a container is refused.
+Each image goes into the drive its size implies, so a container can fill both
+drives — a system disk and a blank for it to write on — and **the first disk
+listed is the one booted**.
 
 ### `patches`
 

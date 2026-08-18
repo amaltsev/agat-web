@@ -59,7 +59,7 @@ Load order matters only in that a module's dependencies must already be on
 | `videopal.js` | four palettes, `$C058-$C05B` |
 | `machine.js` | the bus: memory maps, soft switches, slots, interrupt timers |
 | `drive.js` | normalised `Media` container, head position, write lock |
-| `aim840.js` | DSK840/NIB840 → AIM words |
+| `aim840.js` | DSK840/NIB840 → AIM words, and a written track back to sectors |
 | `gcr140.js` | 4-and-4 and 6-and-2 track synthesis, and reading it back |
 | `unpack.js` | gzip both ways, and the embedded ROM blobs |
 | `agc.js` | the `.agc` container: read, write, base64, gzip, patches |
@@ -312,7 +312,7 @@ controller ever has to know about file formats:
 | | |
 |---|---|
 | `nib140` | 35 tracks × 6656 bytes, a GCR nibble stream |
-| `aim840` | 160 tracks × N words, a byte plane plus an attribute plane |
+| `aim840` | 160 tracks × 6464 words, a byte plane plus an attribute plane; a synthesised track is one 6250-byte revolution in that slot |
 
 `image.js` sniffs, `aim840.js`/`gcr140.js` synthesise, `drive.js` holds the
 result, and the controllers only ever see a `Media`.
@@ -347,17 +347,20 @@ them, so a container that is loaded and saved again is the same file.
 ### Writing goes out the same door
 
 `App.writeBack` is what stands between a written disk and a saved container. The
-`Media` a controller writes to is a nibble stream, and what a container should
-carry is the sector image it came from, so every track the drive marked written
-is decoded back through `gcr140.denibblizeTrack` and the difference comes out as
-patches. It reads `this.sources` and the card's media and touches neither, which
-is what makes saving twice produce the same file and what lets the tests call it
-with a two-field stand-in for an `App`.
+`Media` a controller writes to is a stream, and what a container should carry
+is the image it came from, so every track the drive marked written is decoded
+back — through `gcr140.denibblizeTrack` to 16 sectors, or
+`aim840.desectorizeTrack` to 21 — and the difference comes out as patches; a
+`.nib` or `.aim` source is its own baseline and the patches are simply what
+moved (`aim840.toAim` interleaves the two planes back). It reads `this.sources`
+and the card's media and touches neither, which is what makes saving twice
+produce the same file and what lets the tests call it with a two-field stand-in
+for an `App`.
 
 Its one give-up is a track that will not decode. There is then no sector image
-for a patch to be a difference from, so the whole nibble stream is saved instead
-and the entry is renamed `.nib` — which loads again unaided, because media are
-identified by size.
+for a patch to be a difference from, so the whole stream is saved instead and
+the entry is renamed `.nib` (140K) or `.aim` (840K) — which loads again unaided,
+because media are identified by size.
 
 The GCR encoder was verified **byte-for-byte against compiled `dsk2nib.c`** over
 all 232,960 bytes of a track set. That is the only exact external oracle in the

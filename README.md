@@ -78,12 +78,12 @@ of this era take their time — a boot can be ten seconds of reading — and the
 lamp is what tells that apart from a hang.
 
 Beside each lamp is **RO / RW**, the drive's write lock. Every disk arrives
-read-only and the drive tells the program so; click `RO` and the 140K drive will
+read-only and the drive tells the program so; click `RO` and the drive will
 write. That is what an Agat-9 system disk is asking for when it says «СИСТЕМА
 ИСПОРЧЕНА», and what DOS needs before `SAVE` or `INIT` will work. Writes go to
 memory and nowhere else — the file on your disk is never touched, and closing
 the tab loses them; **Save AGC** lights up while there are any, and keeps them
-as patches on the image they came from. The 840K drive does not write.
+as patches on the image they came from.
 
 The **⚙** holds the settings a machine is run under rather than driven by: the
 volume, the machine's memory sizes, and whether it has a mouse. The video
@@ -257,6 +257,13 @@ fittings. Its menu, transcribed from the 1986 manual, is in
 [examples/TESTOZU7_140.md](examples/TESTOZU7_140.md); the short version is that
 **исполнение starts at 0**, where `0` is 32K — so the stock 64K board is `1`.
 
+`examples/TESTCOM7_840.agc` is the **factory computer test** on an 840K disk —
+Бейсик, звук, интерфейс, НГМД, магнитофон. Its ТЕСТ 'НГМД' formats the disk it
+came on, reads it back and verifies it, which is what settled how the 840K
+drive writes; unlock the drive (`RO` → `RW`) before you run it, and it answers
+«ТЕСТ ПРОШЕЛ БЕЗ ЗАМЕЧАНИЙ». `examples/TESTKOM9_840.agc` is the Agat-9 one
+(Фг.00033-01 12 01), menu-driven, and its disk test passes the same way.
+
 ---
 
 ## Documentation
@@ -271,9 +278,8 @@ fittings. Its menu, transcribed from the 1986 manual, is in
 
 ## What is not there
 
-Disk writing on the **840K** drive — its images are read-only and the
-write-protect bit says so. Also absent: NTSC artefact colour for the Apple
-modes, 80-column and Apple //e modes, mouse, printer and tape.
+NTSC artefact colour for the Apple modes, 80-column and Apple //e modes,
+printer and tape.
 
 ## Development
 
@@ -353,9 +359,10 @@ and `tools/6502_functional_test.bin`, which is built from Klaus Dormann's
 GPLv3 test sources. None of the three is part of the emulator itself; the test
 binary is read by `tools/cputest.js` and never ships to the browser.
 
-`examples/TESTOZU7_140.agc` is a 1986 Soviet factory diagnostic, and
-`examples/Klondike.agc` and the two `examples/MouseGraf-*.agc` are Р. Бадер's and
-Ю. Багашев's programs of 1992-94, all from
+`examples/TESTOZU7_140.agc`, `examples/TESTCOM7_840.agc` and
+`examples/TESTKOM9_840.agc` are Soviet factory diagnostics of the 1980s, and `examples/Klondike.agc` and the two
+`examples/MouseGraf-*.agc` are Р. Бадер's and Ю. Багашев's programs of 1992-94,
+all from
 [agatcomp.ru](https://agatcomp.ru/). Their licences are **unknown**; they are
 included on the assumption that something of that origin and age is as close to
 public domain as anything gets, and any of them will be removed if the rights

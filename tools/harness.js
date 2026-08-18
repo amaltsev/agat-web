@@ -91,10 +91,16 @@ function insert(m, media) {
 // The keystrokes a --keys= string sends. `~` is Return, `_` Space, `^` Escape,
 // and anything else is itself: enough to drive a menu or type a DOS command,
 // and short enough to sit in a shell argument without quoting.
+// One character of a --keys string, as the byte the Agat keyboard sends: the
+// three ASCII stand-ins that survive a shell, and the arrows as themselves.
 function keyCode(c) {
   if (c === '~') return 0x0d;
   if (c === '_') return 0x20;
   if (c === '^') return 0x1b;
+  if (c === '↑') return 0x19;
+  if (c === '↓') return 0x1a;
+  if (c === '←') return 0x08;
+  if (c === '→') return 0x15;
   return c.toUpperCase().charCodeAt(0);
 }
 
