@@ -129,7 +129,10 @@ function eq(what, got, want) {
   eq('App Agat-9 ignores a RAM size', nine.ramSize, 0x20000);
   eq('App Agat-9 slots', cards(nine), ['2:xram9', '5:fdd840', '6:fdd140']);
 
-  const big = mk({ model: 7, slots: { 4: { card: 'xram', ram: 0x20000 }, 2: null } });
+  // The App is asked for cards rather than for slots — see Machine.cardsOf —
+  // and works the slot numbers out for the model it is building.
+  const big = mk({ model: 7,
+                   cards: { xram: { card: 'xram', ram: 0x20000 }, psrom: null } });
   eq('App override reaches the slots',
      [big.slots[4].ram, big.slots[2]], [0x20000, undefined]);
   eq('App slotDiff reports it in kilobytes',
@@ -137,7 +140,7 @@ function eq(what, got, want) {
 
   // A mouse is never stock, so it is a slot override and comes back out of
   // slotDiff() as one — which is what puts it in a saved container.
-  const mouse = mk({ model: 9, slots: { 4: { card: 'mouse-nippel' } } });
+  const mouse = mk({ model: 9, cards: { mouse: { card: 'mouse-nippel' } } });
   eq('App fits a mouse where it was asked for',
      cards(mouse), ['2:xram9', '4:mouse-nippel', '5:fdd840', '6:fdd140']);
   eq('App mouse survives the round trip',
@@ -145,7 +148,7 @@ function eq(what, got, want) {
 
   // The same mouse on the other card is a card of its own in the slot map,
   // because which card it is decides which programs will look at it.
-  const marsRom = mk({ model: 9, slots: { 4: { card: 'mouse-mars-rom' } } });
+  const marsRom = mk({ model: 9, cards: { mouse: { card: 'mouse-mars-rom' } } });
   eq('App fits a «Марсианка» on a card with the ROM',
      cards(marsRom), ['2:xram9', '4:mouse-mars-rom', '5:fdd840', '6:fdd140']);
 }
@@ -1687,6 +1690,46 @@ async function agcTests() {
         { agc: 1, machine: { model: 7, slots: { 4: { ram: 128 }, 2: null } } }), 'utf8'),
         's.agc');
       eq('a slot entry with no card is dropped', sizeOnly.machine.slots, { 2: null });
+
+      // --- and the same machine said as cards --------------------------------
+      // Slot numbers belong to a model, so what has to survive a change of one
+      // is carried by what the cards are. A mouse is a class of its own: the
+      // machine takes one at most and which one it is is the whole choice.
+      eq('a mouse of any make is the mouse',
+         [M.classOf('mouse-mars-rom'), M.classOf('xram9')], ['mouse', 'xram9']);
+      eq('each model keeps a class where it keeps it',
+         [M.stockSlot(7, 'fdd140'), M.stockSlot(9, 'fdd140'),
+          M.stockSlot(7, 'mouse'), M.stockSlot(9, 'mouse')], [3, 6, 6, 4]);
+      eq('a class a model does not take has no slot',
+         [M.stockSlot(9, 'psrom'), M.stockSlot(7, 'xram9')], [-1, -1]);
+
+      const asCards = M.cardsOf(9, { 4: { card: 'mouse-mars', ram: 0 }, 2: null });
+      eq('an override map read as cards', asCards,
+         { xram9: null, mouse: { card: 'mouse-mars', ram: 0, slot: 4 } });
+      eq('the same cards on an Agat-7', M.slotsFor(7, asCards, 9),
+         { 6: { card: 'mouse-mars', ram: 0 } });
+      eq('...and back on the machine they were named for',
+         M.slotsFor(9, asCards, 9),
+         { 4: { card: 'mouse-mars', ram: 0 }, 2: null });
+
+      // A card somewhere other than its model's own slot keeps the slot it was
+      // given, and only on the model it was given for.
+      const odd = { mouse: { card: 'mouse-nippel', ram: 0, slot: 1 } };
+      eq('an odd slot is kept', M.slotsFor(9, odd, 9), { 1: { card: 'mouse-nippel', ram: 0 } });
+      eq('...and given up on the other machine', M.slotsFor(7, odd, 9),
+         { 6: { card: 'mouse-nippel', ram: 0 } });
+      eq('cards with nothing to say resolve to no overrides',
+         M.slotsFor(7, {}, 7), null);
+
+      eq('a layer over another wins class by class',
+         M.mergeCards({ psrom: null, xram: { card: 'xram', ram: 0x8000 } },
+                      { psrom: { card: 'psrom', ram: 0x4000 } }),
+         { psrom: { card: 'psrom', ram: 0x4000 },
+           xram: { card: 'xram', ram: 0x8000 } });
+      eq('and a mouse replaces a mouse rather than joining it',
+         M.slotsFor(9, M.mergeCards({ mouse: { card: 'mouse-mars', slot: 4 } },
+                                    { mouse: { card: 'mouse-nippel' } }), 9),
+         { 4: { card: 'mouse-nippel', ram: 0 } });
     }
 
     // --- a container, and what the address says over it ----------------------
@@ -1727,7 +1770,7 @@ async function agcTests() {
          [same.model, same.ramSize], [7, 0x10000]);
       eq('...and still leaves the medium booting', same.machine.cpu.pc, 0xc300);
 
-      const other = await load(stock, { ramSize: 0x20000, slots: { 2: null } });
+      const other = await load(stock, { ramSize: 0x20000, cards: { psrom: null } });
       eq('an address disagreeing with it wins',
          [other.ramSize, other.slots[2]], [0x20000, undefined]);
       eq('...on the machine the medium boots on', other.machine.cpu.pc, 0xc300);
@@ -1737,8 +1780,6 @@ async function agcTests() {
          [nine.model, nine.ramSize], [9, 0x20000]);
       eq('...where the 140K drive is slot 6', nine.machine.cpu.pc, 0xc600);
 
-      // `null` is the profile's own cards, and has to outrank a container that
-      // names some — which is not the same as saying nothing at all.
       // And out again, which is the Save button: what was loaded, the machine
       // it is running as, and the payload it came in with, byte for byte.
       const saved = await plain.toAgc();
@@ -1752,8 +1793,28 @@ async function agcTests() {
       const carded = await agc({ model: 7, ram: 64,
                                  slots: { 4: { card: 'xram', ram: 128 } } });
       eq('a container sizes its cards', (await load(carded)).slots[4].ram, 0x20000);
-      eq('an address of stock sizes puts them back',
-         (await load(carded, { slots: null })).slots[4].ram, 0x8000);
+      // A card the address names is the address's, at whatever size — including
+      // the stock one, which is a choice and not the absence of one. It says
+      // nothing about the cards it does not name.
+      const resized = await load(carded,
+        { cards: { xram: { card: 'xram', ram: 0x8000 } } });
+      eq('an address of stock sizes puts them back', resized.slots[4].ram, 0x8000);
+
+      const both = await agc({ model: 9, ram: 128,
+                               slots: { 4: { card: 'mouse-mars-rom' },
+                                        2: { card: 'xram9', ram: 64 } } });
+      const one = await load(both, { cards: { xram9: { card: 'xram9', ram: 0x8000 } } });
+      eq('an address naming one card leaves the others alone',
+         [one.slots[2].ram, one.slots[4].card], [0x8000, 'mouse-mars-rom']);
+
+      // The container's slot numbers are about the machine it named. Asked for
+      // on the other one, its cards go where that machine puts them — a mouse
+      // at slot 4 on an Agat-9 is a mouse at slot 6 on an Agat-7, and slot 4
+      // there is the ОЗУ expansion's.
+      const seven = await load(both, { model: 7 });
+      eq('a container\'s cards move with the model',
+         [seven.slots[4].card, seven.slots[6].card, seven.slots[2].card],
+         ['xram', 'mouse-mars-rom', 'psrom']);
     }
 
     // --- the video interrupts ------------------------------------------------

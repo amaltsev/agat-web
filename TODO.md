@@ -10,6 +10,7 @@
   "system" boot disk can stay write protected (a flag in AGC), but the
   storage disk can then be changed to for work, replicating how it was
   done on device.
-* Optimize URL parameters to only show the ones that override container
-  defitions. Such that if AGC is running normally, only @agc= is present.
-* Make UI scroll to top when one of software links is clicked
+* A container that knows where it lives. A `hosted_at` field, with a digest to
+  check the fetched copy against, would let a container dropped on the page put
+  itself back into the address: today a dropped one cannot be named there at
+  all, so the address carries its machine in full and not the program.

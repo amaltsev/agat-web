@@ -112,8 +112,7 @@ end up testing different hardware — which they could, and briefly did, when ea
 spelled the card list out for itself.
 
 An override is a slot map merged over the profile: a different card, a different
-size, or `null` for a slot left empty. Two things produce one — an `.agc`'s
-`machine.slots` and the gear popup — and `App.slotDiff()` turns the live machine
+size, or `null` for a slot left empty. `App.slotDiff()` turns the live machine
 back into the smallest map that describes it, so a container for a stock machine
 carries no slots at all.
 
@@ -124,6 +123,28 @@ A mouse is the one card that is never in a profile — nothing that came with
 either machine expects one — so it exists only as an override, and
 `Machine.MOUSE_SLOTS` says where one goes when the gear popup or a tool asks for
 it rather than naming the slot itself.
+
+### Cards, where slots will not do
+
+A slot number belongs to a model. The 140K drive is slot 3 on the Agat-7 and
+slot 6 on the Agat-9, and the slot each machine leaves free for a mouse is not
+the same one either — so a machine that has to survive being asked for on the
+*other* model cannot be carried as a slot map. Two of them do have to: an
+`.agc`'s `machine.slots`, when the address puts the program on the other
+machine, and the gear popup's menus, which name cards and not places.
+
+So the App holds what it is fitted with as **cards**, keyed by class:
+`Machine.cardsOf()` reads a slot map into them and `Machine.slotsFor()` works
+the slots back out for whichever model is being built, sending each card where
+that model puts one. A class is the card's own name except for the mice, which
+share `mouse`: a machine takes at most one, and swapping a «Марсианка» for a
+Ниппель is one choice rather than a card added beside another.
+
+There are two layers, merged class by class in `App.cardSlots()` on every build:
+`agcCards`, what a container asked for, and `overCards`, what the menus and the
+address say over the top of it. Class by class is the point — an address that
+resizes the ЭмПЗУ says nothing about the mouse, and the container keeps it.
+A slot a card was explicitly given is kept only on the model it was given for.
 
 ### The pointer has to be captured, not tracked
 
@@ -685,6 +706,7 @@ node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/vectors.js               # pure-function tests, about a second
 node tools/check.js modules         # index.html vs tools/modules.js
 node tools/check.js kbdmenu         # the page's keyboard menu, load order and all
+node tools/check.js urlkeys         # the page's address, around the whole loop
 node tools/painters.js              # each video mode from a synthetic pattern
 
 node tools/check.js boot   <image>  # boot and report where it got to
@@ -720,6 +742,18 @@ a note left on a patch survives being saved, and that a `hint` survives beside
 `notes` and collapses to the one line the panel prints — and the remap cases pin both directions of it at once: `W`
 sending `$DE` in every plane, `$5E` naming `W` as a route, `$57` losing ЛАТ `W`,
 and all three coming back when the remap is dropped.
+
+`kbdmenu` and `urlkeys` are the two commands that test the page rather than
+`src/`: each lifts the functions it needs out of `index.html` by name — failing
+loudly if one is renamed — and runs them against stub `<select>`s. They are
+there because both pieces are about load *order*. The keyboard menu has to hold
+a bookmarked control group until the container that names it arrives; the
+address has to be written as a difference from a container that is fetched long
+after the fragment was read, and every interesting case is a pair — an address
+and the container it names — which is exactly what a browser makes tedious to
+reach and easy to get wrong. `urlkeys` runs the real loop: a fragment into the
+menus, the menus into a machine, a real `.agc` loaded into it, and the machine
+back out as a fragment.
 
 `tools/corpus.js` walks a directory of images, infers the model from the path
 (`*7a` → 7, `*9a` → 9, as `agat.sh` does), boots each, and emits a Markdown

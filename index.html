@@ -535,6 +535,15 @@
   // builds rather than being applied on top of it afterwards, so a hand-edited
   // `model=9` still wins over what the container says and the program boots on
   // the machine that results.
+  //
+  // Every key is a difference, and only the differences there are get written.
+  // What the address rebuilds on its own is the stock Agat-7 and, over it,
+  // whatever `agc=` names — so a container running as its author meant it to
+  // leaves `#agc=...` and nothing else, and stays right if the container is
+  // later edited. A container that is *not* in the address rebuilds nothing:
+  // one dropped on the page has no URL to name it by, so its machine is written
+  // out in full instead. The address describes a machine either way; what
+  // changes is how much of it something else can be trusted to supply.
 
   function readUrl() {
     var out = {};
@@ -557,18 +566,25 @@
     return false;
   }
 
-  // The memory cards each machine takes, as sizes in kilobytes and as the slot
-  // map the App and an .agc both speak — two on the Agat-7, one on the Agat-9.
-  // Sitting at the stock size says nothing: a machine that matches its own
-  // profile carries no overrides and no URL keys.
-  var MEM_CARDS = { 7: [[2, 'psrom'], [4, 'xram']], 9: [[2, 'xram9']] };
+  // The memory cards each machine takes, by the class the menus and the address
+  // name them by — two on the Agat-7, one on the Agat-9. Which slot one sits in
+  // is the model's business and Machine.stockSlot answers for it.
+  var MEM_CARDS = { 7: ['psrom', 'xram'], 9: ['xram9'] };
   var MEM_SEL = { psrom: psromSel, xram: xramSel, xram9: xram9Sel };
 
-  function memCards() { return MEM_CARDS[modelSel.value] || []; }
+  // Every card class the address has a word for, in the order they are written.
+  function cardKeys(model) { return MEM_CARDS[model].concat(['mouse']); }
 
-  function stockKb(model, slot) {
+  function stockKb(model, cls) {
+    var slot = AGAT.Machine.stockSlot(model, cls);
     return AGAT.Machine.PROFILES[model].slots[slot].ram >> 10;
   }
+
+  // Where the mouse sits when it is not in the slot its model leaves free for
+  // one: a container may put it anywhere, and picking a different mouse from
+  // the menu swaps the card without moving it. Undefined is "wherever this
+  // model puts one".
+  var mouseSlot;
 
   // Base RAM is not a choice on an Agat-9: its 128K is fixed. The cards are, but
   // they are different cards, so each machine shows only its own — a greyed
@@ -580,62 +596,144 @@
     xram9Sel.hidden = !nine;
   }
 
-  function slotOverrides() {
-    var out = {}, any = false, model = Number(modelSel.value);
-    memCards().forEach(function (e) {
-      var kb = Number(MEM_SEL[e[1]].value);
-      if (kb === stockKb(model, e[0])) return;
-      out[e[0]] = kb ? { card: e[1], ram: kb * 1024 } : null;
+  // What the menus say the machine is fitted with, as a card layer. Absolute
+  // rather than a difference: they are refilled from the machine after every
+  // load, so what they show is a statement about this machine and it beats what
+  // a container said about the same card. A class they have no word for — the
+  // drives — is left out of the layer and stays as the container left it.
+  function menuCards() {
+    var model = Number(modelSel.value), out = {};
+    // A slot a mouse was put in belongs to the machine it was put in; on the
+    // way to the other model every card goes where that model puts one.
+    var slot = app && model !== app.model ? undefined : mouseSlot;
+    MEM_CARDS[model].forEach(function (cls) {
+      var kb = Number(MEM_SEL[cls].value);
+      out[cls] = kb ? { card: cls, ram: kb * 1024 } : null;
+    });
+    out.mouse = mouseSel.value
+      ? { card: 'mouse-' + mouseSel.value, slot: slot } : null;
+    return out;
+  }
+
+  // A card key's value, read: `64` or `nippel`, either with a `:slot` suffix,
+  // and `0` or nothing at all for a card left out. False for a value no control
+  // offers — a typo is not a choice, and the key is treated as absent. Picking
+  // is what validates, so this seeds the menus as it reads.
+  function readCard(key, value) {
+    var cut = String(value).indexOf(':');
+    var v = cut < 0 ? String(value) : value.slice(0, cut);
+    var slot = cut < 0 ? undefined : Number(value.slice(cut + 1));
+    if (!(slot >= 0 && slot <= 7)) slot = undefined;
+    if (!pick(key === 'mouse' ? mouseSel : MEM_SEL[key], v)) return false;
+    if (key === 'mouse') return v ? { card: 'mouse-' + v, slot: slot } : null;
+    return Number(v) ? { card: key, ram: Number(v) * 1024, slot: slot } : null;
+  }
+
+  // What the address says about the cards, class by class. A key it does not
+  // carry is silence rather than a stock card: that is what leaves the decision
+  // to the container. Only the current model's classes are read — an `xram=`
+  // in the address of an Agat-9 names a card that machine does not take.
+  function urlCards() {
+    var out = {}, any = false;
+    cardKeys(Number(modelSel.value)).forEach(function (key) {
+      if (url[key] === undefined) return;
+      var e = readCard(key, url[key]);
+      if (e === false) return;
+      out[key] = e;
       any = true;
     });
-    // No mouse is the stock machine, so picking one is the only thing here that
-    // has anything to say. Its slot is whichever the model leaves free.
-    if (mouseSel.value) {
-      out[AGAT.Machine.MOUSE_SLOTS[model]] = { card: 'mouse-' + mouseSel.value };
-      any = true;
-    }
     return any ? out : null;
   }
 
+  // The machine the address rebuilds with no keys of its own: the stock machine
+  // for `model`, and over it the container `agc=` names. A container reached any
+  // other way is not part of what the address says, because reopening the
+  // address will not bring it back. Called with 0 to ask which model the
+  // address arrives at by itself, which is what settles every other key.
+  function baseline(model) {
+    var M = AGAT.Machine, agc = agcUrl && app.fromAgc;
+    var from = (agc && app.agcModel) || 0;
+    var m = model || from || 7;
+    return {
+      model: m,
+      ramSize: m === 9 ? M.PROFILES[9].ram
+             : ((agc && app.agcRam) || M.PROFILES[7].ram),
+      slots: M.resolveSlots(m, M.slotsFor(m, agc ? app.agcCards : null,
+                                          from || m)),
+    };
+  }
+
+  // What a card key says about a machine: kilobytes for the memory cards, the
+  // kind for the mouse, `0` and the empty string for one that is not fitted,
+  // and a `:slot` suffix for a card that is not where this model puts one.
+  function cardKey(key, slots, model) {
+    var M = AGAT.Machine, n = M.slotOfClass(slots, key);
+    if (n < 0) return key === 'mouse' ? '' : '0';
+    var v = key === 'mouse' ? slots[n].card.slice(6)
+          : String((slots[n].ram || 0) >> 10);
+    return n === M.stockSlot(model, key) ? v : v + ':' + n;
+  }
+
   function saveUrl() {
-    var q = [];
+    var q = [], model = app.model, base;
     // The container comes first because it is what the address is *for* once
     // there is one: the rest of the keys read as adjustments to it.
     if (agcUrl) q.push('agc=' + encodeURIComponent(agcUrl));
-    q.push('model=' + modelSel.value);
-    if (modelSel.value === '7') q.push('ram=' + (Number(ramSel.value) >> 10));
-    memCards().forEach(function (e) {
-      var kb = Number(MEM_SEL[e[1]].value);
-      if (kb !== stockKb(Number(modelSel.value), e[0])) q.push(e[1] + '=' + kb);
+    // The model goes in before the rest is compared at all, and the rest is
+    // compared against a baseline read at the model that won.
+    if (model !== baseline(0).model) q.push('model=' + model);
+    base = baseline(model);
+    if (model === 7 && app.ramSize !== base.ramSize) {
+      q.push('ram=' + (app.ramSize >> 10));
+    }
+    cardKeys(model).forEach(function (key) {
+      var now = cardKey(key, app.slots, model);
+      if (now !== cardKey(key, base.slots, model)) q.push(key + '=' + now);
     });
-    if (mouseSel.value) q.push('mouse=' + mouseSel.value);
     // Which board is up is part of a working configuration too: a bookmark for
-    // a game whose keys are a puzzle should open with the keyboard showing.
+    // a game whose keys are a puzzle should open with the keyboard showing. It
+    // is the one key that is chrome rather than machine, and it is written
+    // whenever a board is up rather than compared against anything.
     // Encoded, unlike the rest: a control group is named by the container's
     // author and can hold anything a JSON key can.
     if (kbdSel.value) q.push('kbd=' + encodeURIComponent(kbdSel.value));
     location.replace('#' + q.join('&'));
   }
 
-  var url = readUrl();
-  var agcUrl = url.agc || '';
-  var pinned = pick(modelSel, url.model);
-  // The machine's own sizes first, so an address that names none of them opens
-  // the standard machine rather than whichever option happens to be listed first.
-  ramSel.value = String(AGAT.Machine.PROFILES[7].ram);
-  [7, 9].forEach(function (m) {
-    MEM_CARDS[m].forEach(function (e) {
-      MEM_SEL[e[1]].value = String(stockKb(m, e[0]));
+  // The address, into the menus. Everything the fragment says about the machine
+  // ends up in a control, and what the page builds it builds from those — so
+  // this runs before the App is made and nothing else has to read the fragment.
+  var url, agcUrl, urlCardLayer, pinned, wantKbd;
+  function readSettings() {
+    url = readUrl();
+    agcUrl = url.agc || '';
+    // Every menu the address can name is put back to what the page opens as
+    // before any of them is read, so that a key the address leaves out means
+    // the standard machine and never whatever was showing a moment ago.
+    modelSel.value = '7';
+    mouseSel.value = '';
+    kbdSel.value = '';
+    pinned = pick(modelSel, url.model);
+    // The machine's own sizes rather than whichever option happens to be listed
+    // first: 64K of base RAM is an Agat-7, and 32K is a choice.
+    ramSel.value = String(AGAT.Machine.PROFILES[7].ram);
+    [7, 9].forEach(function (m) {
+      MEM_CARDS[m].forEach(function (cls) {
+        MEM_SEL[cls].value = String(stockKb(m, cls));
+      });
     });
-  });
-  pick(ramSel, Number(url.ram) * 1024);
-  pick(psromSel, url.psrom);
-  pick(xramSel, url.xram);
-  pick(xram9Sel, url.xram9);
-  pick(mouseSel, url.mouse);
-  // A board cut to a control group cannot be picked yet — the container that
-  // names the groups has not been read. syncKbd applies it once it has.
-  var wantKbd = pick(kbdSel, url.kbd) ? '' : (url.kbd || '');
+    pick(ramSel, Number(url.ram) * 1024);
+    // The cards the address names, which is also what fills their menus: reading
+    // one is picking it. Kept, because a container the address names is loaded
+    // long after this and these are what it is to be overruled with.
+    urlCardLayer = urlCards();
+    mouseSlot = urlCardLayer && urlCardLayer.mouse
+      ? urlCardLayer.mouse.slot : undefined;
+    // A board cut to a control group cannot be picked yet — the container that
+    // names the groups has not been read. syncKbd applies it once it has.
+    wantKbd = pick(kbdSel, url.kbd) ? '' : (url.kbd || '');
+  }
+  readSettings();
   syncMemEnabled();
 
   var app = new AGAT.App({
@@ -643,7 +741,7 @@
     onStatus: say,
     model: Number(modelSel.value),
     ramSize: Number(ramSel.value),
-    slots: slotOverrides(),
+    cards: menuCards(),
     onKey: function (v, info) { if (kbView) kbView.light(info, v, true); },
     onKeyUp: function (info) { if (kbView) kbView.light(info, 0, false); },
     onMods: function (m) { if (kbView) kbView.setMods(m); },
@@ -657,26 +755,32 @@
   // follows the 7a/9a in a filename, and the title is what tells one tab from
   // another when an Agat-7 and an Agat-9 are open side by side.
   function syncMachineUI() {
+    syncMenus();
+    document.title = 'Agat-' + app.model + ' ' + (app.ramSize >> 10) + 'K — emulator';
+    // Switching machines builds a new one, and a new one comes up in ЛАТ. The
+    // button and the board have to follow it rather than keep claiming РУС.
+    syncLayout();
+  }
+
+  // The half of it that is the menus, which is also all of it that the address
+  // is written from.
+  function syncMenus() {
     modelSel.value = String(app.model);
     // The Agat-9's 128K is not a choice, and writing it into the base RAM menu
     // would still be sitting there when the machine went back to being an
     // Agat-7. Its card is a choice, and shares the slot map with the Agat-7's.
     if (app.model === 7) ramSel.value = String(app.ramSize);
-    MEM_CARDS[app.model].forEach(function (e) {
-      var n = AGAT.Machine.slotOf(app.slots, e[1]);
-      pick(MEM_SEL[e[1]], String(n < 0 ? 0 : (app.slots[n].ram || 0) >> 10));
+    MEM_CARDS[app.model].forEach(function (cls) {
+      var n = AGAT.Machine.slotOfClass(app.slots, cls);
+      pick(MEM_SEL[cls], String(n < 0 ? 0 : (app.slots[n].ram || 0) >> 10));
     });
     // A container can put a mouse in any slot it likes; the menu says which
-    // mouse, not where, so it follows whichever slot the card turned up in.
-    mouseSel.value = '';
-    ['nippel', 'mars', 'mars-rom', 'mm8031'].forEach(function (kind) {
-      if (AGAT.Machine.slotOf(app.slots, 'mouse-' + kind) >= 0) mouseSel.value = kind;
-    });
+    // mouse, not where, so it follows whichever slot the card turned up in and
+    // remembers the slot for the next thing the menu builds.
+    var mn = AGAT.Machine.slotOfClass(app.slots, 'mouse');
+    mouseSel.value = mn < 0 ? '' : app.slots[mn].card.slice(6);
+    mouseSlot = mn < 0 ? undefined : mn;
     syncMemEnabled();
-    document.title = 'Agat-' + app.model + ' ' + (app.ramSize >> 10) + 'K — emulator';
-    // Switching machines builds a new one, and a new one comes up in ЛАТ. The
-    // button and the board have to follow it rather than keep claiming РУС.
-    syncLayout();
   }
   syncMachineUI();
 
@@ -819,11 +923,12 @@
 
   // The bar picks the machine and the popup adjusts it, but both end up here:
   // a size or a card is part of what gets built, not something set afterwards.
-  // `slotOverrides` is read before setModel because that is what rebuilds.
+  // The menus are read before setModel because that is what rebuilds, and while
+  // the App still holds the model they were read against.
   function applyModel() {
     syncMemEnabled();
     app.modelPinned = true;
-    app.slotOverrides = slotOverrides();
+    app.overCards = menuCards();
     app.setModel(Number(modelSel.value), Number(ramSel.value));
     syncMachineUI();
     saveUrl();
@@ -1217,15 +1322,13 @@
   //
   // Through pick() for its answer rather than the values themselves, so a key
   // no control offers is ignored instead of overriding the container with a
-  // default. `psrom`/`xram` are the Agat-7's, `mouse` is either machine's, and
-  // all three arrive as slots, so slotOverrides() answers for the lot.
+  // default. The cards go over class by class — an address that resizes the
+  // ЭмПЗУ says nothing about the mouse, and a container that names one keeps it.
   function urlOverrides() {
     var o = {};
     if (url.model && pick(modelSel, url.model)) o.model = Number(modelSel.value);
     if (url.ram && pick(ramSel, Number(url.ram) * 1024)) o.ramSize = Number(ramSel.value);
-    if (url.psrom !== undefined || url.xram !== undefined || url.mouse !== undefined) {
-      o.slots = slotOverrides();
-    }
+    if (urlCardLayer) o.cards = urlCardLayer;
     return o;
   }
 

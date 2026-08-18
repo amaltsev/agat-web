@@ -17,6 +17,9 @@
 //                                                the whole machine's board
 //   node tools/check.js kbdmenu                  the page's keyboard menu, run
 //                                                against a stub <select>
+//   node tools/check.js urlkeys                  the page's address: a machine
+//                                                built from a fragment, and the
+//                                                fragment written back out
 //   node tools/check.js modules                  index.html vs tools/modules.js
 //
 // --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
@@ -458,6 +461,222 @@ function kbdmenuCmd(loaded) {
   applied = [];
   panel.el.fire('click', { target: panel.groups[0].el });
   eq('a tap after five reloads still fires once', applied, ['used:Play']);
+
+  console.log(pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+}
+
+// The page's address, lifted out of index.html the way `kbdmenu` lifts the
+// keyboard menu, and run around the loop it is really used in: a fragment into
+// the menus, the menus into a machine, the machine back into a fragment. What
+// makes it worth a test rather than a browser is that every interesting case is
+// a *pair* — an address and the container it names — and the rule is that the
+// address carries only what the container will not supply on reopening.
+if (cmd === 'urlkeys') {
+  H.loadRoms(ctx).then(urlkeysCmd).catch(die);
+  return;
+}
+
+async function urlkeysCmd(roms) {
+  const A = ctx.AGAT;
+  const page = fs.readFileSync(path.join(H.ROOT, 'index.html'), 'utf8');
+  const grab = (what, head) => {
+    const at = page.indexOf(head + what + (head === '  var ' ? ' =' : '('));
+    if (at < 0) throw new Error('index.html has no ' + head.trim() + ' ' + what);
+    let depth = 0;
+    for (let j = page.indexOf('{', at); j < page.length; j++) {
+      if (page[j] === '{') depth++;
+      else if (page[j] === '}' && --depth === 0) {
+        // A function declaration ends at its brace; a `var` at the semicolon
+        // after the object literal it is being handed.
+        return page.slice(at, head === '  var ' ? page.indexOf(';', j) + 1 : j + 1);
+      }
+    }
+    throw new Error(what + ' does not close');
+  };
+
+  // A <select> that answers the two things the page asks of one: what its
+  // options are, and a value that goes blank when it is handed something none
+  // of them carries.
+  const sel = (values) => ({
+    options: values.map((v) => ({ value: String(v) })),
+    _value: String(values[0]),
+    hidden: false, disabled: false,
+    get value() {
+      return this.options.some((o) => o.value === this._value) ? this._value : '';
+    },
+    set value(v) { this._value = String(v); },
+  });
+
+  let modelSel, ramSel, psromSel, xramSel, xram9Sel, mouseSel, kbdSel;
+  let mouseSlot, url, agcUrl, urlCardLayer, pinned, wantKbd, app;
+  const location = { hash: '', replace(h) { this.hash = h; } };
+  global.AGAT = A;
+  const document = { title: '' };
+  const syncLayout = () => {};
+  const syncMachineUI = () => { syncMenus(); };
+  for (const f of ['pick', 'readUrl', 'cardKeys', 'stockKb', 'syncMemEnabled',
+                   'menuCards', 'readCard', 'urlCards', 'baseline', 'cardKey',
+                   'saveUrl', 'readSettings', 'syncMenus', 'urlOverrides',
+                   'applyModel']) {
+    eval(grab(f, '  function '));
+  }
+  for (const v of ['MEM_CARDS', 'MEM_SEL']) eval(grab(v, '  var '));
+
+  let pass = 0, fail = 0;
+  const eq = (what, got, want) => {
+    const g = JSON.stringify(got), w = JSON.stringify(want);
+    if (g === w) { pass++; return; }
+    fail++;
+    console.log('FAIL ' + what + '\n  got  ' + g + '\n  want ' + w);
+  };
+
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({ createImageData: () => ({ data: [] }),
+                         putImageData: () => {} }),
+  };
+  ctx.requestAnimationFrame = () => {};
+
+  // The containers this drives, by the name the address would give them. The
+  // two bundled ones are the cases that matter — a stock Agat-7 and an Agat-9
+  // with a card nothing else has — and the third is a container that names no
+  // machine at all, which reaches one through its medium's own 9a.
+  const files = {};
+  for (const f of fs.readdirSync(path.join(H.ROOT, 'examples')).sort()) {
+    if (/\.agc$/.test(f)) {
+      files['examples/' + f] = fs.readFileSync(path.join(H.ROOT, 'examples', f));
+    }
+  }
+  {
+    const j = JSON.parse(await A.agc.build({
+      title: 'hint', model: 9, ram: 128,
+      media: [{ name: 'x9a.dsk', bytes: new ctx.Uint8Array(143360) }],
+    }));
+    delete j.machine;
+    files['hint.agc'] = Buffer.from(JSON.stringify(j), 'utf8');
+  }
+
+  // The page, opened at an address: the fragment into the menus, a machine
+  // built from those, the container the address names loaded into it, and the
+  // menus and the address written back from the machine that resulted.
+  const open = async (hash) => {
+    location.hash = hash;
+    readSettings();
+    syncMemEnabled();
+    app = new A.App({ canvas, model: Number(modelSel.value),
+                      ramSize: Number(ramSel.value), cards: menuCards(),
+                      onStatus: () => {} });
+    app.roms = roms;
+    app.build();
+    app.modelPinned = pinned;
+    if (agcUrl) {
+      await app.load(ctx.Uint8Array.from(files[agcUrl]), agcUrl.split('/').pop(),
+                     null, urlOverrides());
+    }
+    syncMenus();
+    saveUrl();
+    return location.hash;
+  };
+  // The same container arriving as a file instead: the address cannot name it,
+  // so it is not what reopening the address would rebuild.
+  const drop = async (name) => {
+    agcUrl = '';
+    await app.load(ctx.Uint8Array.from(files[name]), name.split('/').pop());
+    syncMenus();
+    saveUrl();
+    return location.hash;
+  };
+  const fitted = () => Object.keys(app.slots).map((n) => n + ':' + app.slots[n].card);
+
+  const start = () => { modelSel = sel([7, 9]); ramSel = sel([32768, 65536, 131072]);
+    psromSel = sel([16, 32, 48, 64, 128, 0]); xramSel = sel([16, 32, 48, 64, 128, 0]);
+    xram9Sel = sel([32, 64, 128, 0]);
+    mouseSel = sel(['', 'nippel', 'mars', 'mars-rom', 'mm8031']);
+    kbdSel = sel(['', 'agat', 'pc', 'used']);
+    MEM_SEL = { psrom: psromSel, xram: xramSel, xram9: xram9Sel }; };
+
+  // --- a machine and no container: everything it is, written out -------------
+  start();
+  eq('a stock machine says nothing at all', await open(''), '#');
+  eq('and is the stock machine', fitted(),
+     ['2:psrom', '3:fdd140', '4:xram', '5:fdd840']);
+
+  eq('a mouse is a difference', await open('#mouse=nippel'), '#mouse=nippel');
+  eq('and is fitted where the Agat-7 leaves room', fitted(),
+     ['2:psrom', '3:fdd140', '4:xram', '5:fdd840', '6:mouse-nippel']);
+  eq('base RAM is a difference', await open('#ram=128'), '#ram=128');
+  eq('so is the other machine', await open('#model=9'), '#model=9');
+  eq('a card taken out is a difference', await open('#psrom=0'), '#psrom=0');
+  eq('a card put back at its stock size is not',
+     await open('#psrom=32'), '#');
+  eq('a value no menu offers is not a choice', await open('#mouse=frog'), '#');
+  eq('a mouse somewhere else keeps the slot it was given',
+     await open('#mouse=nippel:3'), '#mouse=nippel:3');
+  eq('...which is where it is fitted',
+     A.Machine.slotOfClass(app.slots, 'mouse'), 3);
+
+  // --- a container the address names -----------------------------------------
+  start();
+  eq('a container running as it asks says only which container',
+     await open('#agc=examples%2Frise-out.agc'), '#agc=examples%2Frise-out.agc');
+  eq('an Agat-9 container with a mouse says no more than that',
+     await open('#agc=examples%2FKlondike.agc'), '#agc=examples%2FKlondike.agc');
+  eq('and is the machine it asked for',
+     [app.model, app.ramSize, fitted()],
+     [9, 0x20000, ['2:xram9', '4:mouse-mars-rom', '5:fdd840', '6:fdd140']]);
+
+  // A menu touched afterwards, which is the whole point of the diff: what the
+  // container says stays out of the address, and what disagrees with it goes in.
+  xram9Sel.value = '64';
+  applyModel();
+  eq('a card changed after a container is a difference and the rest is not',
+     location.hash, '#agc=examples%2FKlondike.agc&xram9=64');
+  eq('and the container keeps the mouse it named',
+     A.Machine.slotOfClass(app.slots, 'mouse'), 4);
+  mouseSel.value = '';
+  applyModel();
+  eq('a mouse taken away has to be said out loud',
+     location.hash, '#agc=examples%2FKlondike.agc&xram9=64&mouse=');
+  eq('and is gone', A.Machine.slotOfClass(app.slots, 'mouse'), -1);
+
+  eq('an address may put the container on the other machine',
+     await open('#agc=examples%2FKlondike.agc&model=7'),
+     '#agc=examples%2FKlondike.agc&model=7');
+  eq("where the container's cards go where the Agat-7 puts them", fitted(),
+     ['2:psrom', '3:fdd140', '4:xram', '5:fdd840', '6:mouse-mars-rom']);
+
+  // A container that names no machine reaches one through its medium's 9a, and
+  // that is as much what it asks for as a declared model would be.
+  eq('a model reached through the medium is still the container\'s',
+     await open('#agc=hint.agc'), '#agc=hint.agc');
+  eq('...which is the machine that got built', app.model, 9);
+  eq('and an address that overrules the hint says so',
+     await open('#agc=hint.agc&model=7'), '#agc=hint.agc&model=7');
+  eq('...and is the machine that got built', app.model, 7);
+
+  // Every container in examples/, which is the whole of what the entry in the
+  // program list has to produce: the list links to `#agc=<path>` and clicking
+  // one must leave the address exactly there.
+  start();
+  for (const name of Object.keys(files)) {
+    if (name === 'hint.agc') continue;
+    eq(name + ' runs at the address that names it',
+       await open('#agc=' + encodeURIComponent(name)),
+       '#agc=' + encodeURIComponent(name));
+  }
+
+  // --- the same container, dropped -------------------------------------------
+  // Nothing in the address will bring it back, so the machine is written out in
+  // full rather than left to it.
+  start();
+  await open('');
+  eq('a dropped container writes its machine out',
+     await drop('examples/Klondike.agc'), '#model=9&mouse=mars-rom');
+  eq('and reopening that address builds the same machine, without the program',
+     [await open('#model=9&mouse=mars-rom'), fitted()],
+     ['#model=9&mouse=mars-rom',
+      ['2:xram9', '4:mouse-mars-rom', '5:fdd840', '6:fdd140']]);
 
   console.log(pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

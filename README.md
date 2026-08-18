@@ -115,15 +115,18 @@ button and draws with the left.
 Every one of those settings rides in the address, so a machine that runs a
 program properly is a bookmark:
 
-    index.html#model=7&ram=64
-    index.html#model=7&ram=128&xram=128
+    index.html#ram=128&xram=128
+    index.html#model=9&mouse=mars-rom
 
+Each key is a *difference* from the standard machine, and only the differences
+are written — the standard Agat-7 has an address with nothing in it at all.
 `model` is 7 or 9; `ram` is base RAM in KB — 32, 64 or 128, Agat-7 only, since
-the Agat-9 is always 128K; and `psrom` and `xram` size the two Agat-7 memory
-cards in KB, appearing only when they are not the stock 32K (`0` leaves the slot
-empty); `mouse` is `nippel`, `mars`, `mars-rom` or `mm8031`, and is absent when
-there is none. A machine named in the URL is treated as chosen, so a `7a`/`9a` filename
-does not override it.
+the Agat-9 is always 128K; `psrom` and `xram` size the two Agat-7 memory cards
+in KB and `xram9` the Agat-9's, with `0` for a slot left empty; `mouse` is
+`nippel`, `mars`, `mars-rom` or `mm8031`, and empty for no mouse. A card can be
+given a slot of its own — `mouse=nippel:3` — for a machine that had one
+somewhere other than the slot this page leaves free. A machine named in the URL
+is treated as chosen, so a `7a`/`9a` filename does not override it.
 
 `agc=` names a container, which carries the file itself:
 
@@ -136,6 +139,14 @@ it — a container needs no copy here to be linked and run, only a host that
 sends `Access-Control-Allow-Origin`. The other keys go into the machine it
 builds rather than on top of it, so `#agc=…&model=9` tries the program on the
 other machine and it is the other machine the program boots on.
+
+They are differences from the container in the same way they are otherwise
+differences from the standard machine: a container running as its author meant
+it to leaves `#agc=…` and nothing else, and a key appears only where the machine
+and the container disagree. So an address stays right if the container is later
+edited — and a container that the address *cannot* name, one dropped on the page
+or opened by hand, has its machine written out in full instead, since reopening
+the address will not bring it back.
 
 ## `.agc` — the Agat Container
 

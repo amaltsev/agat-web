@@ -236,6 +236,87 @@
     return -1;
   };
 
+  // ---- cards, as against slots ----------------------------------------------
+  //
+  // A slot number belongs to a model: the 140K drive is slot 3 on the Agat-7
+  // and slot 6 on the Agat-9, and the slot each machine leaves free for a mouse
+  // is not the same one either. So anything that has to outlive a change of
+  // model — a container's machine carried across to the other one, the gear
+  // popup's menus, the address — travels as cards rather than as a slot map,
+  // and the slots are worked out for whichever machine is being built.
+  //
+  // A card's class is what the menus and the address name it by. It is the card
+  // itself for everything except the mice, which share one: a machine has at
+  // most one mouse, and swapping a «Марсианка» for a Ниппель is one choice,
+  // not a card added beside another.
+  Machine.classOf = function (card) {
+    return card.indexOf('mouse-') === 0 ? 'mouse' : card;
+  };
+
+  // Where this model puts a card of that class of its own accord, or -1 for a
+  // class it does not take at all — which is how an Agat-7's ЭмПЗУ is dropped
+  // on the way to an Agat-9 rather than landing on whatever sits at slot 2.
+  Machine.stockSlot = function (model, cls) {
+    if (cls === 'mouse') return Machine.MOUSE_SLOTS[model === 7 ? 7 : 9];
+    var n = Machine.SLOTS[model === 7 ? 7 : 9][cls];
+    return n === undefined ? -1 : n;
+  };
+
+  // Which slot holds a card of this class in a resolved map, or -1.
+  Machine.slotOfClass = function (slots, cls) {
+    for (var n in slots) {
+      if (Machine.classOf(slots[n].card) === cls) return Number(n);
+    }
+    return -1;
+  };
+
+  // An override map read as cards: class -> {card, ram, slot}, or null for a
+  // class deliberately absent. A container's `null` slot is the card that
+  // model keeps there being taken away, which is a statement about the card
+  // and not about the number.
+  Machine.cardsOf = function (model, overrides) {
+    var stock = Machine.PROFILES[model === 7 ? 7 : 9].slots, out = {}, n, o;
+    for (n in (overrides || {})) {
+      o = overrides[n];
+      if (!o) {
+        if (stock[n]) out[Machine.classOf(stock[n].card)] = null;
+        continue;
+      }
+      out[Machine.classOf(o.card)] =
+        { card: o.card, ram: o.ram || 0, slot: Number(n) };
+    }
+    return out;
+  };
+
+  // Cards back to an override map for the model being built. `from` is the
+  // model they were described for: a slot named for that model is where the
+  // card stays, and on any other model each card goes where that model puts
+  // one. Null when there is nothing to say, which is what resolveSlots and the
+  // .agc writer both read as a stock machine.
+  Machine.slotsFor = function (model, cards, from) {
+    var out = {}, any = false, cls, e, n;
+    for (cls in (cards || {})) {
+      e = cards[cls];
+      n = e && e.slot !== undefined && model === from
+        ? e.slot : Machine.stockSlot(model, cls);
+      if (n < 0) continue;
+      out[n] = e ? { card: e.card, ram: e.ram || 0 } : null;
+      any = true;
+    }
+    return any ? out : null;
+  };
+
+  // Two layers of cards, the second winning class by class — a container says
+  // what the program wants, and the menus say what was asked for on top of it.
+  // A class the second layer does not mention is silence rather than absence:
+  // only an explicit null takes a card away.
+  Machine.mergeCards = function (base, over) {
+    var out = {}, cls;
+    for (cls in (base || {})) out[cls] = base[cls];
+    for (cls in (over || {})) out[cls] = over[cls];
+    return out;
+  };
+
   function mouseRom(roms) {
     return roms.mouse && roms.mouse.length >= 0x800
       ? roms.mouse.subarray(0x700, 0x800) : null;

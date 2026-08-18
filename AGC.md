@@ -475,7 +475,10 @@ runs on, so a link to one somebody else hosts is a link to something that runs.
 The address's other keys go
 into the machine the container builds rather than on top of it, so
 `#agc=…&model=9` tries the program on the other machine without editing the
-file, and the other machine is the one it boots on.
+file, and the other machine is the one it boots on. Each of them is a
+difference: a key appears only where the machine and the container disagree, so
+a container running as it asks to leaves `#agc=…` and nothing else, and the
+address follows the container if the container is later changed.
 
 Every command-line tool takes a container wherever it takes an image, and runs
 it on the machine the container names:

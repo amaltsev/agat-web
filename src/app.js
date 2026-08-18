@@ -23,12 +23,18 @@
     this.ramSize = this.model === 9                   // software expects
       ? profile.ram : (opts.ramSize || profile.ram);  // (the 9 has no choice)
 
-    // What this machine has that its profile does not: slot -> {card, ram} in
-    // bytes, or null for a slot left empty. A container sets it, and so does the
-    // gear popup; like the RAM size it is a standing choice, not something a
-    // bare image dropped afterwards clears.
-    this.slotOverrides = opts.slots || null;
-    this.slots = AGAT.Machine.resolveSlots(this.model, this.slotOverrides);
+    // What this machine has that its profile does not, in two layers, each by
+    // card class rather than by slot — see Machine.cardsOf. `agcCards` is what
+    // a container asked for and `overCards` is what the gear popup and the
+    // address say over the top of it; build() merges them and works out the
+    // slots for whichever model is being built. Like the RAM size they are
+    // standing choices, not something a bare image dropped afterwards clears.
+    this.agcModel = 0;                    // what a container named, 0 if none
+    this.agcRam = 0;                      // its base RAM in bytes, 0 if unsaid
+    this.agcCards = null;
+    this.overCards = opts.cards || null;
+    this.slotOverrides = null;            // derived: the merge, as slots
+    this.slots = AGAT.Machine.resolveSlots(this.model, this.cardSlots());
 
     this.modelPinned = false;
     this.drives = {};                     // slot -> {name, kind}
@@ -171,7 +177,7 @@
         if (c && c.media) keep.push({ from: s, media: c.media });
       }
     }
-    this.slots = AGAT.Machine.resolveSlots(this.model, this.slotOverrides);
+    this.slots = AGAT.Machine.resolveSlots(this.model, this.cardSlots());
     this.machine = new AGAT.Machine({
       model: this.model,
       ramSize: this.ramSize,
@@ -423,6 +429,12 @@
       AGAT.keyboard.setRemap(null);
       AGAT.keyboard.setControls(null);
     }
+    // A container that names no model reaches one through its own medium, and
+    // that model is as much what the container asks for as a declared one is:
+    // the address has nothing to say about a machine it would arrive at by
+    // itself. Recorded whether or not the hint gets to act — with the model
+    // pinned from the address, this is what the address is disagreeing with.
+    if (from && s.hintModel && !this.agcModel) this.agcModel = s.hintModel;
     // Honour the machine the filename implies, unless the user has chosen one.
     if (s.hintModel && s.hintModel !== this.model && !this.modelPinned) {
       this.setModel(s.hintModel);
@@ -470,6 +482,18 @@
     return out;
   }
 
+  // The two card layers as one override map for the model being built, kept in
+  // `slotOverrides` because that is what the machine and the .agc writer speak.
+  // Worked out on every build rather than stored, since a change of model moves
+  // the cards: a mouse at slot 4 on an Agat-9 is a mouse at slot 6 on an Agat-7.
+  App.prototype.cardSlots = function () {
+    var M = AGAT.Machine;
+    this.slotOverrides = M.slotsFor(this.model,
+                                    M.mergeCards(this.agcCards, this.overCards),
+                                    this.agcModel || this.model);
+    return this.slotOverrides;
+  };
+
   // The other direction, and only where the machine differs from its profile —
   // a container for a stock Agat-7 should not have to spell one out.
   App.prototype.slotDiff = function () {
@@ -495,30 +519,42 @@
   // RAM size and the cards go in together and build() applies them all at once,
   // rather than the machine being taken apart three times.
   //
-  // `over` is whatever overrules the container — {model, ramSize, slots}, in
+  // `over` is whatever overrules the container — {model, ramSize, cards}, in
   // this object's own units, each key honoured only if it is there. It belongs
   // here, before the build, rather than in a second one afterwards: build()
   // resets the CPU and boots nothing, so a rebuild once the media has loaded
   // leaves the machine in the monitor with the disk still in the drive.
+  //
+  // The cards overrule class by class rather than wholesale: an address that
+  // resizes the ЭмПЗУ is not an address saying anything about the mouse.
   App.prototype.applyAgc = function (c, over) {
     over = over || {};
     // A container describes a whole machine, so the drives start empty: a disk
     // left in another drive is not part of what it says, and build() would
     // otherwise carry it across into the machine the container asked for.
     this.ejectAll();
-    var model = over.model || c.machine.model;
+    // What the container asks for, kept as it asked for it and beside the
+    // machine that gets built: the page writes an address that says only where
+    // the two differ, so it needs the container's own answer to every question
+    // the address can ask. Zero for the two it did not answer.
+    this.agcModel = c.machine.model;
+    this.agcRam = c.machine.ram * 1024 || 0;
+    // Slot sizes and slot numbers, kilobytes in the file and bytes in here.
+    // Read at the model the container named, because that is the machine its
+    // slot numbers are about.
+    this.agcCards = c.machine.slots
+      ? AGAT.Machine.cardsOf(this.agcModel || this.model,
+                             scaleSlots(c.machine.slots))
+      : null;
+    var model = over.model || this.agcModel;
     if (model) {
       this.modelPinned = true;         // as deliberate as a machine off the menu
       this.model = model;
     }
     this.ramSize = this.model === 9 ? 0x20000
-                 : (over.ramSize || (c.machine.ram ? c.machine.ram * 1024
-                                     : AGAT.Machine.PROFILES[this.model].ram));
-    // Slot sizes and slot numbers, kilobytes in the file and bytes in here.
-    // Asked for by name rather than by truth, because a `null` here is the
-    // profile's own cards and has to survive as that.
-    this.slotOverrides = 'slots' in over ? over.slots
-                       : (c.machine.slots ? scaleSlots(c.machine.slots) : null);
+                 : (over.ramSize || this.agcRam
+                    || AGAT.Machine.PROFILES[this.model].ram);
+    this.overCards = 'cards' in over ? over.cards : null;
     this.build();
 
     var keys = AGAT.keyboard.setRemap(c.keys);
