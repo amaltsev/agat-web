@@ -13,6 +13,12 @@
       }
     }
   },
+  "controls": {
+    "Play": {
+      "Up Down Left Right": "Выбор карты или меню",
+      "Enter Space": "Действие"
+    }
+  },
   "media": [
     {
       "name": "Klondike.aim",
