@@ -61,6 +61,11 @@
     // status line has to say so — a captured pointer is one the rest of the
     // page has stopped receiving.
     this.mouseCaptured = false;
+    // The two ways movement reaches the card without the pointer being held:
+    // the gear popup's trackpad checkbox, and a touchscreen, which has no
+    // pointer to hold and steers trackpad-style whenever a card is fitted.
+    this.mouseTrackpad = false;           // the checkbox, from index.html
+    this.mouseTouch = false;              // a touch has fed the card
     this.mousePolls = -1;                 // the card's read count, last status line
     this.mouseSeen = 0;                   // and the cycle it last went up
     this.soundLog = null;
@@ -122,10 +127,14 @@
              ' ($C0' + (0x80 + card.slot * 16).toString(16).toUpperCase() + '-$C0' +
              (0x8f + card.slot * 16).toString(16).toUpperCase() + ')');
 
-    // The host half. Movement only reaches the card while the pointer is held,
-    // which is the commonest reason for this to be zero.
+    // The host half. Movement only reaches the card while the pointer is held
+    // or a trackpad path is feeding it, and the commonest reason for this to be
+    // zero is that none of the three is true.
     var prev = this.mouseLast || {};
-    out.push('pointer   ' + (this.mouseCaptured ? 'held' : 'NOT held — click the screen first'));
+    out.push('pointer   ' + (this.mouseCaptured ? 'held'
+             : this.mouseTrackpad ? 'trackpad — moves over the screen feed it'
+             : this.mouseTouch ? 'touch — strokes on the screen feed it'
+             : 'NOT held — click the screen first'));
     out.push('host→card ' + card.moves + ' moves, ' + card.counts + ' counts' +
              (prev.moves === undefined ? '' : '   (+' + (card.moves - prev.moves) +
               ' moves, +' + (card.counts - prev.counts) + ' counts since last report)'));
@@ -868,11 +877,14 @@
       // both hold: a pointer that is held and unread is the case that wants the
       // other mouse, not the other key.
       var quiet = m.cpu.cycles - this.mouseSeen > MOUSE_QUIET;
+      var fed = this.mouseCaptured || this.mouseTrackpad || this.mouseTouch;
       bits.push({
         text: mouse.name,
-        cls: quiet ? 'quiet' : (this.mouseCaptured ? 'held' : ''),
+        cls: quiet ? 'quiet' : (fed ? 'held' : ''),
         title: (this.mouseCaptured
                   ? 'Mouse, holding the pointer — Esc gives it back'
+                  : fed
+                  ? 'Mouse, trackpad-style — strokes over the screen steer it'
                   : 'Mouse — click the screen to hand the pointer over') +
                (quiet ? '\nThis program is not reading the card. If it wants a mouse ' +
                         'at all, it wants another one.' : ''),

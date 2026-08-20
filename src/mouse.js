@@ -1,4 +1,4 @@
-// The two Agat mice, and the pointer capture that feeds them.
+// The two Agat mice, and the pointer and touch input that feeds them.
 //
 // Neither card reports where the mouse *is*. Both report how far it has moved,
 // and that is the whole shape of the problem: there is no register anywhere to
@@ -361,11 +361,32 @@
   // relationship whatever size the window is.
   var SCREEN_COUNTS = 256;
 
+  // The trackpad paths scale that down further: a finger, or a pointer that
+  // also has menus to reach, overshoots at 1:1 where the captured pointer does
+  // not. One number for both paths, hard-coded until use says whether it wants
+  // to be a setting or a per-container value.
+  var TRACKPAD_GAIN = 0.35;
+
+  // A touch that ends within TAP_MS having moved under TAP_SLOP css pixels is
+  // a tap. A tap holds button A for CLICK_MS — long enough that no polling
+  // loop misses it — and a touch beginning within DRAG_MS of a tap keeps the
+  // button down instead, which is the usual trackpad drag.
+  var TAP_MS = 250;
+  var TAP_SLOP = 12;
+  var CLICK_MS = 100;
+  var DRAG_MS = 300;
+
   // Click to capture, Esc to let go. Tracking the pointer instead would work
   // for as long as the guest's cursor and the host's agreed, and they stop
   // agreeing the first time the guest's hits the edge of its screen and stops
   // while the host's keeps going — with nothing to read back, that error is
   // permanent.
+  //
+  // The trackpad paths live with that: an uncaptured pointer or a finger is
+  // only ever a source of strokes, steering a cursor it does not claim to be.
+  // A touchscreen gets nothing else — it has no pointer to capture and no
+  // relative motion to read — and `app.mouseTrackpad`, the gear popup's
+  // checkbox, gives the desktop pointer the same manners for comparison.
   AGAT.attachMouse = function (canvas, app) {
     var doc = canvas.ownerDocument;
 
@@ -384,8 +405,11 @@
       // The click that hands the pointer over is still a click. Swallowing it
       // makes a program that is waiting for a button look dead, and MouseGraf's
       // title screen already looks dead: it draws no cursor until the button
-      // comes, so nothing on screen answers the mouse until it does.
-      if (!captured() && canvas.requestPointerLock) canvas.requestPointerLock();
+      // comes, so nothing on screen answers the mouse until it does. On the
+      // trackpad setting there is no handing over, and a click is only a click.
+      if (!app.mouseTrackpad && !captured() && canvas.requestPointerLock) {
+        canvas.requestPointerLock();
+      }
       // Button 2 is the middle one; the Agat's mice have two, so it is left
       // alone rather than folded into either.
       if (e.button === 0) c.btn |= 1;
@@ -403,11 +427,112 @@
     });
 
     window.addEventListener('mousemove', function (e) {
-      var c = card(), s;
-      if (!c || !captured()) return;
+      var c = card(), s, g;
+      if (!c) return;
+      // Captured, the pointer is the ball, 1:1. On the trackpad setting it is
+      // a finger on a pad instead: scaled down, and listened to only over the
+      // canvas, because the same pointer still has the rest of the page to
+      // cross without dragging the guest's cursor along.
+      if (captured()) g = 1;
+      else if (app.mouseTrackpad && e.target === canvas) g = TRACKPAD_GAIN;
+      else return;
       s = scale();
-      c.move((e.movementX || 0) * s[0], (e.movementY || 0) * s[1]);
+      c.move((e.movementX || 0) * s[0] * g, (e.movementY || 0) * s[1] * g);
     });
+
+    // ---- touch, trackpad-style always ---------------------------------------
+    //
+    // Strokes steer, a tap is button A, a second finger is button B, and a
+    // touch straight after a tap drags. Touch events rather than pointer
+    // events, because cancelling the touch is also what cancels the mouse
+    // events the browser would synthesize from it — one preventDefault covers
+    // the click, the scroll and the long-press callout together. With no card
+    // fitted every handler stands aside and the canvas scrolls like the rest
+    // of the page.
+    var finger = null;      // the steering touch: id, last position, tap bookkeeping
+    var bFingerId = null;   // the second touch, holding button B down
+    var clickTimer = null;  // pending release of a tap's button A
+    var lastTap = 0;        // when the last tap ended, for the drag window
+
+    function releaseA() {
+      var c = card();
+      clickTimer = null;
+      if (c) c.btn &= ~1;
+    }
+
+    canvas.addEventListener('touchstart', function (e) {
+      var c = card(), t, i;
+      if (!c) return;
+      e.preventDefault();
+      app.mouseTouch = true;
+      for (i = 0; i < e.changedTouches.length; i++) {
+        t = e.changedTouches[i];
+        if (finger === null) {
+          finger = { id: t.identifier, x: t.clientX, y: t.clientY,
+                     t0: e.timeStamp, moved: 0, two: false, drag: false };
+          if (e.timeStamp - lastTap <= DRAG_MS) {
+            // A drag grows out of the tap before it: keep that tap's button
+            // down instead of releasing and pressing again.
+            if (clickTimer !== null) { clearTimeout(clickTimer); clickTimer = null; }
+            finger.drag = true;
+            c.btn |= 1;
+          }
+        } else if (bFingerId === null) {
+          // The second finger is button B for as long as it is down — MouseGraf
+          // starts on B, so it has to be more than a gesture. It also marks the
+          // first finger as half of a pair, which is not a tap when it lifts.
+          bFingerId = t.identifier;
+          finger.two = true;
+          c.btn |= 2;
+        }
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', function (e) {
+      var c = card(), s, t, i, dx, dy;
+      if (!c || finger === null) return;
+      e.preventDefault();
+      for (i = 0; i < e.changedTouches.length; i++) {
+        t = e.changedTouches[i];
+        if (t.identifier !== finger.id) continue;
+        dx = t.clientX - finger.x;
+        dy = t.clientY - finger.y;
+        finger.x = t.clientX;
+        finger.y = t.clientY;
+        finger.moved += Math.abs(dx) + Math.abs(dy);
+        s = scale();
+        c.move(dx * s[0] * TRACKPAD_GAIN, dy * s[1] * TRACKPAD_GAIN);
+      }
+    }, { passive: false });
+
+    function touchEnd(e) {
+      var c = card(), t, i;
+      if (!c) { finger = null; bFingerId = null; return; }
+      e.preventDefault();
+      for (i = 0; i < e.changedTouches.length; i++) {
+        t = e.changedTouches[i];
+        if (bFingerId !== null && t.identifier === bFingerId) {
+          bFingerId = null;
+          c.btn &= ~2;
+        } else if (finger !== null && t.identifier === finger.id) {
+          if (finger.drag) {
+            c.btn &= ~1;
+          } else if (!finger.two && e.type === 'touchend' &&
+                     e.timeStamp - finger.t0 <= TAP_MS &&
+                     finger.moved <= TAP_SLOP &&
+                     !(c.btn & 1)) {
+            // The last test is the on-screen A button: a tap while it is held
+            // must not schedule a release the button's own finger still owns.
+            c.btn |= 1;
+            clickTimer = setTimeout(releaseA, CLICK_MS);
+            lastTap = e.timeStamp;
+          }
+          finger = null;
+        }
+      }
+    }
+    canvas.addEventListener('touchend', touchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', touchEnd, { passive: false });
 
     // MouseGraf starts on the second button, so the menu that button usually
     // opens has to be out of the way — on the click that takes the pointer as

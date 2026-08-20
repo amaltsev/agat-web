@@ -68,7 +68,7 @@ Load order matters only in that a module's dependencies must already be on
 | `disk140.js` | 140K Shugart controller |
 | `video.js` | painters and `render()` |
 | `font.js` | glyph blitting; keeps `{font, m0}` together |
-| `mouse.js` | the three mice on their four fittings, and the pointer capture that feeds them |
+| `mouse.js` | the three mice on their four fittings, and the pointer and touch input that feeds them |
 | `keyboard.js` | browser `code` → scancode → Agat keymap, and the same table read backwards |
 | `keyview.js` | the on-screen keyboard: three boards over that one table, and the container's controls as a card |
 | `info.js` | the card under the controls: what the container says it is |
@@ -156,6 +156,25 @@ pointer with `requestPointerLock` on a click and feeds `movementX/movementY` to
 whichever card is fitted — agat-emulator does the same, and for the same reason
 (`support.cpp:491-525`). Scale comes from the canvas as displayed, so a sweep
 across it is a sweep across the screen whatever size the window is.
+
+The trackpad paths accept the drift instead of curing it: an uncaptured input
+is only a source of strokes, steering a cursor it never claims to be. A
+touchscreen — no pointer to capture, no relative motion to read — always works
+this way when a card is fitted: strokes on the canvas steer, a tap is button A,
+a second finger held down is button B, and a touch beginning right after a tap
+keeps the button down, which is the usual trackpad drag. `App.mouseTrackpad`,
+set by the gear popup's checkbox, gives the desktop pointer the same manners:
+no capture, movement taken only over the canvas. Both paths scale movement by
+`TRACKPAD_GAIN` on top of the canvas scale — at 1:1 a finger overshoots — and
+that constant is the tuning knob if a program ever wants a different feel.
+
+The gestures alone cannot be the whole button story — MouseGraf waits on
+button B before it will load, and a two-finger tap is beyond some hosts, the
+devtools device emulator among them — so on touch hosts with a card fitted,
+`index.html` overlays an A and a B button on the screen's lower corners. They
+set the same two `btn` bits, held for as long as they are pressed, which is
+also what makes a deliberate drag: one finger on the button, another stroking
+the canvas.
 
 The cards take fractional counts and keep the remainder themselves, because a
 host pixel is not a step of a ball and the program may zero the counter between

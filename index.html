@@ -40,6 +40,31 @@
     font-size: 13px; text-align: center; opacity: 0; transition: opacity .12s;
   }
   .screen.drag .drophint, .screen.empty .drophint { opacity: 1; }
+  /* The on-screen mouse buttons. A finger that steers carries no buttons a
+     program could wait on, so the two the mice have are drawn in the screen's
+     lower corners — translucent, so the picture stays readable under them.
+     They are held rather than clicked: press and release reach the card as
+     they happen, and holding one while another finger strokes the canvas is
+     how a drag is made deliberately. */
+  .mbtn {
+    position: absolute; bottom: 5%; z-index: 1;
+    width: clamp(44px, 13%, 72px); aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; border: 1px solid rgba(158, 170, 188, .45);
+    background: rgba(90, 100, 120, .22); color: rgba(226, 232, 240, .65);
+    font-size: 15px; font-weight: 600;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent; cursor: pointer;
+  }
+  /* The class's own display beats the [hidden] attribute's, so hidden has to
+     be said again at the class's strength. */
+  .mbtn[hidden] { display: none; }
+  .mbtn.down {
+    border-color: var(--accent); background: rgba(90, 100, 120, .4);
+    color: var(--ink);
+  }
+  #mbtnA { left: 5%; }
+  #mbtnB { right: 5%; }
   .bar {
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
     width: min(94vw, var(--page)); margin-top: 10px;
@@ -300,6 +325,10 @@
 <div class="screen empty" id="screen">
   <canvas id="canvas" width="512" height="256"></canvas>
   <div class="drophint">drop an <code>.aim</code>, <code>.dsk</code>, <code>.nib</code>, <code>.fil</code> or <code>.agc</code> file here</div>
+  <!-- The mouse buttons, for hosts whose pointer is a finger: shown only with
+       a touchscreen and a mouse card both present. -->
+  <div class="mbtn" id="mbtnA" hidden>A</div>
+  <div class="mbtn" id="mbtnB" hidden>B</div>
 </div>
 
 <div class="bar">
@@ -366,6 +395,7 @@
       <option value="mars-rom">«Марсианка» mouse (w/ROM)</option>
       <option value="mm8031">ММ-8031 mouse</option>
     </select>
+    <label title="Steer the mouse trackpad-style instead of capturing the pointer: moves over the screen feed it, scaled down, with no click to hand it over and none to take it back. A touchscreen works this way regardless — strokes steer, a tap is button A, a second finger is B, and a touch right after a tap drags."><input type="checkbox" id="trackpad"> trackpad</label>
   </div>
   <div class="row">
     <span class="key">Volume</span>
@@ -400,7 +430,12 @@
       status line while nothing is reading the card, and green while the
       machine has the pointer.  Click the screen to hand the pointer over
       and <b>Esc</b> to take it back. The host left button is A, right
-      is B.
+      is B. On a touchscreen the screen is a trackpad instead: strokes
+      steer, a tap is A, a second finger is B, and a touch right after a
+      tap drags — the <b>trackpad</b> box in the gear popup gives the
+      desktop pointer the same behaviour. The two buttons are also drawn
+      over the screen's lower corners: they hold while pressed, so one
+      finger on a button and another stroking the canvas is a drag.
     </td></tr>
     <tr><td><b>Takes</b></td><td>
       <code>.aim</code> tagged track images, <code>.dsk</code> sector images and
@@ -755,6 +790,7 @@
   // another when an Agat-7 and an Agat-9 are open side by side.
   function syncMachineUI() {
     syncMenus();
+    syncMouseButtons();
     document.title = 'Agat-' + app.model + ' ' + (app.ramSize >> 10) + 'K — emulator';
     // Switching machines builds a new one, and a new one comes up in ЛАТ. The
     // button and the board have to follow it rather than keep claiming РУС.
@@ -1125,6 +1161,48 @@
     unlockAudio();
     app.speaker.setVolume(e.target.value / 100);
   });
+  document.getElementById('trackpad').addEventListener('change', function (e) {
+    app.mouseTrackpad = e.target.checked;
+    // A pointer already captured would go on being the ball at 1:1, which is
+    // exactly what the box says stops happening.
+    if (e.target.checked && document.exitPointerLock) document.exitPointerLock();
+  });
+
+  // The on-screen mouse buttons over the screen's lower corners. Pointer
+  // events rather than touch: the same buttons then answer a mouse too, which
+  // is what Chrome's device emulation sends for some gestures and costs
+  // nothing on a real phone.
+  function mouseBtn(el, bit) {
+    function up() {
+      var c = app.mouseCard();
+      el.classList.remove('down');
+      if (c) c.btn &= ~bit;
+    }
+    el.addEventListener('pointerdown', function (e) {
+      var c = app.mouseCard();
+      if (!c) return;
+      e.preventDefault();
+      // Capture, so the release is heard even after the finger has wandered
+      // off the button — a button that stays down is a mouse gone mad.
+      if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
+      el.classList.add('down');
+      c.btn |= bit;
+    });
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+  mouseBtn(document.getElementById('mbtnA'), 1);
+  mouseBtn(document.getElementById('mbtnB'), 2);
+
+  // Only where there is a touchscreen and a card to press: a pointer with real
+  // buttons has no use for painted ones.
+  function syncMouseButtons() {
+    var show = (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) &&
+               !!app.mouseCard();
+    document.getElementById('mbtnA').hidden = !show;
+    document.getElementById('mbtnB').hidden = !show;
+  }
 
 
   // The bundled examples, when the page is served rather than opened directly.
