@@ -1761,6 +1761,33 @@ async function agcTests() {
   }
 }
 
+// --- the empty game port ----------------------------------------------------
+// joystick/joystick.c's `joy_button_none` and `joy_status_none`: with nothing
+// plugged in the buttons idle high and the one-shots never expire. Alice в
+// стране чудес reads both, and a port that answers $00 on the buttons or times
+// out at mid-scale is a centered joystick to it — so it takes the controls and
+// stops reading the keyboard.
+{
+  H.loadRoms(ctx).then((roms) => {
+    const m = H.makeMachine(ctx, roms, { model: 9 });
+    m.reset();
+    eq('both buttons idle high', [m.read(0xc061), m.read(0xc062)], [0x80, 0x80]);
+    // The one-shot, sampled the way the probe at $98CF does: trigger, then read
+    // until bit 7 drops. A fitted stick drops within a couple of thousand
+    // cycles at mid-scale; an empty port is still high a whole frame later.
+    m.read(0xc070);
+    const high = (dt) => {
+      m.cpu.cycles += dt;
+      return (m.read(0xc064) & 0x80) !== 0 && (m.read(0xc065) & 0x80) !== 0;
+    };
+    eq('the one-shots are high right after the trigger', high(0), true);
+    eq('and still high past any real timing', high(20000), true);
+    eq('and past a whole frame of it', high(1000000), true);
+    // $C063 is the layout indicator and shares the page; it is not the port.
+    eq('the layout indicator is untouched by all that', m.read(0xc063), 0xc0);
+  }).catch((e) => { console.error(e); fail++; });
+}
+
 // --- Apple video on the Agat-9 ----------------------------------------------
 // Both rules are videoprocs.c's. A lone hires dot is colored by the column it
 // lands in and by bit 7 of its byte; two in a row read as white. And the

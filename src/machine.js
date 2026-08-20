@@ -127,11 +127,6 @@
     this.speakerEdges = [];
     this.kbdLatch = 0;
 
-    // Game inputs. Buttons read their state in bit 7; the paddles are the
-    // Apple-style one-shot, timed from the $C070 trigger.
-    this.buttons = [0, 0, 0];
-    this.paddles = [128, 128, 128, 128];
-    this.paddleTrigger = -1e9;
     // Keyboard layout indicator: $FF Latin, $7F Cyrillic, masked $C0 on Agat-9.
     this.cyrillic = false;
 
@@ -646,7 +641,7 @@
       case 0x30: this.toggleSpeaker(); v = 0; break;
       case 0x50: this.videoSwitch(lo & 0x0f); v = 0; break;
       case 0x60: v = this.readAnalog(lo & 0x0f); break;
-      case 0x70: this.paddleTrigger = this.cpu.cycles; v = 0; break;
+      case 0x70: v = 0; break;         // the one-shot trigger, with nothing to time
       default: v = 0; break;
     }
     this.note(a, v, false);
@@ -680,6 +675,27 @@
   // $C060-$C067. $C060 is the cassette input, $C061/$C062 the two buttons,
   // $C064-$C067 the paddle one-shots.
   //
+  // **Nothing is plugged into the game port**, and that is a state software
+  // reads rather than one it cannot see. agat-emulator's joystick/joystick.c
+  // gives the empty port its own pair of handlers — `joy_button_none` and
+  // `joy_status_none`, the procs a machine gets when its joystick device is
+  // anything but DEV_MOUSE or DEV_JOYSTICK — and both answer $FF:
+  //
+  //   * the buttons idle **high**. A fitted joystick pulls them down and
+  //     releases them to $80 when pressed (`joy_button_joy` answers $7F/$FF),
+  //     so high on both is "no stick", not "both pressed".
+  //   * the one-shots **never expire**. With no potentiometer across it the
+  //     558's timing capacitor never charges, so bit 7 stays set however long
+  //     after the $C070 trigger it is read.
+  //
+  // Alice в стране чудес reads exactly that pair at $98AC: buttons high sends
+  // it straight to "no stick", and failing that it counts loops until each
+  // one-shot drops and calls a stick fitted if either count is nonzero. A port
+  // answering $00 on the buttons and timing out at mid-scale is a centered
+  // joystick with its buttons up, and the game hands the controls to it and
+  // stops reading the keyboard. Fitting one means driving these from a real
+  // input, not softening what an empty port says.
+  //
   // $C063 answers $80. It is read exactly once on the whole 840K disk — by the
   // boot loader, which does BIT $C063 and jumps into a stack-trashing decoy
   // unless N comes back set. That is the loader's tamper check, and on the real
@@ -687,13 +703,10 @@
   Machine.prototype.readAnalog = function (n) {
     switch (n) {
       case 0: return 0;
-      case 1: case 2: return this.buttons[n - 1] ? 0x80 : 0;
+      case 1: case 2: return 0x80;
       case 3: return (this.cyrillic ? 0x7f : 0xff) &
                      (this.model === 9 ? 0xc0 : 0xff);
-      case 4: case 5: case 6: case 7: {
-        var dt = this.cpu.cycles - this.paddleTrigger;
-        return dt < this.paddles[n - 4] * 11 ? 0x80 : 0;
-      }
+      case 4: case 5: case 6: case 7: return 0x80;
       default: return 0;
     }
   };

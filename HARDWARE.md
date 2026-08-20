@@ -771,6 +771,40 @@ The status line names the card as well as the mouse for that reason.
 
 ---
 
+## The game port
+
+No joystick is fitted, and **that is a state software reads**, not one it
+cannot see. agat-emulator gives the empty port its own pair of handlers in
+`joystick/joystick.c` — `joy_button_none` and `joy_status_none`, the procs a
+machine gets unless its joystick device is DEV_MOUSE or DEV_JOYSTICK — and both
+answer `$FF`:
+
+- **`$C061`/`$C062` idle high.** A fitted stick pulls them down and releases
+  them high when pressed, which is what `joy_button_joy` answers `$7F`/`$FF`
+  for. So bit 7 set on both is "nothing plugged in", not "both buttons held".
+- **`$C064-$C067` never expire.** With no potentiometer across it the 558's
+  timing capacitor never charges, so bit 7 stays set however long after the
+  `$C070` trigger it is read.
+
+Both halves are load-bearing, and two programs read them:
+
+- **Алиса в стране чудес** probes at `$98AC`. `LDA $C061 / ORA $C062 / BMI` is
+  the whole first test — high means no stick. Failing that it triggers `$C070`
+  and counts 27-cycle loops until each one-shot drops, and calls a stick fitted
+  if either count comes back nonzero. Note that a one-shot which reads *low*
+  straight away counts 1, not 0: only a line that never drops reads as absent.
+- **`im_cp.140.img`** stops on «КАЛИБРОВКА ДЖОЙСТИКА — ЦЕНТРИРУЙТЕ ДЖОЙСТИК И
+  НАЖМИТЕ КНОПКУ 0» when the buttons read low, and goes straight into the game
+  when they read high. It reads `$C061` and `$C062` once each and nothing else.
+
+A port answering `$00` on the buttons and timing out at mid-scale is a centered
+joystick with its buttons up. Alice hands the controls to it and stops reading
+the keyboard, which looks exactly like a broken keyboard and is not one.
+Fitting a joystick means driving these from a real input; it does not mean
+softening what an empty port says.
+
+---
+
 ## Floppies
 
 ### 840K "Teac" (slot 5, both machines)
@@ -948,8 +982,8 @@ configuration.
 
 ## Not emulated
 
-The Agat-7 ДопОЗУ extra-RAM card, NTSC artifact color for the
-Apple modes, 80-column/Videoterm/DHGR and Apple //e modes, cycle-accurate raster
+The Agat-7 ДопОЗУ extra-RAM card, the joystick,
+80-column/Videoterm/DHGR and Apple //e modes, cycle-accurate raster
 splits, printer, SCSI, tape and clock. The printer card is emulated only as far
 as the mice that hang off it need — its 8255 without a cable, and without the
 ROM that would let a program find it.
