@@ -143,3 +143,7 @@ Both have cost real time here:
 - Writing an interrupt vector to `$FFFE` on an Agat-7 silently depends on an
   ЭмПЗУ card in slot 2. Install through the monitor at `$03FE` instead —
   especially for anything meant to be compared against another emulator.
+
+## Development
+
+Commit on 'main' unless specifically asked to branch.
