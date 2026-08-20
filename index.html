@@ -630,8 +630,20 @@
   // Base RAM is not a choice on an Agat-9: its 128K is fixed. The cards are, but
   // they are different cards, so each machine shows only its own — a greyed
   // ЭмПЗУ next to a live Ext. RAM would suggest the two belonged together.
+  //
+  // Disabled or not, the select still reads as a statement about the machine,
+  // so while the 9 is up it says 128K. The Agat-7's pick is held aside and put
+  // back when the select becomes the 7's control again — applyModel reads it
+  // on the way into setModel, so the 7 comes back at the size it left.
+  var ram7 = '';
   function syncMemEnabled() {
     var nine = modelSel.value === '9';
+    if (nine) {
+      if (!ramSel.disabled) ram7 = ramSel.value;
+      ramSel.value = String(AGAT.Machine.PROFILES[9].ram);
+    } else if (ramSel.disabled) {
+      ramSel.value = ram7;
+    }
     ramSel.disabled = nine;
     psromSel.hidden = xramSel.hidden = nine;
     xram9Sel.hidden = !nine;
@@ -813,9 +825,10 @@
   // is written from.
   function syncMenus() {
     modelSel.value = String(app.model);
-    // The Agat-9's 128K is not a choice, and writing it into the base RAM menu
-    // would still be sitting there when the machine went back to being an
-    // Agat-7. Its card is a choice, and shares the slot map with the Agat-7's.
+    // Which controls are live is settled first, because it decides what the
+    // base RAM select shows; on an Agat-7 the machine's own size then goes
+    // over the held-aside pick — a container may have brought a different one.
+    syncMemEnabled();
     if (app.model === 7) ramSel.value = String(app.ramSize);
     MEM_CARDS[app.model].forEach(function (cls) {
       var n = AGAT.Machine.slotOfClass(app.slots, cls);
@@ -828,7 +841,6 @@
     mouseSel.value = mn < 0 ? '' : app.slots[mn].card.slice(6);
     mouseSlot = mn < 0 ? undefined : mn;
     pick(monitorSel, app.monitor);
-    syncMemEnabled();
   }
   syncMachineUI();
 
