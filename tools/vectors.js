@@ -1761,6 +1761,57 @@ async function agcTests() {
   }
 }
 
+// --- Apple video on the Agat-9 ----------------------------------------------
+// Both rules are videoprocs.c's. A lone hires dot is colored by the column it
+// lands in and by bit 7 of its byte; two in a row read as white. And the
+// character set an Apple program writes is not the Agat-9 font's, so $00-$9F
+// folds onto the $A0-$DF the Latin glyphs are in.
+{
+  // A machine as the painters read one: physical RAM, an identity map, and the
+  // palette register a text mode takes its pair from.
+  const stub = (bytes) => {
+    const ram = new ctx.Uint8Array(0x8000);
+    for (const [a, val] of bytes) ram[a] = val;
+    return { ram, phys: (a) => a, palette: { cur: { c2: [0, 15] } } };
+  };
+  const font = new ctx.Uint8Array(2048);
+  font[0xa8 * 8] = 0x40;                       // leftmost dot of glyph $A8, row 0
+  const v = new A.Video(font, A.monitorPalette(), { m0: 0x40 });
+  const dots = (bytes, n) => {
+    v.idx.fill(0);
+    v.appleHires(stub(bytes), 0, 1, false);
+    return Array.from(v.idx.slice(0, n));
+  };
+  const HGR = 0x2000;
+
+  eq('a lone hires dot in an even column is violet',
+     dots([[HGR, 0x01]], 3), [5, 0, 0]);
+  eq('and in an odd column green', dots([[HGR, 0x02]], 3), [0, 10, 0]);
+  eq('bit 7 shifts the pair to cyan', dots([[HGR, 0x81]], 3), [6, 0, 0]);
+  eq('and to red', dots([[HGR, 0x82]], 3), [0, 9, 0]);
+  eq('two dots side by side are white', dots([[HGR, 0x03]], 3), [15, 15, 0]);
+  // The neighbour that whitens a dot is the next byte's when the dot is the
+  // seventh, which is the whole reason the row is unpacked before it is painted.
+  eq('across the byte boundary too',
+     dots([[HGR, 0x40], [HGR + 1, 0x01]], 9), [0, 0, 0, 0, 0, 0, 15, 15, 0]);
+  eq('a lone dot in the next byte keeps its column parity',
+     dots([[HGR + 1, 0x01]], 9), [0, 0, 0, 0, 0, 0, 0, 10, 0]);
+
+  const chars = (ch) => {
+    v.idx.fill(0);
+    v.appleText(stub([[0x400, ch]]), 0, 1, false);
+    return Array.from(v.idx.slice(0, 7));
+  };
+  const ON = [15, 0, 0, 0, 0, 0, 0], OFF = [0, 15, 15, 15, 15, 15, 15];
+  eq('$A8 is the font glyph it names', chars(0xa8), ON);
+  eq('$68 folds onto the same glyph', chars(0x68), ON);
+  eq('$28 folds there too, and is inverse', chars(0x28), OFF);
+  v.flash = true;
+  eq('$68 is the flashing half', chars(0x68), OFF);
+  eq('$A8 is not', chars(0xa8), ON);
+  v.flash = false;
+}
+
 // --- the font/mask pairing --------------------------------------------------
 // Agat-7 glyphs live in bits 7..1, Agat-9 in bits 6..0. Pairing a font with the
 // wrong mask shifts every character and is maddening to spot on screen.

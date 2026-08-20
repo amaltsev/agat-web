@@ -29,6 +29,10 @@
     this.setFont(font, opts.m0);
     this.setPalette(palette);
     this.idx = new Uint8Array(W * H);
+    // One row of Apple hires dots, unpacked: the color of a dot depends on the
+    // one after it, which is in the next byte every seventh dot.
+    this.hgrBits = new Uint8Array(APPLE_W + 1);
+    this.hgrPal = new Uint8Array(APPLE_W);
     this.pixels = new Uint8ClampedArray(W * H * 4);
     this.width = W;
     this.height = H;
@@ -179,25 +183,35 @@
            (y & 7) * 0x400 + ((y >> 3) & 7) * 0x80 + (y >> 6) * 0x28;
   }
 
-  // Apple text always takes its glyph from bits 6..0, whatever the machine.
-  Video.prototype.appleGlyph = function (o, ch, inverse) {
-    var f = this.font, idx = this.idx, g = (ch & 0x7f) * 8;
+  // The character set an Apple program writes is not the one the Agat-9's font
+  // is in. $A0-$FF is already that font's own Latin-then-Cyrillic block and
+  // passes through; everything below it — the inverse and flashing halves —
+  // folds onto $A0-$DF (videoprocs.c, apaint_t40_addr).
+  function appleGlyphOf(ch) {
+    return ch < 0xa0 ? 0xa0 + ((ch + 0x20) & 0x3f) : ch;
+  }
+
+  // Glyph bits are 6..0 here whatever font window the machine's own text modes
+  // use: these modes are on the Agat-9 alone, whose m0 is $40.
+  Video.prototype.appleGlyph = function (o, ch, tc, bc) {
+    var f = this.font, idx = this.idx, g = appleGlyphOf(ch) * 8;
     for (var r = 0; r < 8; r++) {
       var bits = f[g + r], p = o + r * W;
-      for (var k = 0; k < 7; k++) {
-        var on = (bits >> (6 - k)) & 1;
-        if (inverse) on ^= 1;
-        idx[p++] = on ? 15 : 0;
-      }
+      for (var k = 0; k < 7; k++) idx[p++] = ((bits >> (6 - k)) & 1) ? tc : bc;
     }
   };
 
+  // Bits 7..6 are the attribute: 0 is inverse, 1 is inverse while the flash is
+  // on, 2 and 3 are normal. The pair it inverts is the palette register's,
+  // the same one the native text modes take their background from.
   Video.prototype.appleText = function (m, first, last, page2) {
+    var c2 = m.palette.cur.c2, fg = c2[1], bg = c2[0];
     for (var row = first; row < last; row++) {
       var b = appleTextRow(row, page2);
       for (var col = 0; col < 40; col++) {
-        var c = m.ram[m.phys(b + col)];
-        this.appleGlyph(row * 8 * W + col * 7, c, (c & 0x80) === 0);
+        var c = m.ram[m.phys(b + col)], atr = c >> 6;
+        var inv = atr === 0 || (atr === 1 && this.flash);
+        this.appleGlyph(row * 8 * W + col * 7, c, inv ? bg : fg, inv ? fg : bg);
       }
     }
   };
@@ -221,14 +235,39 @@
     }
   };
 
+  // Apple hires is a color mode: the dot clock runs at twice the color
+  // subcarrier, so a lone dot comes out tinted by the column it lands in and
+  // bit 7 of its byte shifts the whole septet by half a dot into the other
+  // pair. agat-emulator paints the artifact rather than the signal
+  // (video/videoprocs.c, apaint_hgr_addr_color) and these are its two color
+  // pairs: bit 7 clear gives violet/green, set gives cyan/red — the Agat
+  // palette's stand-ins for the Apple's blue/orange.
+  var HGR_PAIRS = [[5, 10], [6, 9]];
+  var HGR_WHITE = 15, HGR_BLACK = 0;
+
+  // A dot whose neighbour on either side is lit reads as white; only an
+  // isolated one keeps its color. `wasc` carries the previous dot's color, so
+  // a run of two or more comes out white all the way along.
+  //
+  // What the C does and this does not is `fill` — bleeding a color into the
+  // dark dot that follows a run — because it sets `fill` from
+  // `cursystype != SYSTEM_9` and these modes exist on no other machine here.
   Video.prototype.appleHires = function (m, first, last, page2) {
-    var idx = this.idx;
+    var idx = this.idx, bits = this.hgrBits, pal = this.hgrPal;
     for (var y = first; y < last; y++) {
-      var b = appleHiresRow(y, page2);
-      for (var col = 0; col < 40; col++) {
-        var v = m.ram[m.phys(b + col)];
-        var o = y * W + col * 7;
-        for (var k = 0; k < 7; k++) idx[o++] = ((v >> k) & 1) ? 15 : 0;
+      var b = appleHiresRow(y, page2), x = 0, col, k, v;
+      for (col = 0; col < 40; col++) {
+        v = m.ram[m.phys(b + col)];
+        for (k = 0; k < 7; k++, x++) { bits[x] = (v >> k) & 1; pal[x] = v >> 7; }
+      }
+      bits[APPLE_W] = 0;                // nothing follows the last dot of a row
+      var o = y * W, wasc = HGR_BLACK;
+      for (x = 0; x < APPLE_W; x++) {
+        var c = HGR_BLACK;
+        if (bits[x]) {
+          c = (wasc || bits[x + 1]) ? HGR_WHITE : HGR_PAIRS[pal[x]][x & 1];
+        }
+        idx[o + x] = wasc = c;
       }
     }
   };

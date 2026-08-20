@@ -283,7 +283,7 @@ The native raster is **512 × 256**, presented at 4:3.
 | 256×256×1 | both | |
 | 256×256×2 | Agat-9 | 16K, interleaved: low 8K even scanlines, high 8K odd |
 | 512×256×1 | Agat-9 | same interleave |
-| Apple text / lores / hires | Agat-9 only | 280×192, mono |
+| Apple text / lores / hires | Agat-9 only | 280×192, in color |
 
 Two properties that are easy to get wrong and both load-bearing:
 
@@ -301,6 +301,25 @@ wrong for video, so this emulator does not have one.
 on `SYSTEM_7` to interrupt-disable only; `vsel_ap` is installed for `SYSTEM_9`
 and the Apple systypes. An "unknown mode falls back to Apple text" rule would
 mask real decode bugs, so the Agat-7 path must not have one.
+
+**Apple hires is a color mode, and its text is not the Agat's own.** Two
+transcriptions from `video/videoprocs.c`, both of which show up in the first
+screen of a ported game:
+
+- `apaint_hgr_addr_color` paints the artifact rather than the signal. A lone
+  dot is colored by the column it lands in; bit 7 of its byte picks the pair —
+  clear is фиолетовый/лайм `$5`/`$A`, set is бирюзовый/красный `$6`/`$9`, the
+  Agat palette standing in for the Apple's blue and orange. Two lit dots side
+  by side read as white, and the neighbour that whitens the seventh dot of a
+  byte is in the *next* byte, so a row has to be unpacked before it is painted.
+  What the C also has and the Agat-9 does not is `fill`, the bleed into the
+  dark dot after a colored run: it sets that from `cursystype != SYSTEM_9`.
+- `apaint_t40_addr` remaps the character. `$A0-$FF` is already the Agat-9
+  font's Latin-then-Cyrillic block and passes through; `$00-$9F` — the inverse
+  and flashing halves — folds onto `$A0-$DF` as `$A0 + ((ch + $20) & $3F)`.
+  Bits 7..6 are the attribute: `0` inverse, `1` inverse while the flash is on,
+  `2` and `3` normal. Without the fold an Apple program's `(C) 1985` comes out
+  as `PCT 1985`, which looks like a font bug and is not one.
 
 ### The monitor, and the sixteen colors
 
