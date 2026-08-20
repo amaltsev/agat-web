@@ -320,7 +320,7 @@
 </head>
 <body>
 
-<h1>Agat-7 / Agat-9</h1>
+<h1><a href="#" id="home">Agat Web Emulator</a></h1>
 
 <div class="screen empty" id="screen">
   <canvas id="canvas" width="512" height="256"></canvas>
@@ -410,19 +410,16 @@
 <div class="help">
   <p>
     Drop an Agat image into the window and it starts running, or click one of
-    the <a href="#examples" id="tolist">bundled examples</a> below. Most host
-    keys pass through. Keys go through the Agat's own scancode table, so
-    <b>ЛАТ/РУС</b> switches to a JCUKEN Cyrillic layout. <b>Boot</b> is the
-    equivalent of <code>PR#N</code> — it restarts from the disk.
-    <b>Reset</b> cold-starts into the machine's own monitor, which is where
-    you land with no disk in.
+    the <a href="#examples" id="tolist">bundled examples</a> below.
   </p>
   <table>
     <tr><td><b>Keyboard</b></td><td>
       The Agat's own board, or the PC keys the table maps. The cap your
       keypress reaches is lit, with <code>$C000</code> shown underneath.
       Caps can be clicked, and hovering one names every host key that
-      reaches it.
+      reaches it. Most host keys pass through. Keys go through the
+      Agat's scancode table, so <b>ЛАТ/РУС</b> switches to a
+      JCUKEN layout.
     </td></tr>
     <tr><td><b>Mouse</b></td><td>
       Off by default.  The three mice speak different protocols.  If a
@@ -434,8 +431,7 @@
       steer, a tap is A, a second finger is B, and a touch right after a
       tap drags — the <b>trackpad</b> box in the gear popup gives the
       desktop pointer the same behaviour. The two buttons are also drawn
-      over the screen's lower corners: they hold while pressed, so one
-      finger on a button and another stroking the canvas is a drag.
+      over the screen's lower corners.
     </td></tr>
     <tr><td><b>Takes</b></td><td>
       <code>.aim</code> tagged track images, <code>.dsk</code> sector images and
@@ -461,8 +457,8 @@
     </td></tr>
     <tr><td><b>RO / RW</b></td><td>
       Disks are read-only by default. Click <code>RO</code> to allow
-      writing.  Writes go to memory, and closing the tab loses them.  <b>Save AGC</b> keeps them, as
-      patches on the disk they came from.
+      writing.  Writes go to memory, and closing the tab loses them.
+      <b>Save AGC</b> keeps them, as patches on the disk they came from.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
       The machine's memory sizes, the mouse and the volume.
@@ -486,9 +482,7 @@
   </table>
   <div id="examples">
     <p>
-      <b>Examples</b> — a container each, naming the machine and the mouse it
-      wants. They are fetched, so they want a served page: from a local file
-      use <b>Open…</b> instead.
+      <b>Examples</b>
     </p>
     <div id="examplelist"></div>
   </div>
@@ -1234,6 +1228,21 @@
       'Р.Бадер и Ю.Багашев, 1994',
       'Agat-9'
     ],
+    [ 'examples/asm-89.agc',
+      'Ассемблер ЛЭМЗ',
+      'А. Голов и А. Трофимов, 1989',
+      'Agat-7'
+    ],
+    [ 'examples/ikp7.agc',
+      'Инструментальный Комплекс Программиста',
+      'НИИВК, 1988',
+      'Agat-7'
+    ],
+    [ 'examples/ikp9.agc',
+      'Инструментальный Комплекс Программиста',
+      'НИИВК, 1988',
+      'Agat-9'
+    ],
     [ 'examples/TESTOZU7_140.agc',
       'Штатный тест ОЗУ',
       'НИИВК, 1986',
@@ -1272,6 +1281,33 @@
       window.scrollTo(0, 0);
     });
     exList.appendChild(a);
+  });
+
+  // The masthead starts over: a reload at the bare address, which is the
+  // stock machine with nothing loaded. location.replace() with the fragment
+  // stripped rather than an assignment to the hash, because emptying a
+  // fragment is not a navigation — the point is the reload, which drops the
+  // container, the disks, and any unsaved writes to them. Writes are the one
+  // thing here that cannot be got back, so they are the one thing asked about.
+  document.getElementById('home').addEventListener('click', function (ev) {
+    ev.preventDefault();
+    if (app.hasWrites() &&
+        !confirm('A disk has been written to, and starting over loses ' +
+                 'the writes. Save AGC keeps them. Start over anyway?')) return;
+    leaving = true;
+    location.replace(location.pathname + location.search);
+  });
+
+  // Closing the tab loses writes the same way, and the browser's generic
+  // dialog is the only guard allowed there: beforeunload cannot carry a
+  // message of its own, and confirm() is inert inside it. It fires on the
+  // masthead's reload too, where the question has just been asked and
+  // answered, so that path raises `leaving` and slips past.
+  var leaving = false;
+  window.addEventListener('beforeunload', function (ev) {
+    if (leaving || !app.hasWrites()) return;
+    ev.preventDefault();
+    ev.returnValue = '';
   });
 
   // The intro's way down to that list. Scrolled rather than followed, because

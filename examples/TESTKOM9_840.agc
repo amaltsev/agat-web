@@ -3,7 +3,6 @@
   "title": "Штатный комплексный тест, Агат-9",
   "author": "НИИВК",
   "url": "https://agatcomp.ru/agat/Software/Test/Testkom9.shtml",
-  "notes": "BLANK140.dsk is 143360 zero bytes: a disk for the ЕС 5088 (140K) test to write on",
   "machine": {
     "model": 9,
     "ram": 128
