@@ -57,7 +57,7 @@ H.loadRoms(ctx).then((roms) => {
     if (want.length && want.indexOf(vt) < 0) continue;
     const m0 = (vt === V.LGR || vt === V.T64I) ? 0x80 : 0x40;
     const font = m0 === 0x80 ? roms.font7 : roms.font9;
-    const v = new A.Video(font, roms.palette, { m0: m0 });
+    const v = new A.Video(font, A.monitorPalette(), { m0: m0 });
     v.idx.fill(0);
     switch (vt) {
       case V.LGR: v.lgr(ram, mask, 0); break;

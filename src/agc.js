@@ -360,6 +360,9 @@
         // Kilobytes, as `ram=` in the URL is; the App wants bytes and converts.
         model: machine.model === 9 ? 9 : machine.model === 7 ? 7 : 0,
         ram: Number(machine.ram) || 0,
+        // A name in AGAT.MONITORS — the monitor the program was drawn for.
+        // Anything else is dropped, as an unknown card is.
+        monitor: AGAT.MONITORS[machine.monitor] ? machine.monitor : '',
         slots: parseSlots(machine.slots),
       },
       keys: c.keys || {},
@@ -480,6 +483,11 @@
     if (spec.url) o.url = spec.url;
     if (spec.notes) o.notes = spec.notes;
     o.machine = { model: spec.model === 9 ? 9 : 7, ram: spec.ram || 64 };
+    // The default monitor is what a container that says nothing gets, so
+    // naming it would only add noise to every file.
+    if (spec.monitor && spec.monitor !== AGAT.MONITOR_DEFAULT) {
+      o.machine.monitor = spec.monitor;
+    }
     if (spec.slots) o.machine.slots = spec.slots;
     if (spec.keys && Object.keys(spec.keys).length) o.keys = spec.keys;
     if (spec.controls && Object.keys(spec.controls).length) o.controls = spec.controls;

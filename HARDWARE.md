@@ -302,6 +302,64 @@ on `SYSTEM_7` to interrupt-disable only; `vsel_ap` is installed for `SYSTEM_9`
 and the Apple systypes. An "unknown mode falls back to Apple text" rule would
 mask real decode bugs, so the Agat-7 path must not have one.
 
+### The monitor, and the sixteen colours
+
+The machine puts a bare 4-bit code on the RGB connector — R, G, B and a
+brightness bit — and turning that into a colour is entirely the monitor's job,
+so the emulator has a colour table per monitor rather than one palette
+(`src/videopal.js`, selected in the gear popup, by `machine.monitor` in a
+container and by `monitor=` in the address). The values are agatcomp.ru's
+measured table, «Таблица цветов ЭВМ АГАТ» at
+<https://agatcomp.ru/agat/Hardware/useful/ColorSet.shtml>:
+
+| code | `color16` | `color8` | `grey` |
+|---|---|---|---|
+| `0` чёрный | 0,0,0 | 0,0,0 | 0 |
+| `1` бордовый | 217,0,0 | 217,0,0 | 130 |
+| `2` зелёный | 0,217,0 | 0,217,0 | 89 |
+| `3` оливковый | 217,217,0 | 217,217,0 | 221 |
+| `4` флот | 0,0,217 | 0,0,217 | 65 |
+| `5` фиолетовый | 217,0,217 | 217,0,217 | 194 |
+| `6` бирюзовый | 0,217,217 | 0,217,217 | 151 |
+| `7` серебряный | 217,217,217 | 217,217,217 | 241 |
+| `8` серый | 38,38,38 | 0,0,0 | 39 |
+| `9` красный | 255,38,38 | 217,0,0 | 185 |
+| `A` лайм | 38,255,38 | 0,217,0 | 148 |
+| `B` жёлтый | 255,255,38 | 217,217,0 | 244 |
+| `C` синий | 38,38,255 | 0,0,217 | 108 |
+| `D` фуксия | 255,38,255 | 217,0,217 | 229 |
+| `E` голубой | 38,255,255 | 0,217,217 | 197 |
+| `F` белый | 255,255,255 | 217,217,217 | 255 |
+
+`color16` is the common monitor, the second modification of the Электроника 32
+ВТЦ 202, where the brightness bit raises intensity — note the asymmetry: the
+"dim" colours sit at 217, nearly as bright as the bright half's 255, while `$8`
+is a near-black grey far darker than any of them. The **first** modification
+read the bit the other way, codes `8`-`F` darker, and early Agat-9s apparently
+shipped with it. ЯБ3.089.026 ТО л.47 (табл.5) gives its colours by name:
+
+| | | | |
+|---|---|---|---|
+| `0` черный | `4` синий | `8` черный | `C` темно-синий |
+| `1` красный | `5` сиреневый | `9` коричневый | `D` фиолетовый |
+| `2` салатовый | `6` голубой | `A` зеленый | `E` бирюзовый |
+| `3` желтый | `7` белый | `B` хаки | `F` серый |
+
+That is `color16inv`, built from `color16`'s own levels since the ТО gives
+names rather than measurements: bit 3 flipped, **except that `$0` stays
+black** — dimming black is still black, which is why the ТО has two blacks
+(`$0` and `$8` are both черный) and only one white/grey pair (`$7` белый, `$F`
+серый); a pure flip would wrongly hand `$0` the common monitor's near-black
+grey. Period software knew about the split: Picler had a setting for which way
+the brightness bit went.
+
+`color8` is a monitor with the brightness bit not wired at all, on which the
+two halves of the code space are indistinguishable — and software developed on
+one mixes codes freely between them, which is why running such a program on a
+16-colour table looks wrong and is not an emulator bug. `grey` is the composite
+«Видеосигнал» connector's ladder, fixed by the output circuitry; green darker
+than red is measured, not a typo — the source stresses it.
+
 ---
 
 ## Interrupts

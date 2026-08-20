@@ -42,22 +42,13 @@
   };
 
   Video.prototype.setPalette = function (pal) {
-    this.palette = pal || defaultPalette();
+    this.palette = pal || AGAT.monitorPalette();
     this.rgb = new Uint8Array(16 * 3);
     for (var i = 0; i < 16; i++) {
       var c = this.palette[i] || [0, 0, 0];
       this.rgb[i * 3] = c[0]; this.rgb[i * 3 + 1] = c[1]; this.rgb[i * 3 + 2] = c[2];
     }
   };
-
-  function defaultPalette() {
-    var out = [];
-    for (var i = 0; i < 16; i++) {
-      var v = (i & 8) ? 255 : 128;
-      out.push([(i & 1) ? v : 0, (i & 2) ? v : 0, (i & 4) ? v : 0]);
-    }
-    return out;
-  }
 
   // ---- glyphs --------------------------------------------------------------
 

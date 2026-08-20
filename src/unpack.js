@@ -55,10 +55,10 @@
   };
 
   AGAT.loadRoms = function (roms) {
-    var keys = Object.keys(roms).filter(function (k) { return k !== 'palette'; });
+    var keys = Object.keys(roms);
     return Promise.all(keys.map(function (k) { return AGAT.unpack(roms[k]); }))
       .then(function (vals) {
-        var out = { palette: roms.palette };
+        var out = {};
         keys.forEach(function (k, i) { out[k] = vals[i]; });
         return out;
       });

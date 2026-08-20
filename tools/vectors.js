@@ -1774,8 +1774,15 @@ async function agcTests() {
     eq('agathe7 $C1 row0 @ m0=$80', row(roms.font7, 0xc1, 0, 0x80), '...#...');
     eq('agathe7 $C1 row4 @ m0=$80', row(roms.font7, 0xc1, 4, 0x80), '.#####.');
     eq('agathe9 $C1 row4 @ m0=$40', row(roms.font9, 0xc1, 4, 0x40), '..####.');
-    eq('palette has 16 entries', roms.palette.length, 16);
-    eq('palette[15] is white', roms.palette[15], [255, 255, 255]);
+    const MON = ctx.AGAT.MONITORS;
+    eq('default monitor palette has 16 entries', ctx.AGAT.monitorPalette().length, 16);
+    eq('color16 $F is white', MON.color16[15], [255, 255, 255]);
+    eq('color8 ignores the brightness bit', MON.color8[15], MON.color8[7]);
+    eq('color16inv flips it', MON.color16inv[15], MON.color16[7]);
+    // Dimming black is still black: ЯБ3.089.026 ТО л.47 names both $0 and $8
+    // черный, so neither may borrow the common monitor's near-black grey $8.
+    eq('color16inv keeps both blacks black',
+       [MON.color16inv[0], MON.color16inv[8]], [[0, 0, 0], [0, 0, 0]]);
 
     // --- what a reset has to undo -------------------------------------------
     // A machine that has already run something is not a fresh one, and loading

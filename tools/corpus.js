@@ -86,7 +86,8 @@ H.loadRoms(ctx).then(async (roms) => {
       for (const c of keys) { m.keyDown(keyCode(c)); run(cycles / 2); }
 
       const v = new ctx.AGAT.Video(model === 7 ? roms.font7 : roms.font9,
-                                   roms.palette, { m0: model === 7 ? 0x80 : 0x40 });
+                                   ctx.AGAT.monitorPalette(),
+                                   { m0: model === 7 ? 0x80 : 0x40 });
       v.render(m);
       let lit = 0;
       for (let i = 0; i < v.width * v.height; i++) if (v.idx[i]) lit++;

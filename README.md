@@ -86,10 +86,19 @@ the tab loses them; **Save AGC** lights up while there are any, and keeps them
 as patches on the image they came from.
 
 The **⚙** holds the settings a machine is run under rather than driven by: the
-volume, the machine's memory sizes, and whether it has a mouse. The video
-interrupt is not among them — it comes off the line counter, exactly as the
-boards produce it, and there is nothing to choose. See
-[HARDWARE.md](HARDWARE.md#the-delivery-model).
+volume, the machine's memory sizes, which monitor it is plugged into, and
+whether it has a mouse. The video interrupt is not among them — it comes off
+the line counter, exactly as the boards produce it, and there is nothing to
+choose. See [HARDWARE.md](HARDWARE.md#the-delivery-model).
+
+**Monitor** matters for colour: the machine outputs bare 4-bit colour codes and
+the monitor decides what each looks like. The default is the common 16-colour
+ВТЦ 202; an earlier modification read the brightness bit the other way round,
+and a monitor without the bit wired shows eight colours — software drawn on one
+mixes the bright and dim halves of the code space freely, and wants that
+monitor here to look as its author saw it. «Видеосигнал» is the composite
+connector's greyscale. The tables and their sources are in
+[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colours).
 
 **Mouse** is off unless you ask, because nothing that came with either machine
 expects one, and it asks *which*: the three Soviet mice speak different
@@ -315,8 +324,8 @@ It would not exist without any of the following.
   `videosel9.c`), both floppy controllers (`fdd.c`, `fdd1.c`) and the sector
   encoders (`dsk2nib.c`, `dsk2hfe.c`). The keyboard's scancode table is its
   shipped `keyb/default.bin` emitted verbatim, and the undocumented-opcode set
-  is checked against its `cpu/cpu6502.c`. The bundled ROMs, character
-  generators and palette are from its data package.
+  is checked against its `cpu/cpu6502.c`. The bundled ROMs and character
+  generators are from its data package.
 - **AgatF** by Ravodin & co. — the second reading of the same hardware, and the
   source of the same five ROMs under different names, byte-for-byte identical.
   See [ROMS.md](ROMS.md) for both, with checksums.
@@ -329,7 +338,10 @@ It would not exist without any of the following.
   and the cable's pin table behind `src/mouse.js`. The
   [clock-frequency page][clocks] reports 19.97093 ms between frame interrupts,
   averaged over six boards with a calibrated Ч3-63 counter, which is what pins
-  the raster at 312 lines of 672 clocks. The on-screen keyboard is transcribed
+  the raster at 312 lines of 672 clocks. The [colour table][colors] — measured
+  per monitor, since the machine outputs bare 4-bit codes and the monitor
+  decides the colours — is what `src/videopal.js` transcribes, all four
+  monitors of it. The on-screen keyboard is transcribed
   from its [photograph of the Клавиатура][kbd], which is what settles that a
   keycap is a *code* rather than a scancode. And four of the programs in
   `examples/` are from there.
@@ -349,12 +361,13 @@ disagreement is a lookup rather than an argument.
 [docs]: https://agatcomp.ru/agat/Paper/DocsShtat/A7_K5.shtml
 [mouse]: https://agatcomp.ru/agat/Hardware/Key_Joy/MouseUVK.shtml
 [clocks]: https://agatcomp.ru/agat/Hardware/useful/clock.shtml
+[colors]: https://agatcomp.ru/agat/Hardware/useful/ColorSet.shtml
 [kbd]: https://www.agatcomp.ru/agat/Hardware/Key_Joy/KeyClassic/kbd15.jpg
 
 ## Licence
 
 MIT for the emulator, see [LICENSE](LICENSE). Three sets of bundled files are
-not ours and are not MIT: the ROMs, character generators and palette in
+not ours and are not MIT: the ROMs and character generators in
 `roms/roms.js` — see [ROMS.md](ROMS.md) — the example programs in `examples/`,
 and `tools/6502_functional_test.bin`, which is built from Klaus Dormann's
 GPLv3 test sources. None of the three is part of the emulator itself; the test

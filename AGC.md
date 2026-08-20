@@ -106,12 +106,22 @@ whoever opens it.
 |---|---|
 | `model` | `7` or `9` |
 | `ram` | **base RAM in kilobytes**: `32`, `64` or `128`. Agat-7 only — the Agat-9 is always 128K. |
+| `monitor` | the monitor the program was drawn for: `"color16"` (the default, left unwritten), `"color8"`, `"color16inv"` or `"grey"` |
 | `slots` | what this machine has that the model's stock complement does not. Optional. |
 
 `ram` is base RAM on the motherboard, not the machine's total. It is not
 cosmetic either: it is the only memory the video controller scans, and it masks
 the video mode register's page field, so software can tell — a disk that expects
 64K may fail on 128K.
+
+`monitor` is which colours the 4-bit codes come out as: the machine puts a bare
+code on the RGB connector and the monitor decides. `color16` is the common
+ВТЦ 202, where the brightness bit brightens; `color16inv` is the earlier
+modification where it darkens; `color8` is a monitor without the bit wired, on
+which codes `8`-`F` look exactly like `0`-`7` — and a program whose author drew
+it on one mixes the two halves freely, which is what this field is for; `grey`
+is the composite «Видеосигнал» connector. The tables are in
+[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colours).
 
 The stock Agat-7 is **128K in three devices**: 64K of base RAM, a 32K ЭмПЗУ in
 slot 2 and a 32K ОЗУ expansion in slot 4. The Agat-9 is 128K and two drives.

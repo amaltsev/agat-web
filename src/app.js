@@ -32,11 +32,17 @@
     this.agcModel = 0;                    // what a container named, 0 if none
     this.agcRam = 0;                      // its base RAM in bytes, 0 if unsaid
     this.agcCards = null;
+    this.agcMonitor = '';                 // the monitor it asked for, '' if unsaid
     this.overCards = opts.cards || null;
     this.slotOverrides = null;            // derived: the merge, as slots
     this.slots = AGAT.Machine.resolveSlots(this.model, this.cardSlots());
 
     this.modelPinned = false;
+    // Which monitor the machine is plugged into — a name in AGAT.MONITORS.
+    // A standing choice like the RAM size: the machine outputs a 4-bit colour
+    // code and the monitor decides what colour that is, so software drawn for
+    // one monitor looks wrong on another.
+    this.monitor = AGAT.MONITORS[opts.monitor] ? opts.monitor : AGAT.MONITOR_DEFAULT;
     this.drives = {};                     // slot -> {name, kind}
     // What was loaded, as it arrived: slot -> {name, bytes, patches, kind,
     // offset, prodos}, plus 'fil:<name>' for programs poked into memory. The
@@ -195,7 +201,7 @@
     this.machine.fit(this.slots, this.roms);
     this.video = new AGAT.Video(
       this.model === 7 ? this.roms.font7 : this.roms.font9,
-      this.roms.palette,
+      AGAT.monitorPalette(this.monitor),
       { m0: this.model === 7 ? 0x80 : 0x40 });
     this.drives = {};
     // The disks move with the machine, and so must what each one was loaded
@@ -300,6 +306,13 @@
 
   App.prototype.toggleLayout = function () {
     return this.machine.toggleLayout();
+  };
+
+  // Repaints rather than rebuilds: the monitor is on the far side of the RGB
+  // connector, so changing it changes no machine state at all.
+  App.prototype.setMonitor = function (name) {
+    this.monitor = AGAT.MONITORS[name] ? name : AGAT.MONITOR_DEFAULT;
+    if (this.video) this.video.setPalette(AGAT.monitorPalette(this.monitor));
   };
 
   // Switching machines takes the new one's own RAM size unless told otherwise:
@@ -561,6 +574,8 @@
     this.ramSize = this.model === 9 ? 0x20000
                  : (over.ramSize || this.agcRam
                     || AGAT.Machine.PROFILES[this.model].ram);
+    this.agcMonitor = c.machine.monitor || '';
+    this.monitor = over.monitor || this.agcMonitor || AGAT.MONITOR_DEFAULT;
     this.overCards = 'cards' in over ? over.cards : null;
     this.build();
 
@@ -732,6 +747,7 @@
       notes: this.notes,
       model: this.model,
       ram: this.ramSize >> 10,
+      monitor: this.monitor,
       slots: this.slotDiff(),
       keys: AGAT.keyboard.remap(),
       controls: AGAT.keyboard.controls(),

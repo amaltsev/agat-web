@@ -4,6 +4,11 @@
 //                      [--ram=32|64|128] [--psrom=KB] [--xram=KB]
 //                      [--mouse=nippel|mars|mm8031] [--click=L|R] [--hold=L|R]
 //                      [--move=dx,dy]
+//                      [--monitor=color16|color8|color16inv|grey]
+//
+// --monitor renders through that monitor's colour table; unflagged, a
+// container's own machine.monitor wins, and the default is the common
+// 16-colour one.
 //
 // keys: ~ = Return, _ = Space, ^ = Escape, anything else is that character.
 //
@@ -155,7 +160,10 @@ H.loadRoms(ctx).then(async (roms) => {
     if (flags.hold) { mouse.btn = 0; run(per / 4); }
   }
 
-  const v = new ctx.AGAT.Video(model === 7 ? roms.font7 : roms.font9, roms.palette, { m0: model === 7 ? 0x80 : 0x40 });
+  const monitor = flags.monitor || (sniffed.agc && sniffed.agc.machine.monitor) || '';
+  const v = new ctx.AGAT.Video(model === 7 ? roms.font7 : roms.font9,
+                               ctx.AGAT.monitorPalette(monitor),
+                               { m0: model === 7 ? 0x80 : 0x40 });
   v.render(m);
   fs.writeFileSync(out, png(v.width, v.height, v.pixels, 2));
   const mode = m.appleVideo

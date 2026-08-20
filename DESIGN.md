@@ -56,7 +56,7 @@ Load order matters only in that a module's dependencies must already be on
 | `xram7.js` | Agat-7 ОЗУ expansion card |
 | `xram9.js` | Agat-9 ОЗУ expansion card ("Ext. RAM") |
 | `videosel.js` | pure `$C7xx` mode decode, `videoSel7` / `videoSel9` |
-| `videopal.js` | four palettes, `$C058-$C05B` |
+| `videopal.js` | the monitor colour tables, and the Agat-9's four palettes at `$C058-$C05B` |
 | `machine.js` | the bus: memory maps, soft switches, slots, interrupt timers |
 | `drive.js` | normalised `Media` container, head position, write lock |
 | `aim840.js` | DSK840/NIB840 → AIM words, and a written track back to sectors |
@@ -312,6 +312,13 @@ The C invalidates per written byte because it repaints into a shared GDI bitmap.
 Here the worst mode reads 16K and writes 128K per frame, which costs less than a
 write hook on every RAM store would — and it removes an entire category of
 staleness bug.
+
+The 16-entry LUT is a monitor's colour table from `videopal.js`: the machine
+outputs bare 4-bit codes and the monitor decides what colour each is, so there
+is a table per monitor — `color16`, `color8`, `color16inv`, `grey`, values and
+reasoning in [HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colours) —
+picked in the gear popup, by a container's `machine.monitor`, or by `monitor=`
+in the address. `App.setMonitor` repaints without rebuilding the machine.
 
 **Painters iterate over source addresses, not screen coordinates.** Every
 `addr → (x, y)` formula therefore keeps the same shape as

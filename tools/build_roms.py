@@ -4,7 +4,7 @@
   python3 tools/build_roms.py [--data DIR] [--check]
 
 DIR defaults to a checkout/extraction of the agat-emulator data package, i.e. a
-directory containing roms/, fnts/, palette/. As a fallback each blob can also be
+directory containing roms/ and fnts/. As a fallback each blob can also be
 taken from an AgatF distribution directory (--agatf), because the two projects
 ship byte-identical ROMs — see ROMS.md.
 
@@ -20,11 +20,11 @@ import sys
 
 # key -> (agat-emulator relative path, AgatF filename, expected size)
 #
-# The fonts and the palette have an AgatF name here but are *not* the same
-# bytes, so the fallback changes what the machine draws; the five ROMs are
-# identical. `mouse` has no fallback at all — AgatF's agatF-mmars.bin is the
-# same ROM's $Cn00 page with the jump into the card's $C800 window patched out,
-# which is a modified ROM and not what this table is for. See ROMS.md.
+# The fonts have an AgatF name here but are *not* the same bytes, so the
+# fallback changes what the machine draws; the five ROMs are identical.
+# `mouse` has no fallback at all — AgatF's agatF-mmars.bin is the same ROM's
+# $Cn00 page with the jump into the card's $C800 window patched out, which is
+# a modified ROM and not what this table is for. See ROMS.md.
 BLOBS = {
     'monitor7': ('roms/monitor7.rom',   'agatF-sysmon7.bin',    2048),
     'monitor9': ('roms/monitor9.rom',   'agatF-sysmon9.bin',    2048),
@@ -35,8 +35,6 @@ BLOBS = {
     'font7':    ('fnts/agathe7.fnt',    'agatF-font7-g-32.bin', 2048),
     'font9':    ('fnts/agathe9.fnt',    'agatF-font9-32.bin',   2048),
 }
-
-PALETTE = ('palette/16colorshigh.pal', 'agatF-pal16.txt')
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -54,25 +52,10 @@ def find(data, agatf, rel, alt):
     return None
 
 
-def read_palette(path):
-    """A .pal is plain text: 16 lines of decimal 'R G B'."""
-    out = []
-    with open(path) as fh:
-        for line in fh:
-            parts = line.split()
-            if len(parts) >= 3:
-                out.append([int(x) for x in parts[:3]])
-            if len(out) == 16:
-                break
-    if len(out) != 16:
-        raise SystemExit('%s: expected 16 colours, got %d' % (path, len(out)))
-    return out
-
-
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument('--data', default=os.environ.get('AGAT_DATA'),
-                    help='agat-emulator data dir containing roms/ fnts/ palette/')
+                    help='agat-emulator data dir containing roms/ fnts/')
     ap.add_argument('--agatf', default=os.environ.get('AGAT_F'),
                     help='AgatF distribution dir (fallback source)')
     ap.add_argument('--check', action='store_true',
@@ -90,13 +73,6 @@ def main(argv):
         found[key] = blob
         rows.append((key, path, len(blob), hashlib.md5(blob).hexdigest()))
 
-    pal_path = find(args.data, args.agatf, PALETTE[0], PALETTE[1])
-    if not pal_path:
-        raise SystemExit('cannot find a palette file')
-    palette = read_palette(pal_path)
-    rows.append(('palette', pal_path, os.path.getsize(pal_path),
-                 hashlib.md5(open(pal_path, 'rb').read()).hexdigest()))
-
     for key, path, size, md5 in rows:
         print('%-10s %6d  %s  %s' % (key, size, md5, path))
     if args.check:
@@ -110,7 +86,6 @@ def main(argv):
         for key in sorted(found):
             b64 = base64.b64encode(gzip.compress(found[key], 9)).decode('ascii')
             fh.write('  %s: "%s",\n' % (key, b64))
-        fh.write('  palette: %s,\n' % (palette,))
         fh.write('};\n')
     print('\nwrote %s (%d bytes)' % (out, os.path.getsize(out)))
 

@@ -1,6 +1,6 @@
 # Bundled ROMs
 
-`roms/roms.js` embeds nine binary blobs, ~9 KB gzipped, so that cloning the
+`roms/roms.js` embeds eight binary blobs, ~9 KB gzipped, so that cloning the
 repository and opening `index.html` is enough to run something. None of it is
 ours. Regenerate with `python3 tools/build_roms.py --data <agat-emulator data dir>`.
 
@@ -14,7 +14,6 @@ ours. Regenerate with `python3 tools/build_roms.py --data <agat-emulator data di
 | `mouse` | `roms/cm6337.rom` | 2048 | `99073a7dfe03a67a0c6625619b2c0844` |
 | `font7` | `fnts/agathe7.fnt` | 2048 | `746e4e13e003f4d85be22c72c26fec7e` |
 | `font9` | `fnts/agathe9.fnt` | 2048 | `3394cec9b91432a7e97da461a5e6a39f` |
-| `palette` | `palette/16colorshigh.pal` | 166 | `3c9ca4527edd3001132d9e99aebde0ef` |
 
 Paths are relative to the data tree of **Agat Emulator** by NOP
 (<https://sourceforge.net/projects/agatemulator/>, GPLv2), as shipped in its
@@ -29,9 +28,14 @@ different names, and are byte-for-byte identical — verified by the md5s above:
     monitor7.rom == agatF-sysmon7.bin
     monitor9.rom == agatF-sysmon9.bin
 
-The fonts and the palette are **not** interchangeable that way — AgatF's differ,
-and its palette is a different length — so `--agatf` is a fallback for the five
-ROMs and nothing else. `cm6337.rom` has no AgatF fallback at all; see below.
+The fonts are **not** interchangeable that way — AgatF's differ — so `--agatf`
+is a fallback for the five ROMs and nothing else. `cm6337.rom` has no AgatF
+fallback at all; see below.
+
+The colour tables are not here: they are not ROMs but a property of the
+monitor, live in `src/videopal.js`, and are transcribed from agatcomp.ru's
+measurements rather than from either emulator's data package — see
+[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colours).
 
 ### `mouse`: the printer card's ROM
 

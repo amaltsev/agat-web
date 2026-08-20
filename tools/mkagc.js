@@ -13,6 +13,8 @@
 //   --hint=TEXT           one line to whoever plays it, printed under that
 //   --model=7|9           the machine it wants
 //   --ram=32|64|128       Agat-7 RAM, in K
+//   --monitor=NAME        the monitor it was drawn for: color16 (the default,
+//                         left unwritten), color8, color16inv or grey
 //   --key=KEY[:CODE[:HINT]]   a key the program uses, repeatable, the hint
 //                             saying what it does: --key=KeyW:^:Shoot right.
 //                             With no code the key is declared as it already
@@ -95,6 +97,12 @@ const explicit = (flags.patch || []).map((p) => {
 // undefined lets the size rule decide, which is what the Save button does.
 const gz = flags.gz ? true : (flags.plain ? false : undefined);
 
+if (flags.monitor && !A.MONITORS[flags.monitor]) {
+  console.error('--monitor=' + flags.monitor + ': not a monitor — try ' +
+                Object.keys(A.MONITORS).join(', '));
+  process.exit(2);
+}
+
 main().catch((e) => { console.error(e.message); process.exit(1); });
 
 async function main() {
@@ -130,6 +138,7 @@ async function main() {
     hint: flags.hint || '',
     model: model,
     ram: Number(flags.ram) || (model === 9 ? 128 : 64),
+    monitor: flags.monitor || '',
     keys: keys,
     media: media,
     width: Number(flags.width) || 0,

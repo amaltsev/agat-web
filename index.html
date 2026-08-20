@@ -347,7 +347,7 @@
     <option value="pc">PC keyboard</option>
     <option value="used">Only mapped keys</option>
   </select>
-  <button id="gear" title="Memory sizes, mouse and volume" aria-expanded="false">⚙</button>
+  <button id="gear" title="Memory sizes, mouse, monitor and volume" aria-expanded="false">⚙</button>
   <span class="lamps" id="lamps"></span>
   <span id="status">loading…</span>
 </div>
@@ -396,6 +396,15 @@
       <option value="mm8031">ММ-8031 mouse</option>
     </select>
     <label title="Steer the mouse trackpad-style instead of capturing the pointer: moves over the screen feed it, scaled down, with no click to hand it over and none to take it back. A touchscreen works this way regardless — strokes steer, a tap is button A, a second finger is B, and a touch right after a tap drags."><input type="checkbox" id="trackpad"> trackpad</label>
+  </div>
+  <div class="row">
+    <span class="key">Monitor</span>
+    <select id="monitor" title="The machine puts a bare 4-bit colour code on the RGB connector, and the monitor decides what colour that is. The common ВТЦ 202 reads bit 3 as brightness; an earlier modification read it the other way round, darkening codes 8-F; a monitor without the bit wired shows eight colours, and software drawn on one mixes the two halves freely — pick that monitor and it looks as its author saw it. «Видеосигнал» is the composite connector's grey ladder, in which green is darker than red by design.">
+      <option value="color16">16-colour RGB</option>
+      <option value="color8">8-colour RGB (no brightness bit)</option>
+      <option value="color16inv">16-colour RGB, inverted brightness</option>
+      <option value="grey">Greyscale</option>
+    </select>
   </div>
   <div class="row">
     <span class="key">Volume</span>
@@ -461,7 +470,10 @@
       <b>Save AGC</b> keeps them, as patches on the disk they came from.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
-      The machine's memory sizes, the mouse and the volume.
+      The machine's memory sizes, the mouse, the monitor and the volume.
+      The monitor matters for colour: the machine outputs 4-bit colour codes
+      and the monitor decides what they look like, so a program drawn on an
+      8-colour monitor wants one here too.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
       The Agat-9 is 128K in 8K banks on the motherboard, which is
@@ -472,9 +484,9 @@
       you choose one yourself.
     </td></tr>
     <tr><td><b>Bookmarks</b></td><td>
-      The machine, its memory sizes and which keyboard is up ride in the
-      address, so a configuration that runs a program properly can be kept or
-      passed on. <code>#agc=</code> names a container, which carries the program
+      The machine, its memory sizes, the monitor and which keyboard is up ride
+      in the address, so a configuration that runs a program properly can be
+      kept or passed on. <code>#agc=</code> names a container, which carries the program
       itself — a path beside the page, or an <code>https://</code> URL to one
       hosted anywhere that lets this page fetch it, so a container needs no copy
       here to be linked and run.
@@ -492,8 +504,8 @@
   <p>
     Most of the hardware here was read out of
     <a href="https://sourceforge.net/projects/agatemulator/">Agat Emulator</a>
-    (NOP, GPLv2) and <b>AgatF</b> (Ravodin &amp; co.), which are where the ROMs,
-    character generators and the palette come from as well — see
+    (NOP, GPLv2) and <b>AgatF</b> (Ravodin &amp; co.), which are where the ROMs
+    and character generators come from as well — see
     <a href="https://amaltsev.github.io/agat-web/ROMS.html">ROMS.md</a> — and
     the rest out of the factory documentation and the measurements published at
     <a href="https://agatcomp.ru/">agatcomp.ru</a>.
@@ -538,6 +550,7 @@
   var xramSel = document.getElementById('xram');
   var xram9Sel = document.getElementById('xram9');
   var mouseSel = document.getElementById('mouse');
+  var monitorSel = document.getElementById('monitor');
   var kbdSel = document.getElementById('kbd');
   var layoutBtn = document.getElementById('layout');
   var gearBtn = document.getElementById('gear');
@@ -686,6 +699,7 @@
       model: m,
       ramSize: m === 9 ? M.PROFILES[9].ram
              : ((agc && app.agcRam) || M.PROFILES[7].ram),
+      monitor: (agc && app.agcMonitor) || AGAT.MONITOR_DEFAULT,
       slots: M.resolveSlots(m, M.slotsFor(m, agc ? app.agcCards : null,
                                           from || m)),
     };
@@ -714,6 +728,7 @@
     if (model === 7 && app.ramSize !== base.ramSize) {
       q.push('ram=' + (app.ramSize >> 10));
     }
+    if (app.monitor !== base.monitor) q.push('monitor=' + app.monitor);
     cardKeys(model).forEach(function (key) {
       var now = cardKey(key, app.slots, model);
       if (now !== cardKey(key, base.slots, model)) q.push(key + '=' + now);
@@ -740,8 +755,10 @@
     // the standard machine and never whatever was showing a moment ago.
     modelSel.value = '7';
     mouseSel.value = '';
+    monitorSel.value = AGAT.MONITOR_DEFAULT;
     kbdSel.value = '';
     pinned = pick(modelSel, url.model);
+    pick(monitorSel, url.monitor);
     // The machine's own sizes rather than whichever option happens to be listed
     // first: 64K of base RAM is an Agat-7, and 32K is a choice.
     ramSel.value = String(AGAT.Machine.PROFILES[7].ram);
@@ -769,6 +786,7 @@
     onStatus: say,
     model: Number(modelSel.value),
     ramSize: Number(ramSel.value),
+    monitor: monitorSel.value,
     cards: menuCards(),
     onKey: function (v, info) { if (kbView) kbView.light(info, v, true); },
     onKeyUp: function (info) { if (kbView) kbView.light(info, 0, false); },
@@ -809,6 +827,7 @@
     var mn = AGAT.Machine.slotOfClass(app.slots, 'mouse');
     mouseSel.value = mn < 0 ? '' : app.slots[mn].card.slice(6);
     mouseSlot = mn < 0 ? undefined : mn;
+    pick(monitorSel, app.monitor);
     syncMemEnabled();
   }
   syncMachineUI();
@@ -968,6 +987,13 @@
   xramSel.addEventListener('change', applyModel);
   xram9Sel.addEventListener('change', applyModel);
   mouseSel.addEventListener('change', applyModel);
+
+  // The monitor is not part of the machine, so changing it repaints rather
+  // than rebuilds: the program keeps running, only the colours move.
+  monitorSel.addEventListener('change', function () {
+    app.setMonitor(monitorSel.value);
+    saveUrl();
+  });
 
   // ---- the layout, and the keyboard that draws it ----------------------------
   //
@@ -1449,6 +1475,7 @@
     var o = {};
     if (url.model && pick(modelSel, url.model)) o.model = Number(modelSel.value);
     if (url.ram && pick(ramSel, Number(url.ram) * 1024)) o.ramSize = Number(ramSel.value);
+    if (url.monitor && pick(monitorSel, url.monitor)) o.monitor = monitorSel.value;
     if (urlCardLayer) o.cards = urlCardLayer;
     return o;
   }
