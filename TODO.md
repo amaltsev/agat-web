@@ -11,3 +11,4 @@
   itself back into the address: today a dropped one cannot be named there at
   all, so the address carries its machine in full and not the program.
 * What does "Boot" do exactly? Fix or document better.
+* Sound card: https://agatcomp.ru/agat/Hardware/SoundNCL.shtml

@@ -136,9 +136,10 @@ is treated as chosen, so a `7a`/`9a` filename does not override it.
 A container is fetched, so this needs a served page. The name is a path beside
 the page or an `https://` URL to one hosted anywhere that lets this page fetch
 it — a container needs no copy here to be linked and run, only a host that
-sends `Access-Control-Allow-Origin`. The other keys go into the machine it
-builds rather than on top of it, so `#agc=…&model=9` tries the program on the
-other machine and it is the other machine the program boots on.
+sends `Access-Control-Allow-Origin: *` header. The other keys go into
+the machine it builds rather than on top of it, so `#agc=…&model=9`
+tries the program on the other machine and it is the other machine the
+program boots on.
 
 They are differences from the container in the same way they are otherwise
 differences from the standard machine: a container running as its author meant

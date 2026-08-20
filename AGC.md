@@ -473,7 +473,7 @@ Drop it on the page, or use **Open…**, or name it in the address:
 The address form fetches the file, so it needs a served page — `fetch` is
 blocked on `file://`, where **Open…** is the way in. What it names is a path
 beside the page or an `https://` URL to a container hosted anywhere that sends
-`Access-Control-Allow-Origin`: a container is a program plus the machine it
+`Access-Control-Allow-Origin: *` header: a container is a program plus the machine it
 runs on, so a link to one somebody else hosts is a link to something that runs.
 The address's other keys go
 into the machine the container builds rather than on top of it, so
