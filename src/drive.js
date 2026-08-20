@@ -1,6 +1,6 @@
 // Media — what a controller actually reads.
 //
-// Every image format is normalised at mount time into one of two shapes, so no
+// Every image format is normalized at mount time into one of two shapes, so no
 // controller ever has to know about file formats:
 //
 //   nib140   35 tracks x 6656 bytes, a GCR nibble stream

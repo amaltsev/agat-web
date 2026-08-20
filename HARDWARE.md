@@ -76,7 +76,7 @@ earlier. It is a one-item list under "в зависимости от испол�
 as a truncation.
 
 agat-emulator's 32K is a choice in its configuration dialog, and copying it here
-was the one place this project copied a default rather than a behaviour. The
+was the one place this project copied a default rather than a behavior. The
 symptom was software that simply expects RAM at `$8000` — the ОЗУ card powers up
 deselected and is not what it finds there.
 
@@ -130,7 +130,7 @@ Within a 16K bank, `$0000-$0FFF` and `$1000-$1FFF` are the two `$D000` halves an
 Plenty of Agat-7 software needs this card. RISE OUT keeps its character
 generator at `$D000`, its black-and-white splash at `$D800` and its disk driver
 at `$E000`; without the card all of that is written into a void, and the game
-loads, animates its colour title, and then shows an empty screen.
+loads, animates its color title, and then shows an empty screen.
 
 32K as fitted, up to 128K — the bank field is three bits wide, and below 128K
 the top banks alias.
@@ -278,7 +278,7 @@ The native raster is **512 × 256**, presented at 4:3.
 |---|---|---|
 | Text 32×32 | both | character + attribute pairs; bit 5 forces normal, bit 3 flashes |
 | Text 64×32 | both | no attributes; the Agat-7 also has an inverse variant |
-| 64×64×4 | Agat-7 | 16 colours, high nibble is the left pixel |
+| 64×64×4 | Agat-7 | 16 colors, high nibble is the left pixel |
 | 128×128×4 | both | |
 | 256×256×1 | both | |
 | 256×256×2 | Agat-9 | 16K, interleaved: low 8K even scanlines, high 8K odd |
@@ -302,17 +302,17 @@ on `SYSTEM_7` to interrupt-disable only; `vsel_ap` is installed for `SYSTEM_9`
 and the Apple systypes. An "unknown mode falls back to Apple text" rule would
 mask real decode bugs, so the Agat-7 path must not have one.
 
-### The monitor, and the sixteen colours
+### The monitor, and the sixteen colors
 
 The machine puts a bare 4-bit code on the RGB connector — R, G, B and a
-brightness bit — and turning that into a colour is entirely the monitor's job,
-so the emulator has a colour table per monitor rather than one palette
+brightness bit — and turning that into a color is entirely the monitor's job,
+so the emulator has a color table per monitor rather than one palette
 (`src/videopal.js`, selected in the gear popup, by `machine.monitor` in a
 container and by `monitor=` in the address). The values are agatcomp.ru's
 measured table, «Таблица цветов ЭВМ АГАТ» at
 <https://agatcomp.ru/agat/Hardware/useful/ColorSet.shtml>:
 
-| code | `color16` | `color8` | `grey` |
+| code | `color16` | `color8` | `gray` |
 |---|---|---|---|
 | `0` чёрный | 0,0,0 | 0,0,0 | 0 |
 | `1` бордовый | 217,0,0 | 217,0,0 | 130 |
@@ -333,10 +333,10 @@ measured table, «Таблица цветов ЭВМ АГАТ» at
 
 `color16` is the common monitor, the second modification of the Электроника 32
 ВТЦ 202, where the brightness bit raises intensity — note the asymmetry: the
-"dim" colours sit at 217, nearly as bright as the bright half's 255, while `$8`
-is a near-black grey far darker than any of them. The **first** modification
+"dim" colors sit at 217, nearly as bright as the bright half's 255, while `$8`
+is a near-black gray far darker than any of them. The **first** modification
 read the bit the other way, codes `8`-`F` darker, and early Agat-9s apparently
-shipped with it. ЯБ3.089.026 ТО л.47 (табл.5) gives its colours by name:
+shipped with it. ЯБ3.089.026 ТО л.47 (табл.5) gives its colors by name:
 
 | | | | |
 |---|---|---|---|
@@ -348,15 +348,15 @@ shipped with it. ЯБ3.089.026 ТО л.47 (табл.5) gives its colours by name
 That is `color16inv`, built from `color16`'s own levels since the ТО gives
 names rather than measurements: bit 3 flipped, **except that `$0` stays
 black** — dimming black is still black, which is why the ТО has two blacks
-(`$0` and `$8` are both черный) and only one white/grey pair (`$7` белый, `$F`
+(`$0` and `$8` are both черный) and only one white/gray pair (`$7` белый, `$F`
 серый); a pure flip would wrongly hand `$0` the common monitor's near-black
-grey. Period software knew about the split: Picler had a setting for which way
+gray. Period software knew about the split: Picler had a setting for which way
 the brightness bit went.
 
 `color8` is a monitor with the brightness bit not wired at all, on which the
 two halves of the code space are indistinguishable — and software developed on
 one mixes codes freely between them, which is why running such a program on a
-16-colour table looks wrong and is not an emulator bug. `grey` is the composite
+16-color table looks wrong and is not an emulator bug. `gray` is the composite
 «Видеосигнал» connector's ladder, fixed by the output circuitry; green darker
 than red is measured, not a typo — the source stresses it.
 
@@ -400,7 +400,7 @@ opposite sense to the Agat-7's `КР`. `VIRQ` is bit 7 of D63, and D19 is anothe
 
 D63's address carries three mode bits (`VCA`, `VCB` and one more) above the line
 number, so the Agat-9's interrupt pattern is per video mode: the block matching
-the measured board is the one-in-eight modelled here, two other blocks give two
+the measured board is the one-in-eight modeled here, two other blocks give two
 lines in eight confined to lines 70…197, and four never assert at all. Only the
 first is emulated, and the mode register does not reach the pattern.
 
@@ -495,7 +495,7 @@ re-enters throughout. That makes `entries / (2n)` the frequency of the flips
 *within* a burst; the waveform as a whole repeats at the assertion rate, and
 that is the pitch you hear.
 
-`$84` is worth watching: `PLAY500` never initialises it, so if it is 0 when a
+`$84` is worth watching: `PLAY500` never initializes it, so if it is 0 when a
 sound starts, `DEC $83` wraps and every unit becomes 256 entries instead of 4.
 
 ---
@@ -615,7 +615,7 @@ agatcomp's pin table for the cable — a three-row СНП34, rows A and C — gi
 УВК-01 its buttons on `C8`/`C9` and its four direction lines on `C2`-`C5`, which
 against the direction bits below fixes the mapping at **C*n* → port C bit *n*−2**
 and puts КН2 (левая) on bit 7. The same table gives the ММ-8031's two buttons the
-other way round, on `C9`/`C8`; that is *not* modelled here, and neither
+other way round, on `C9`/`C8`; that is *not* modeled here, and neither
 agat-emulator nor anything measurable settles it — MouseGraf would then start on
 a different physical button depending on which mouse was plugged in.
 
@@ -878,7 +878,7 @@ page is what clears it.
 
 ### Image formats
 
-Recognised **by size, not by extension** — extensions in the wild lie, and one
+Recognized **by size, not by extension** — extensions in the wild lie, and one
 system disk in circulation is named `.800.dsk` while actually being an `.aim`.
 
 | size | |
@@ -894,7 +894,7 @@ virtual disk\x0D\x0A\x1A""AD`; header byte 48 ≠ 0 means write-protected.
 
 ### `.fil`
 
-A DOS 3.3 file plus its catalogue entry: 30-byte name, type at `0x27` (must
+A DOS 3.3 file plus its catalog entry: 30-byte name, type at `0x27` (must
 satisfy `(type & 0x7F) == 4`), load address at `0x28`, length at `0x2A`, payload
 at `0x2C`, padded so that `(size - 40) % 256 == 0`.
 
@@ -929,7 +929,7 @@ configuration.
 
 ## Not emulated
 
-The Agat-7 ДопОЗУ extra-RAM card, NTSC artefact colour for the
+The Agat-7 ДопОЗУ extra-RAM card, NTSC artifact color for the
 Apple modes, 80-column/Videoterm/DHGR and Apple //e modes, cycle-accurate raster
 splits, printer, SCSI, tape and clock. The printer card is emulated only as far
 as the mice that hang off it need — its 8255 without a cable, and without the

@@ -520,7 +520,7 @@
       case 0xab:                                                // LAX #imm — unstable
         this.a = this.x = this.setNZ(this.a & this.rd(imm())); this.cycles += 2; break;
 
-      // undocumented NOPs of every flavour
+      // undocumented NOPs of every flavor
       case 0x1a: case 0x3a: case 0x5a: case 0x7a: case 0xda: case 0xfa:
         this.cycles += 2; break;
       case 0x80: case 0x82: case 0x89: case 0xc2: case 0xe2:

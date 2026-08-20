@@ -32,10 +32,10 @@ The fonts are **not** interchangeable that way — AgatF's differ — so `--agat
 is a fallback for the five ROMs and nothing else. `cm6337.rom` has no AgatF
 fallback at all; see below.
 
-The colour tables are not here: they are not ROMs but a property of the
+The color tables are not here: they are not ROMs but a property of the
 monitor, live in `src/videopal.js`, and are transcribed from agatcomp.ru's
 measurements rather than from either emulator's data package — see
-[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colours).
+[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colors).
 
 ### `mouse`: the printer card's ROM
 

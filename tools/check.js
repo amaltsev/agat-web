@@ -250,7 +250,7 @@ function keysCmd(loaded) {
 
 // The keyboard menu's own logic, lifted out of index.html and run against a stub
 // <select>. Everything else in src/ is testable because it is in src/; this is
-// the one piece of behaviour that lives in the page, and its hard cases are all
+// the one piece of behavior that lives in the page, and its hard cases are all
 // about load order — a bookmarked control group whose container is still on the
 // wire, a second container that takes that group away — which is exactly what a
 // browser makes tedious to reach and easy to get wrong. The functions are found

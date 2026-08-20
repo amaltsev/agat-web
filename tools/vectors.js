@@ -415,7 +415,7 @@ function eq(what, got, want) {
      [host.children[1].children[0].tag, host.children[1].children[0].href],
      ['span', undefined]);
 
-  // A bare address in the prose is the one thing recognised in it. The text
+  // A bare address in the prose is the one thing recognized in it. The text
   // stays as the container wrote it — scheme and all, because there it is part
   // of a sentence — and the full stop after it belongs to the sentence.
   A.drawInfo(host, {
@@ -1526,7 +1526,7 @@ async function agcTests() {
   eq('a remapped key sends its code in every plane',
      [K.codeFor(0x11, 0, 0), K.codeFor(0x11, 1, 1), K.codeFor(0x11, 1, 2)],
      [0xde, 0xde, 0xde]);
-  eq('its neighbours are untouched', K.codeFor(0x12, 0, 0), 0xc5);
+  eq('its neighbors are untouched', K.codeFor(0x12, 0, 0), 0xc5);
   // Scancode $48 is Numpad8 and, with an E0 in front of it, ↑. Remapping one
   // must not take the other: they are the same number in different planes.
   eq('an ext remap captures only the ext plane',
@@ -1780,7 +1780,7 @@ async function agcTests() {
     eq('color8 ignores the brightness bit', MON.color8[15], MON.color8[7]);
     eq('color16inv flips it', MON.color16inv[15], MON.color16[7]);
     // Dimming black is still black: ЯБ3.089.026 ТО л.47 names both $0 and $8
-    // черный, so neither may borrow the common monitor's near-black grey $8.
+    // черный, so neither may borrow the common monitor's near-black gray $8.
     eq('color16inv keeps both blacks black',
        [MON.color16inv[0], MON.color16inv[8]], [[0, 0, 0], [0, 0, 0]]);
 
@@ -1906,7 +1906,7 @@ async function agcTests() {
       const built = H.makeMachine(ctx, roms, {
         model: 7, slots: { 4: { card: 'xram', ram: 0x20000 } },
       });
-      eq('makeMachine honours an override', built.xram.size, 0x20000);
+      eq('makeMachine honors an override', built.xram.size, 0x20000);
 
       // Round trip: build a container naming slots and read it back.
       const src = await A.agc.build({

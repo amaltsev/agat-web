@@ -6,7 +6,7 @@
 // The held level goes through a DC blocker before it leaves, and that is not a
 // nicety — it is the difference between hearing the machine and hearing a
 // buzz. A cone cannot hold a displacement: driven to one side and left there it
-// springs back to centre. Without that, a sound effect made of a handful of
+// springs back to center. Without that, a sound effect made of a handful of
 // flips (RISE OUT's PLAY routine emits nine over four milliseconds) leaves the
 // output pinned at full scale indefinitely, and every later buffer boundary
 // turns into a click. What should be a 4 ms tick becomes a second of noise.

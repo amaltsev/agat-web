@@ -17,7 +17,7 @@ different memory banking and a video controller with its own set of modes.
 
 ## Using it
 
-Drag a file onto the screen, or use **Open…**. Formats are recognised **by
+Drag a file onto the screen, or use **Open…**. Formats are recognized **by
 size, not by extension** — Agat images in the wild are routinely misnamed, and
 one of the system disks in circulation is called `.800.dsk` while actually being
 an `.aim`.
@@ -27,7 +27,7 @@ an `.aim`.
 | `.aim` | tagged track images, 840K, 160 × 6464 16-bit words — data byte plus attribute |
 | `.dsk` | sector images, 140K and 840K, with or without the "Agathe" header |
 | `.nib` | nibble images, 140K (35 × 6656) and 840K (160 × 21 × 282) |
-| `.fil` | a single program with its DOS 3.3 catalogue entry, poked straight into memory |
+| `.fil` | a single program with its DOS 3.3 catalog entry, poked straight into memory |
 | `.agc` | an Agat Container: one of the above plus the machine and keys it wants |
 
 **Boot** is `PR#N` — restart from the disk. **Reset** cold-starts into the
@@ -39,7 +39,7 @@ keyboard types.
 
 **Keyboard** draws that mapping instead of leaving you to guess it: the Agat's
 own board, or the PC keys the table maps, with the cap your keypress reaches lit
-up and `$C000` shown underneath. Switching ЛАТ/РУС moves the lit cap and greys
+up and `$C000` shown underneath. Switching ЛАТ/РУС moves the lit cap and grays
 out what the other layout can no longer type — РУС cannot reach `' , / ;` and
 ЛАТ cannot reach `Ю`, `Ч` or `Ъ`. Caps can be clicked, so a key your host will
 not send is still reachable. Hovering one names every host key that reaches it.
@@ -91,14 +91,14 @@ whether it has a mouse. The video interrupt is not among them — it comes off
 the line counter, exactly as the boards produce it, and there is nothing to
 choose. See [HARDWARE.md](HARDWARE.md#the-delivery-model).
 
-**Monitor** matters for colour: the machine outputs bare 4-bit colour codes and
-the monitor decides what each looks like. The default is the common 16-colour
+**Monitor** matters for color: the machine outputs bare 4-bit color codes and
+the monitor decides what each looks like. The default is the common 16-color
 ВТЦ 202; an earlier modification read the brightness bit the other way round,
-and a monitor without the bit wired shows eight colours — software drawn on one
+and a monitor without the bit wired shows eight colors — software drawn on one
 mixes the bright and dim halves of the code space freely, and wants that
 monitor here to look as its author saw it. «Видеосигнал» is the composite
-connector's greyscale. The tables and their sources are in
-[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colours).
+connector's grayscale. The tables and their sources are in
+[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colors).
 
 **Mouse** is off unless you ask, because nothing that came with either machine
 expects one, and it asks *which*: the three Soviet mice speak different
@@ -218,7 +218,7 @@ which is what the program is at whatever length that takes, and a **hint** —
 one line of plain text, printed heavier because it is the line worth acting on,
 for what no list of codes says, like which layout the program comes up in or
 which disk to boot from. A key's own `hint` is the same word on the on-screen
-board. Both are plain text, with one thing recognised in them: a bare
+board. Both are plain text, with one thing recognized in them: a bare
 `http`/`https` address becomes a link.
 Nothing but `agc` and `media` is required.
 
@@ -288,7 +288,7 @@ drive writes; unlock the drive (`RO` → `RW`) before you run it, and it answers
 
 ## What is not there
 
-NTSC artefact colour for the Apple modes, 80-column and Apple //e modes,
+NTSC artifact color for the Apple modes, 80-column and Apple //e modes,
 printer and tape.
 
 ## Development
@@ -338,9 +338,9 @@ It would not exist without any of the following.
   and the cable's pin table behind `src/mouse.js`. The
   [clock-frequency page][clocks] reports 19.97093 ms between frame interrupts,
   averaged over six boards with a calibrated Ч3-63 counter, which is what pins
-  the raster at 312 lines of 672 clocks. The [colour table][colors] — measured
+  the raster at 312 lines of 672 clocks. The [color table][colors] — measured
   per monitor, since the machine outputs bare 4-bit codes and the monitor
-  decides the colours — is what `src/videopal.js` transcribes, all four
+  decides the colors — is what `src/videopal.js` transcribes, all four
   monitors of it. The on-screen keyboard is transcribed
   from its [photograph of the Клавиатура][kbd], which is what settles that a
   keycap is a *code* rather than a scancode. And four of the programs in
@@ -364,7 +364,7 @@ disagreement is a lookup rather than an argument.
 [colors]: https://agatcomp.ru/agat/Hardware/useful/ColorSet.shtml
 [kbd]: https://www.agatcomp.ru/agat/Hardware/Key_Joy/KeyClassic/kbd15.jpg
 
-## Licence
+## License
 
 MIT for the emulator, see [LICENSE](LICENSE). Three sets of bundled files are
 not ours and are not MIT: the ROMs and character generators in
@@ -377,7 +377,7 @@ binary is read by `tools/cputest.js` and never ships to the browser.
 `examples/TESTKOM9_840.agc` are Soviet factory diagnostics of the 1980s, and `examples/Klondike.agc` and the two
 `examples/MouseGraf-*.agc` are Р. Бадер's and Ю. Багашев's programs of 1992-94,
 all from
-[agatcomp.ru](https://agatcomp.ru/). Their licences are **unknown**; they are
+[agatcomp.ru](https://agatcomp.ru/). Their licenses are **unknown**; they are
 included on the assumption that something of that origin and age is as close to
 public domain as anything gets, and any of them will be removed if the rights
 holder would rather it were not here.

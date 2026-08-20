@@ -1,7 +1,7 @@
 // The renderer.
 //
 // Native Agat modes paint into a 512x256 buffer of palette indices, expanded
-// once per frame through a 16-entry colour table. Painters iterate over *source
+// once per frame through a 16-entry color table. Painters iterate over *source
 // addresses* rather than screen coordinates, so every addr -> (x,y) formula
 // stays in the same shape as agat-emulator's video/videoprocs.c and can be
 // compared with it line by line.
@@ -126,7 +126,7 @@
     }
   };
 
-  // 256x256x2, Agat-9. Same interleave, four colours, MSB pair leftmost.
+  // 256x256x2, Agat-9. Same interleave, four colors, MSB pair leftmost.
   Video.prototype.mcgr = function (ram, mask, base, pal) {
     var idx = this.idx, p = pal.c4;
     for (var a = 0; a < 0x4000; a++) {
@@ -160,7 +160,7 @@
     }
   };
 
-  // Text 64x32: no attributes, one colour pair for the whole screen.
+  // Text 64x32: no attributes, one color pair for the whole screen.
   Video.prototype.t64 = function (ram, mask, base, tc, bc) {
     for (var a = 0; a < 0x800; a++) {
       var x = 32 + 7 * (a & 63);

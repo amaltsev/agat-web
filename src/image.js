@@ -38,7 +38,7 @@
     return true;
   }
 
-  // A .fil is a DOS 3.3 file plus its catalogue entry: 40-byte header, then the
+  // A .fil is a DOS 3.3 file plus its catalog entry: 40-byte header, then the
   // body padded to whole 256-byte sectors. Type at 0x27 must be B ($04/$84).
   function isFil(b) {
     return b.length > 44 && (b.length - 40) % 256 === 0 && (b[0x27] & 0x7f) === 4;
@@ -96,7 +96,7 @@
     return s.trim();
   }
 
-  // Normalise into the shape the controllers read.
+  // Normalize into the shape the controllers read.
   AGAT.mount = function (s) {
     switch (s.kind) {
       case 'aim840': return AGAT.aim840.fromAim(s);

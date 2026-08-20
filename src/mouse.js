@@ -444,7 +444,7 @@
     //
     // Strokes steer, a tap is button A, a second finger is button B, and a
     // touch straight after a tap drags. Touch events rather than pointer
-    // events, because cancelling the touch is also what cancels the mouse
+    // events, because canceling the touch is also what cancels the mouse
     // events the browser would synthesize from it — one preventDefault covers
     // the click, the scroll and the long-press callout together. With no card
     // fitted every handler stands aside and the canvas scrolls like the rest

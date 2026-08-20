@@ -12,7 +12,7 @@
 // a card where that has to be visible without being read first.
 //
 // Both paragraphs are still plain text — a `<b>` in one is printed and not
-// obeyed — with one thing recognised in them: a bare `http`/`https` address
+// obeyed — with one thing recognized in them: a bare `http`/`https` address
 // becomes a link. A container that names where a program is written up says so
 // in the middle of a sentence as often as in its `url` field.
 //
@@ -78,7 +78,7 @@
 
   // One paragraph, with any web address in it made a link. Text and links go in
   // as separate nodes and never as markup: a container is a file from somewhere
-  // else, and the only thing recognised in what it wrote is a scheme it typed
+  // else, and the only thing recognized in what it wrote is a scheme it typed
   // itself. What is not `http`/`https` is not a scheme this will follow, so a
   // `javascript:` URL is left standing as the text it is.
   function prose(cls, s) {

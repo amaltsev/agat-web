@@ -14,7 +14,7 @@
 //   --model=7|9           the machine it wants
 //   --ram=32|64|128       Agat-7 RAM, in K
 //   --monitor=NAME        the monitor it was drawn for: color16 (the default,
-//                         left unwritten), color8, color16inv or grey
+//                         left unwritten), color8, color16inv or gray
 //   --key=KEY[:CODE[:HINT]]   a key the program uses, repeatable, the hint
 //                             saying what it does: --key=KeyW:^:Shoot right.
 //                             With no code the key is declared as it already
@@ -112,7 +112,7 @@ async function main() {
     // Sniffed for the error, not for the container: a container holds the file
     // it was given. Refusing here beats writing something that will not load.
     const s = A.sniff(bytes, path.basename(f));
-    if (!s.kind) throw new Error(f + ': not a recognised Agat image');
+    if (!s.kind) throw new Error(f + ': not a recognized Agat image');
     if (s.kind === 'agc') throw new Error(f + ': already a container');
     if (!modelHint) modelHint = s.hintModel || 0;
     let patches = explicit;

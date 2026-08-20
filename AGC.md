@@ -106,7 +106,7 @@ whoever opens it.
 |---|---|
 | `model` | `7` or `9` |
 | `ram` | **base RAM in kilobytes**: `32`, `64` or `128`. Agat-7 only — the Agat-9 is always 128K. |
-| `monitor` | the monitor the program was drawn for: `"color16"` (the default, left unwritten), `"color8"`, `"color16inv"` or `"grey"` |
+| `monitor` | the monitor the program was drawn for: `"color16"` (the default, left unwritten), `"color8"`, `"color16inv"` or `"gray"` |
 | `slots` | what this machine has that the model's stock complement does not. Optional. |
 
 `ram` is base RAM on the motherboard, not the machine's total. It is not
@@ -114,14 +114,14 @@ cosmetic either: it is the only memory the video controller scans, and it masks
 the video mode register's page field, so software can tell — a disk that expects
 64K may fail on 128K.
 
-`monitor` is which colours the 4-bit codes come out as: the machine puts a bare
+`monitor` is which colors the 4-bit codes come out as: the machine puts a bare
 code on the RGB connector and the monitor decides. `color16` is the common
 ВТЦ 202, where the brightness bit brightens; `color16inv` is the earlier
 modification where it darkens; `color8` is a monitor without the bit wired, on
 which codes `8`-`F` look exactly like `0`-`7` — and a program whose author drew
-it on one mixes the two halves freely, which is what this field is for; `grey`
+it on one mixes the two halves freely, which is what this field is for; `gray`
 is the composite «Видеосигнал» connector. The tables are in
-[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colours).
+[HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colors).
 
 The stock Agat-7 is **128K in three devices**: 64K of base RAM, a 32K ЭмПЗУ in
 slot 2 and a 32K ОЗУ expansion in slot 4. The Agat-9 is 128K and two drives.
@@ -319,7 +319,7 @@ swallow. A container that carries only this gets a card with only this on it.
 
 Same **plain text** rule as the hint below, and the same reason: whitespace
 collapses to one paragraph, and markup is printed rather than obeyed. One thing
-in it is recognised: a bare `http`/`https` address becomes a link, in the hint
+in it is recognized: a bare `http`/`https` address becomes a link, in the hint
 as well as here, because a container that says where a program is written up
 says it in the middle of a sentence as often as in its `url`. The text is left
 as it was typed, scheme and all — in prose the address is part of the sentence —

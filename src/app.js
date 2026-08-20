@@ -39,14 +39,14 @@
 
     this.modelPinned = false;
     // Which monitor the machine is plugged into — a name in AGAT.MONITORS.
-    // A standing choice like the RAM size: the machine outputs a 4-bit colour
-    // code and the monitor decides what colour that is, so software drawn for
+    // A standing choice like the RAM size: the machine outputs a 4-bit color
+    // code and the monitor decides what color that is, so software drawn for
     // one monitor looks wrong on another.
     this.monitor = AGAT.MONITORS[opts.monitor] ? opts.monitor : AGAT.MONITOR_DEFAULT;
     this.drives = {};                     // slot -> {name, kind}
     // What was loaded, as it arrived: slot -> {name, bytes, patches, kind,
     // offset, prodos}, plus 'fil:<name>' for programs poked into memory. The
-    // mounted Media is normalised and the drives keep only a name, so without
+    // mounted Media is normalized and the drives keep only a name, so without
     // this there is nothing left to write an .agc back out of. The last three
     // are what saving a disk that has been written to needs in order to put the
     // sectors back where they came from.
@@ -426,7 +426,7 @@
   App.prototype.loadOne = function (bytes, name, from, over) {
     var s = AGAT.sniff(bytes, name), self = this;
     if (!s.kind) {
-      throw new Error(name + ': not a recognised Agat image (' + bytes.length + ' bytes)');
+      throw new Error(name + ': not a recognized Agat image (' + bytes.length + ' bytes)');
     }
     if (s.kind === 'agc') {
       if (from) throw new Error(name + ': a container inside a container');
@@ -434,7 +434,7 @@
         // `looks` said this was one and the JSON says otherwise: some other
         // file that mentions `agc` in its first few lines.
         if (!c) {
-          throw new Error(name + ': not a recognised Agat image (' +
+          throw new Error(name + ': not a recognized Agat image (' +
                           bytes.length + ' bytes)');
         }
         return self.applyAgc(c, over);
@@ -455,7 +455,7 @@
     // itself. Recorded whether or not the hint gets to act — with the model
     // pinned from the address, this is what the address is disagreeing with.
     if (from && s.hintModel && !this.agcModel) this.agcModel = s.hintModel;
-    // Honour the machine the filename implies, unless the user has chosen one.
+    // Honor the machine the filename implies, unless the user has chosen one.
     if (s.hintModel && s.hintModel !== this.model && !this.modelPinned) {
       this.setModel(s.hintModel);
     }
@@ -540,7 +540,7 @@
   // rather than the machine being taken apart three times.
   //
   // `over` is whatever overrules the container — {model, ramSize, cards}, in
-  // this object's own units, each key honoured only if it is there. It belongs
+  // this object's own units, each key honored only if it is there. It belongs
   // here, before the build, rather than in a second one afterwards: build()
   // resets the CPU and boots nothing, so a rebuild once the media has loaded
   // leaves the machine in the monitor with the disk still in the drive.
@@ -855,7 +855,7 @@
   // called is on the info card, which the run loop does not overwrite.
   //
   // The bits of that line rather than the line itself: a bit is a string, or
-  // `{text, cls, title}` where it has a colour and a sentence of its own. The
+  // `{text, cls, title}` where it has a color and a sentence of its own. The
   // page paints them with a `·` between, and the sentence goes where a sentence
   // on a line this narrow has to go — the tooltip. Nothing else calls this.
   App.prototype.describe = function () {
@@ -887,9 +887,9 @@
       }
       // The card's own name and nothing else: which mouse it is answers what a
       // word like "mouse" in front of it would have said. Both states are a
-      // colour on that name and a sentence in the tooltip — the line has one row
+      // color on that name and a sentence in the tooltip — the line has one row
       // to fit in, and these are the two things about a mouse worth noticing
-      // from across the desk rather than reading. Quiet takes the colour where
+      // from across the desk rather than reading. Quiet takes the color where
       // both hold: a pointer that is held and unread is the case that wants the
       // other mouse, not the other key.
       var quiet = m.cpu.cycles - this.mouseSeen > MOUSE_QUIET;

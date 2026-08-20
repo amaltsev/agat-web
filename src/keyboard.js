@@ -464,7 +464,7 @@
           // which layout is up, and listing it twice would only say so twice.
           if (mod === EXT && layout !== LAT) continue;
           // A remapped key no longer reaches what the table has under it, and
-          // the board has to grey those legends out rather than keep offering
+          // the board has to gray those legends out rather than keep offering
           // a key that now sends something else.
           if (REMAP && REMAP[k] !== undefined) continue;
           r = { layout: layout, mod: mod, scan: scan };

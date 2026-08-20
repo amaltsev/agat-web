@@ -333,7 +333,7 @@
     } catch (e) {
       // The same test `looks` makes, over the same text: a file the sniffer
       // called a container and the parser cannot read is a broken container,
-      // and saying so beats "not a recognised Agat image".
+      // and saying so beats "not a recognized Agat image".
       if (/"agc"\s*:/.test(src)) {
         throw new Error((name || '.agc') + ': not valid JSON — ' + e.message);
       }

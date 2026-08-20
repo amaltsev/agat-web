@@ -24,6 +24,10 @@ Node freely; it never ships.
 agrees, and it catches the "works in Node, blank page in the browser" bug that is
 otherwise very easy to create.
 
+**The English is US English** — color, behavior, catalog, gray — with Russian
+terms interspersed freely where they are the thing's own name (ЭмПЗУ, ЛАТ/РУС,
+НГМД, табл.).
+
 ## Before saying something works
 
 ```sh
@@ -34,7 +38,7 @@ node tools/cputest.js          # Klaus Dormann; slow, run on CPU changes
 
 Anything touching video, disks or timing should also be exercised headlessly —
 `tools/check.js boot <image>`, `tools/shot.js`, `tools/tone.js`,
-`tools/corpus.js` — before opening a browser. If a claim about behaviour can be
+`tools/corpus.js` — before opening a browser. If a claim about behavior can be
 measured, measure it; several confident conclusions in this project's history
 were wrong and the measurement is usually cheap.
 
@@ -103,7 +107,7 @@ Settled, with evidence, and expensive to relearn:
 - Every sound in RISE OUT proper goes through `PLAY500` on the interrupt, never
   the busy-wait `PLAY`.
 
-**Not settled:** whether more of the Agat-9's interrupt PROM should be modelled.
+**Not settled:** whether more of the Agat-9's interrupt PROM should be modeled.
 D63's address carries three mode bits above the line number, so the pattern is
 per video mode: only the one-in-eight block matching the measured board is
 emulated, and the mode register does not reach it. See
@@ -124,9 +128,9 @@ and say when something else disagrees.
 
 The bundled ROMs are theirs, not ours; see [ROMS.md](ROMS.md). The emulator is
 MIT. `examples/` holds two of Андрей Мальцев's own games, included with his
-permission, and six programs of unknown licence from agatcomp.ru — the three
+permission, and six programs of unknown license from agatcomp.ru — the three
 factory tests, Klondike and the two MouseGrafs — kept on the terms README's
-licence section states.
+license section states.
 
 ## Two traps that look like emulator bugs
 

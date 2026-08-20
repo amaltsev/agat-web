@@ -15,7 +15,7 @@
 //     whole letter block, which is why the two legends fit on one cap.
 //   - So the host key that reaches a given cap changes with ЛАТ/РУС, and some
 //     caps cannot be reached at all in one of them: РУС cannot type `' , / ;`
-//     and ЛАТ cannot type Ю, Ч or Ъ. The board greys those out — which is the
+//     and ЛАТ cannot type Ю, Ч or Ъ. The board grays those out — which is the
 //     whole reason it exists, since a game wanting a key you cannot find
 //     otherwise gives no clue which one it is.
 //   - The digit row is the ГОСТ one, and its legends were checked against the
@@ -512,7 +512,7 @@
 
   // 2 if some host key reaches this code in the live layout and modifier, 1 if
   // one does in another, 0 if none ever does. The difference between 2 and 1 is
-  // what the board re-greys when ЛАТ and РУС are swapped.
+  // what the board re-grays when ЛАТ and РУС are swapped.
   KeyView.prototype.reach = function (code) {
     if (code === undefined) return 0;
     var rs = K.routesTo(code), layout = this.layout(), mod = this.mod();
@@ -820,7 +820,7 @@
     this.down[key] = list;
   };
 
-  // classList.toggle's second argument is not universally honoured, and these
+  // classList.toggle's second argument is not universally honored, and these
   // run on every keystroke.
   function add(el) { if (el.className.indexOf(' down') < 0) el.className += ' down'; }
   function rm(el) { el.className = el.className.replace(' down', ''); }
@@ -889,7 +889,7 @@
   // listeners and nothing on it is pressable. It says what the *program* reads —
   // `Q` is $51 whatever is switched on — and the board beside it answers the
   // other half, which host key reaches that code now. The panel is static for
-  // exactly that reason: greying and relocation belong to the board, which
+  // exactly that reason: graying and relocation belong to the board, which
   // already does both.
   //
   // The one host-side thing on it is a container remap, `^ (W)`. A remap holds

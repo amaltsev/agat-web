@@ -1,4 +1,4 @@
-// .fil — a DOS 3.3 file with its catalogue entry in front, loaded straight
+// .fil — a DOS 3.3 file with its catalog entry in front, loaded straight
 // into memory instead of through a disk.
 //
 //   0x00  30  name, high-bit ASCII, $A0 padded

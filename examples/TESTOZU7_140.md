@@ -94,8 +94,8 @@ being decoded after the `$C080+16n` slot range and swallowed by the empty slot 7
 which has the disk and the 1986 factory manual it is documented in. The answers
 above are transcribed from that manual.
 
-Its licence is unknown. It is bundled here on the assumption that a Soviet
+Its license is unknown. It is bundled here on the assumption that a Soviet
 factory diagnostic from 1986 is about as close to public domain as anything
-gets, and not as part of the MIT-licensed emulator — see the Licence section of
+gets, and not as part of the MIT-licensed emulator — see the License section of
 [README.md](../README.md). If the rights holder would rather it were not here,
 it will be removed.

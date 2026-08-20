@@ -56,14 +56,14 @@ Load order matters only in that a module's dependencies must already be on
 | `xram7.js` | Agat-7 ОЗУ expansion card |
 | `xram9.js` | Agat-9 ОЗУ expansion card ("Ext. RAM") |
 | `videosel.js` | pure `$C7xx` mode decode, `videoSel7` / `videoSel9` |
-| `videopal.js` | the monitor colour tables, and the Agat-9's four palettes at `$C058-$C05B` |
+| `videopal.js` | the monitor color tables, and the Agat-9's four palettes at `$C058-$C05B` |
 | `machine.js` | the bus: memory maps, soft switches, slots, interrupt timers |
-| `drive.js` | normalised `Media` container, head position, write lock |
+| `drive.js` | normalized `Media` container, head position, write lock |
 | `aim840.js` | DSK840/NIB840 → AIM words, and a written track back to sectors |
 | `gcr140.js` | 4-and-4 and 6-and-2 track synthesis, and reading it back |
 | `unpack.js` | gzip both ways, and the embedded ROM blobs |
 | `agc.js` | the `.agc` container: read, write, base64, gzip, patches |
-| `image.js` | sniff and normalise any dropped file |
+| `image.js` | sniff and normalize any dropped file |
 | `disk840.js` | 840K Teac controller |
 | `disk140.js` | 140K Shugart controller |
 | `video.js` | painters and `render()` |
@@ -227,7 +227,7 @@ All of them are implemented — the same 105 agat-emulator carries in
 JAM/KIL codes halt. agat-emulator gates its set behind an `undoc` flag that its
 Qt build turns **on** by default (`CFG_INT_CPU_EXT = 1`, `sysconf.c`) with a
 checkbox to turn it off; there is no flag here, because refusing to run an
-opcode the hardware would have run is not a behaviour worth reproducing.
+opcode the hardware would have run is not a behavior worth reproducing.
 
 Cycle counts matter more here than in most emulators: the sub-frame interrupt is
 the Agat's music clock, so an instruction that is a few cycles cheap moves pitch
@@ -271,7 +271,7 @@ touches A, X and Y not at all, because the hardware doesn't either. Preserving
 registers is the handler's job.
 
 Taking an interrupt consumes a `step()` without executing an instruction, which
-is what makes re-entrancy fall out naturally rather than needing to be modelled.
+is what makes re-entrancy fall out naturally rather than needing to be modeled.
 
 ### Interrupt timing
 
@@ -313,10 +313,10 @@ Here the worst mode reads 16K and writes 128K per frame, which costs less than a
 write hook on every RAM store would — and it removes an entire category of
 staleness bug.
 
-The 16-entry LUT is a monitor's colour table from `videopal.js`: the machine
-outputs bare 4-bit codes and the monitor decides what colour each is, so there
-is a table per monitor — `color16`, `color8`, `color16inv`, `grey`, values and
-reasoning in [HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colours) —
+The 16-entry LUT is a monitor's color table from `videopal.js`: the machine
+outputs bare 4-bit codes and the monitor decides what color each is, so there
+is a table per monitor — `color16`, `color8`, `color16inv`, `gray`, values and
+reasoning in [HARDWARE.md](HARDWARE.md#the-monitor-and-the-sixteen-colors) —
 picked in the gear popup, by a container's `machine.monitor`, or by `monitor=`
 in the address. `App.setMonitor` repaints without rebuilding the machine.
 
@@ -332,7 +332,7 @@ output is reproducible.
 
 ## Disks
 
-Every image format is normalised at mount time into one of two shapes, so no
+Every image format is normalized at mount time into one of two shapes, so no
 controller ever has to know about file formats:
 
 | | |
@@ -366,7 +366,7 @@ is the only thing that decides how bytes are written, by the size rule in
 
 `App.sources` is the other half: the file **as it arrived**, keyed by slot,
 because nothing else keeps it. `drives[slot]` holds a name and a kind, the
-mounted `Media` is normalised past recognition, and Save would otherwise have
+mounted `Media` is normalized past recognition, and Save would otherwise have
 nothing to write. Patches are kept beside those bytes rather than folded into
 them, so a container that is loaded and saved again is the same file.
 
@@ -415,7 +415,7 @@ edges, and queues one buffer.
 Two things in there are not optional.
 
 **A DC blocker.** A speaker cone cannot hold a displacement — driven to one side
-and left there it springs back to centre. Without the filter, a sound effect made
+and left there it springs back to center. Without the filter, a sound effect made
 of a handful of flips leaves the output pinned at full scale indefinitely and
 every later buffer boundary becomes a click. `y[n] = x[n] - x[n-1] + R·y[n-1]`
 with `R = 0.995` puts the corner near 35 Hz at 44.1 kHz: square waves pass, steps
@@ -466,7 +466,7 @@ consequences fall straight out and are the point of the thing:
 
 - **The lit cap moves when ЛАТ/РУС is switched.** Host `Q` reaches `Я` in ЛАТ
   and `Й` in РУС, because those are different bytes.
-- **Caps grey out per layout.** A legend is `near` if some host key reaches it
+- **Caps gray out per layout.** A legend is `near` if some host key reaches it
   now, `far` if only the other layout does, `dead` if none ever does. РУС
   cannot type `' , / ;`; ЛАТ cannot type `Ю`, `Ч` or `Ъ`.
 
@@ -493,7 +493,7 @@ place, because everything else already runs through there: the keypress path,
 and the PC board's per-cap "what does this send right now" line. The other
 direction — `buildRoutes()` — drops the table entries whose scancode has been
 taken over and adds the remap's own, so `routesTo` and `routeName` keep being
-the single answer to "which key sends this". The board then greys ЛАТ `W` and
+the single answer to "which key sends this". The board then grays ЛАТ `W` and
 tooltips `^` as `W (remap)` without knowing a remap exists.
 
 `capCode` handles the one case the index cannot: УПР sends `$81-$9F`, which is
@@ -578,7 +578,7 @@ number the stylesheet cannot know: what is left depends on the container.
 
 The winnowing is redone on every `refresh()`, since a key declared as-is is a
 different cap in ЛАТ than in РУС. With no container loaded there is nothing to
-winnow by and every cap it has is drawn; the menu greys the option out until
+winnow by and every cap it has is drawn; the menu grays the option out until
 something names keys or controls, and on a handheld a container that names them
 opens with it. `node tools/check.js keys <file.agc>` draws the same board in a
 terminal, against a stub `document` — which is what makes it testable at all.
@@ -596,7 +596,7 @@ row, in file order. It is not a keyboard — no cap on it sends a byte. What it
 says is **static on purpose**: it prints what the *program* reads, and `Q` is
 `$51` whatever is switched on. Which host key reaches `$51` right now is the
 board's question, and the board already answers it by moving the lit cap and
-greying the rest.
+graying the rest.
 
 **A group is a tap target**, though, and the whole tile is one: it cuts the board
 beside it to that group, and tapping the live one goes back to all of them, so

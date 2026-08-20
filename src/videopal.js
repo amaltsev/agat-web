@@ -1,29 +1,29 @@
-// Colour, in its two halves: the monitor tables that turn the machine's 4-bit
-// colour codes into RGB, and the Agat-9 palette register at $C058-$C05B.
+// Color, in its two halves: the monitor tables that turn the machine's 4-bit
+// color codes into RGB, and the Agat-9 palette register at $C058-$C05B.
 (function (AGAT) {
   'use strict';
 
   // ---- the monitor ---------------------------------------------------------
   //
   // The machine puts a bare 4-bit code on the RGB connector — R, G, B and a
-  // brightness bit — and turning that into a colour is the monitor's job, so
+  // brightness bit — and turning that into a color is the monitor's job, so
   // there is a table per monitor rather than one palette. Values are
   // agatcomp.ru's measured table, «Таблица цветов ЭВМ АГАТ» at
   // Hardware/useful/ColorSet.shtml.
   //
   // `color16` is the common monitor, the second modification of the
   // Электроника 32 ВТЦ 202: the brightness bit raises intensity, so codes 8-F
-  // are the bright half — with $8 a near-black grey, far darker than the dim
-  // colours. The first modification read the bit the other way, codes 8-F
+  // are the bright half — with $8 a near-black gray, far darker than the dim
+  // colors. The first modification read the bit the other way, codes 8-F
   // *darker*, and early Agat-9s shipped with it; that is `color16inv`, built
   // from the same levels since ЯБ3.089.026 ТО л.47 gives names rather than
   // measurements: bit 3 flipped, except that $0 stays black — dimming black
   // is still black, and the ТО names both $0 and $8 черный, with $7 белый and
-  // $F серый the only white/grey pair. On a monitor
+  // $F серый the only white/gray pair. On a monitor
   // with the brightness bit not wired at all the two halves are identical,
   // which is `color8` — and software developed on one mixes codes freely
   // between them, which is why it needs the same monitor here to look right.
-  // `grey` is the composite «Видеосигнал» connector: a ladder fixed by the
+  // `gray` is the composite «Видеосигнал» connector: a ladder fixed by the
   // output circuitry, in which green is darker than red — the source stresses
   // that this is not an error.
   var COLOR16 = [
@@ -32,7 +32,7 @@
     [38, 38, 38],    [255, 38, 38],   [38, 255, 38],   [255, 255, 38],
     [38, 38, 255],   [255, 38, 255],  [38, 255, 255],  [255, 255, 255],
   ];
-  var GREYS = [0, 130, 89, 221, 65, 194, 151, 241,
+  var GRAYS = [0, 130, 89, 221, 65, 194, 151, 241,
                39, 185, 148, 244, 108, 229, 197, 255];
 
   function remap(f) {
@@ -45,7 +45,7 @@
     color16: COLOR16,
     color8: remap(function (i) { return i & 7; }),
     color16inv: remap(function (i) { return i ? i ^ 8 : 0; }),
-    grey: GREYS.map(function (g) { return [g, g, g]; }),
+    gray: GRAYS.map(function (g) { return [g, g, g]; }),
   };
 
   AGAT.MONITORS = MONITORS;
@@ -60,7 +60,7 @@
   // $C05A/$C05B clear/set bit 1. Together they choose one of four small palettes
   // that the 1bpp and 2bpp modes and the text background index into. The 4bpp
   // modes and text *foregrounds* bypass this entirely and address the 16 hardware
-  // colours directly.
+  // colors directly.
   //
   // The Agat-7 has no such register — its $C05x page is interrupt control — so it
   // is permanently on palette 0.

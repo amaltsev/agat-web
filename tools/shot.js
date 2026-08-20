@@ -4,11 +4,11 @@
 //                      [--ram=32|64|128] [--psrom=KB] [--xram=KB]
 //                      [--mouse=nippel|mars|mm8031] [--click=L|R] [--hold=L|R]
 //                      [--move=dx,dy]
-//                      [--monitor=color16|color8|color16inv|grey]
+//                      [--monitor=color16|color8|color16inv|gray]
 //
-// --monitor renders through that monitor's colour table; unflagged, a
+// --monitor renders through that monitor's color table; unflagged, a
 // container's own machine.monitor wins, and the default is the common
-// 16-colour one.
+// 16-color one.
 //
 // keys: ~ = Return, _ = Space, ^ = Escape, anything else is that character.
 //
@@ -53,7 +53,7 @@ const per = Number(rest[2] || 8e6);
 const out = rest[3] || '/tmp/' + path.basename(target).replace(/\.[^.]+$/, '') + '.png';
 const ctx = H.loadModules();
 
-// --- PNG, truecolour, nearest-neighbour scaled ------------------------------
+// --- PNG, truecolor, nearest-neighbor scaled ------------------------------
 
 let TAB = null;
 function crc32(buf) {

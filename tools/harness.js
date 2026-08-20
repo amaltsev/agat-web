@@ -39,7 +39,7 @@ function loadRoms(ctx) {
 // An .agc is unwrapped to its first medium, with the container left on the
 // result: a tool wants the image, and the machine the container names is a
 // better default than the one a filename implies. Its own `hintModel` is what
-// carries that, so every tool that already honours a `7a` in a path honours a
+// carries that, so every tool that already honors a `7a` in a path honors a
 // container without being changed.
 function sniffFile(ctx, p, displayName) {
   const bytes = new ctx.Uint8Array(fs.readFileSync(p));

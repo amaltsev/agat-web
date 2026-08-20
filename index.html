@@ -9,7 +9,7 @@
     color-scheme: dark;
     --bg: #14161a; --panel: #1d2026; --edge: #2c313a;
     --ink: #d7dbe2; --dim: #8b93a1; --accent: #79c0ff;
-    /* The status line's two colours: something to be told, and something that
+    /* The status line's two colors: something to be told, and something that
        is going right. Nowhere else on the page — a lamp is red because a drive
        LED is, and a keycap is red because the machine's own is. */
     --warn: #ff9c8a; --ok: #6fd08c;
@@ -259,8 +259,8 @@
   .info-sep { opacity: .5; }
   .info-url { word-break: break-all; }
   /* What the program is, at whatever length the container took. Held to a
-     readable measure and centred in the card, since the two lines above it are
-     centred and a paragraph across the full 790px is a paragraph nobody
+     readable measure and centered in the card, since the two lines above it are
+     centered and a paragraph across the full 790px is a paragraph nobody
      finishes. */
   .info-text {
     color: var(--dim); margin: 6px auto 0; max-width: 68ch; text-wrap: pretty;
@@ -306,7 +306,7 @@
   }
   a.ex:hover { border-color: var(--accent); }
   a.ex:active { transform: translateY(1px); }
-  /* The name in the page's link colour, since the tile is one: the panel and
+  /* The name in the page's link color, since the tile is one: the panel and
      the border say "control", and nothing else here would say "link". */
   .ex-name { font-weight: 600; color: var(--accent); }
   .ex-by, .ex-kit { color: var(--dim); }
@@ -399,11 +399,11 @@
   </div>
   <div class="row">
     <span class="key">Monitor</span>
-    <select id="monitor" title="The machine puts a bare 4-bit colour code on the RGB connector, and the monitor decides what colour that is. The common ВТЦ 202 reads bit 3 as brightness; an earlier modification read it the other way round, darkening codes 8-F; a monitor without the bit wired shows eight colours, and software drawn on one mixes the two halves freely — pick that monitor and it looks as its author saw it. «Видеосигнал» is the composite connector's grey ladder, in which green is darker than red by design.">
-      <option value="color16">16-colour RGB</option>
-      <option value="color8">8-colour RGB (no brightness bit)</option>
-      <option value="color16inv">16-colour RGB, inverted brightness</option>
-      <option value="grey">Greyscale</option>
+    <select id="monitor" title="The machine puts a bare 4-bit color code on the RGB connector, and the monitor decides what color that is. The common ВТЦ 202 reads bit 3 as brightness; an earlier modification read it the other way round, darkening codes 8-F; a monitor without the bit wired shows eight colors, and software drawn on one mixes the two halves freely — pick that monitor and it looks as its author saw it. «Видеосигнал» is the composite connector's gray ladder, in which green is darker than red by design.">
+      <option value="color16">16-color RGB</option>
+      <option value="color8">8-color RGB (no brightness bit)</option>
+      <option value="color16inv">16-color RGB, inverted brightness</option>
+      <option value="gray">Grayscale</option>
     </select>
   </div>
   <div class="row">
@@ -439,7 +439,7 @@
       is B. On a touchscreen the screen is a trackpad instead: strokes
       steer, a tap is A, a second finger is B, and a touch right after a
       tap drags — the <b>trackpad</b> box in the gear popup gives the
-      desktop pointer the same behaviour. The two buttons are also drawn
+      desktop pointer the same behavior. The two buttons are also drawn
       over the screen's lower corners.
     </td></tr>
     <tr><td><b>Takes</b></td><td>
@@ -471,9 +471,9 @@
     </td></tr>
     <tr><td><b>⚙</b></td><td>
       The machine's memory sizes, the mouse, the monitor and the volume.
-      The monitor matters for colour: the machine outputs 4-bit colour codes
+      The monitor matters for color: the machine outputs 4-bit color codes
       and the monitor decides what they look like, so a program drawn on an
-      8-colour monitor wants one here too.
+      8-color monitor wants one here too.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
       The Agat-9 is 128K in 8K banks on the motherboard, which is
@@ -628,7 +628,7 @@
   var mouseSlot;
 
   // Base RAM is not a choice on an Agat-9: its 128K is fixed. The cards are, but
-  // they are different cards, so each machine shows only its own — a greyed
+  // they are different cards, so each machine shows only its own — a grayed
   // ЭмПЗУ next to a live Ext. RAM would suggest the two belonged together.
   //
   // Disabled or not, the select still reads as a statement about the machine,
@@ -858,7 +858,7 @@
   // The run loop says the same line twice a second, and most of the time it is
   // the line already shown; write only what differs, so a repaint means the
   // machine changed. What "differs" means is `shown`, since the line is more
-  // than its text: a bit can carry a colour and a tooltip.
+  // than its text: a bit can carry a color and a tooltip.
   //
   // An error holds the line against that traffic. A failed load leaves the
   // machine running, so describe() reaches the line inside the tick and the
@@ -1001,7 +1001,7 @@
   mouseSel.addEventListener('change', applyModel);
 
   // The monitor is not part of the machine, so changing it repaints rather
-  // than rebuilds: the program keeps running, only the colours move.
+  // than rebuilds: the program keeps running, only the colors move.
   monitorSel.addEventListener('change', function () {
     app.setMonitor(monitorSel.value);
     saveUrl();
@@ -1451,7 +1451,7 @@
   // A handle for the browser console: agat.machine, agat.video, agat.drives.
   window.agat = app;
 
-  // A control touched after an error is an acknowledgement: the run loop can
+  // A control touched after an error is an acknowledgment: the run loop can
   // have the line back. One listener rather than a call in every handler, in
   // the capture phase so the handler's own message is the one that lands and
   // not the one refused.
