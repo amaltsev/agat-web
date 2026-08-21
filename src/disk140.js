@@ -70,6 +70,43 @@
 
   Disk140.prototype.hasDisk = function () { return !!this.media; };
 
+  // Everything the rotation model needs to go on turning where it left off.
+  // Both heads, because the head position is per drive and not per controller,
+  // and `time`/`lastByteAt`/`seed` because a head resumed without them either
+  // jumps or stops reproducing.
+  Disk140.prototype.saveState = function () {
+    var out = { drv: this.drv, motor: this.motor, writeMode: this.writeMode,
+                latch: this.latch, time: this.time, last: this.last,
+                lastByteAt: this.lastByteAt, seed: this.seed, heads: [] };
+    for (var i = 0; i < this.heads.length; i++) {
+      out.heads.push({ phase: this.heads[i].phase, track: this.heads[i].track,
+                       index: this.heads[i].index,
+                       rotated: this.heads[i].rotated });
+    }
+    return out;
+  };
+
+  Disk140.prototype.loadState = function (s) {
+    this.drv = s.drv;
+    this.motor = s.motor;
+    this.writeMode = !!s.writeMode;
+    this.latch = s.latch;
+    this.time = s.time;
+    this.last = s.last;
+    // JSON has no -Infinity, so the "no byte has been taken yet" value comes
+    // back as null and is put back the way the constructor writes it.
+    this.lastByteAt = s.lastByteAt === null || s.lastByteAt === undefined
+                    ? -Infinity : s.lastByteAt;
+    this.seed = s.seed;
+    var list = s.heads || [];
+    for (var i = 0; i < this.heads.length && i < list.length; i++) {
+      this.heads[i].phase = list[i].phase;
+      this.heads[i].track = list[i].track;
+      this.heads[i].index = list[i].index;
+      this.heads[i].rotated = list[i].rotated;
+    }
+  };
+
   Object.defineProperty(Disk140.prototype, 'track', {
     get: function () { return this.heads[this.drv].track; },
   });

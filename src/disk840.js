@@ -140,6 +140,37 @@
 
   Disk840.prototype.hasDisk = function () { return !!this.media; };
 
+  // The clock keeps turning in write mode on this controller, so a snapshot has
+  // to carry the byte boundary's phase as well as the head: `nextByteAt` is a
+  // float, a whole number of byte times ahead of the last one, and rounding it
+  // would make the disk turn at the wrong speed. `side` and `writeMode` are not
+  // here — both are bits of `portC` and come back with it.
+  Disk840.prototype.saveState = function () {
+    return { cyl: this.cyl, pos: this.pos, syncSeen: this.syncSeen,
+             atIndex: this.atIndex, ready: this.ready, data: this.data,
+             nextByteAt: this.nextByteAt, lastByteAt: this.lastByteAt,
+             portC: this.portC, latch: this.latch, latched: this.latched,
+             latchMark: this.latchMark, lastWritePos: this.lastWritePos };
+  };
+
+  Disk840.prototype.loadState = function (s) {
+    this.cyl = s.cyl;
+    this.pos = s.pos;
+    this.syncSeen = !!s.syncSeen;
+    this.atIndex = !!s.atIndex;
+    this.ready = !!s.ready;
+    this.data = s.data;
+    this.nextByteAt = s.nextByteAt;
+    // JSON has no -Infinity; null is the constructor's "no byte yet".
+    this.lastByteAt = s.lastByteAt === null || s.lastByteAt === undefined
+                    ? -Infinity : s.lastByteAt;
+    this.latch = s.latch;
+    this.latched = !!s.latched;
+    this.latchMark = !!s.latchMark;
+    this.lastWritePos = s.lastWritePos;
+    this.setPortC(s.portC);            // `side` follows it, as it does live
+  };
+
   var PC_DIR = 2;      // port C bit 2: step direction
   var PC_DRIVE = 3;    // port C bit 3: drive select
   var PC_SIDE = 4;     // port C bit 4: head/side select

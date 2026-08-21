@@ -107,6 +107,7 @@ if (!target) { console.error('need an image'); process.exit(2); }
 
 H.loadRoms(ctx).then(async (roms) => {
   const sniffed = await H.sniffFile(ctx, target);
+  let resumed = '';
   const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
   const slots = {};
   const card = (n, name, kb) => {
@@ -130,6 +131,9 @@ H.loadRoms(ctx).then(async (roms) => {
     if (sniffed.kind) slot = H.insert(m, ctx.AGAT.mount(sniffed));
     m.reset();
     if (!flags.cold) m.bootSlot(slot);
+    // A container that carries the machine it was saved in the middle of is
+    // resumed rather than booted, so the picture is the one it was left on.
+    if (!flags.cold) resumed = await H.resume(ctx, m, sniffed.agc);
   }
 
   const cpu = m.cpu;
@@ -171,6 +175,7 @@ H.loadRoms(ctx).then(async (roms) => {
     : (ctx.AGAT.MODE_NAMES[m.videoMode().vtype] || '?') +
       ' $' + m.mode.toString(16) + ' @$' + m.videoMode().base.toString(16);
   console.log(path.basename(target) + ': Agat-' + model + ' ' + sniffed.kind +
-              ' ' + mode + ' pc=$' + cpu.pc.toString(16).toUpperCase() + ' -> ' + out);
+              ' ' + mode + ' pc=$' + cpu.pc.toString(16).toUpperCase() +
+              (resumed ? ' (' + resumed + ')' : '') + ' -> ' + out);
   console.log(ctx.AGAT.Video.dumpText(m));
 }).catch((e) => { console.error(e); process.exit(1); });

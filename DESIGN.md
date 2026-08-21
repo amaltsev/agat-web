@@ -74,6 +74,7 @@ Load order matters only in that a module's dependencies must already be on
 | `info.js` | the card under the controls: what the container says it is |
 | `audio.js` | `$C030` edges → PCM |
 | `fil.js` | `.fil` loading |
+| `state.js` | the machine as a snapshot: the `.agc` `state` block, both ways |
 | `app.js` | browser glue: run loop, media routing, diagnostics |
 
 Flat `src/` on purpose: two consumers have to agree on the file set, and a flat
@@ -98,6 +99,10 @@ Cards are registered by slot and may expose:
 - `insert(media)` / `media` — anything that takes a disk
 - `reset()` — the bus reset line, if the card latches anything
 - `lamp(now)` — `0` dark, `1` spinning, `2` transferring, for the drive lamps
+- `saveState()` / `loadState(s)` — the card's own registers, for a snapshot. A
+  `Uint8Array` in what `saveState` returns is packed by `state.js`, so a card
+  hands back `{ state: 0x80, ram: this.ram }` and never sees base64; `loadState`
+  fills that array in place rather than replacing it.
 
 `lamp()` belongs to the card because only the card knows which of its registers
 is the motor line — port C bit 7 on the 840K, `$C0E9` on the 140K — and which
@@ -402,6 +407,61 @@ loop control, backwards, so the two cannot drift apart.
 
 Track synthesis uses a seeded xorshift, not `Math.random`, so headless runs
 reproduce.
+
+---
+
+## The machine as a snapshot
+
+`state.js` writes and reads the `.agc` `state` block — the RAM, the CPU, the
+raster counter, every card's registers, both drives' heads. [AGC.md](AGC.md#state--the-machine-as-it-stood)
+is the format; this is the one idea it turns on.
+
+**Restore writes into the machine `build()` already made. It never builds one.**
+By the time a container's media load, `App.build()` has constructed a `Machine`
+from `Machine.PROFILES` and fitted its cards, so putting a snapshot back is
+`ram.set(bytes)` and `cpu.pc = …` into that machine.
+
+That is not a shortcut, it is the whole design, because the live machine is a
+knot of deliberate aliases and a rebuild would have to reconstruct every one of
+them:
+
+| | |
+|---|---|
+| `machine.cpu.bus === machine` | a reference cycle; `JSON.stringify` throws on it outright |
+| `machine.psrom === machine.cards[2]` | one card under two names, and likewise `xram`, `xram9` |
+| `machine.rom`, `video.font` | views into the shared `App.roms`, not copies |
+| `Palette.cur` | one of four shared module tables, not a copy of one |
+| `video.palette` | a shared table in `AGAT.MONITORS` |
+| a mouse's `rom` | `roms.mouse.subarray(0x700, 0x800)` — a view sharing a buffer |
+
+Cloning any of those and getting one wrong would be silent. Filling arrays in
+place gets none of them wrong, and `Palette.setIndex` exists so that even the
+palette comes back as one of the four rather than beside them.
+
+The price is that the machine has to be the right shape first, and `state.fits`
+is that check: same model, same base RAM, same card class and size in every
+slot, both ways round. It is synchronous and returns the sentence saying why not,
+which is also what makes `#agc=game.agc&model=9` do something sensible — the
+address asks for a machine the snapshot is not about, so the container boots and
+the status line says so. One mechanism, not two.
+
+What is **not** in a snapshot is as deliberate: the speaker's queue, the pointer
+capture, the wall clock and the diagnostics counters are the page's rather than
+the machine's and resynchronise by themselves; the disk is carried by the
+medium's patches, as it is in any container, so a restored drive finds the disk
+it was reading and saving twice gives the same file. `Video` has nothing to save
+at all — `flash` is recomputed from `cpu.cycles` each `render()`, `idx` and
+`pixels` are scratch, and `width`/`height` are set by the painter.
+
+`cycles` is saved as it stands rather than rebased to zero, because every other
+timestamp in the machine — the next raster line, both drives' byte clocks, the
+«Марсианка»'s step timer — is an absolute value on that one scale.
+
+`node tools/check.js state <image>` is the oracle: it boots a machine, runs it,
+saves it, restores into a second, and then runs **both** the same distance again
+and requires them to still agree on the clock, the screen and every byte of RAM.
+Two machines that agree at the moment of the restore and drift a second later is
+exactly the failure this can have, and nothing cheaper catches it.
 
 ---
 
@@ -743,6 +803,8 @@ node tools/check.js io     <image>  # $C0xx histogram
 node tools/check.js sniff  <file…>  # what the sniffer makes of each
 node tools/check.js keys   <.agc>   # the controls panel and the winnowed board
 node tools/check.js write  <image> --keys=…    # boot unlocked, say what was written
+node tools/check.js state  <image>  # save the machine mid-run, restore it into a
+                                    # fresh one, and run both on
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
 node tools/shot.js <image> --mouse=nippel --click=R --hold=L --move=60,0
                                     # ...and drive a mouse over it

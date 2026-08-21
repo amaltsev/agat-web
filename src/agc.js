@@ -374,6 +374,11 @@
       info: oneLine(c.info),
       hint: oneLine(c.hint),
       media: [],
+      // The machine as it stood, if the file carries one. Handed on exactly as
+      // it was written, still packed: what is inside a snapshot is state.js's
+      // business, and a container that carries one this reader does not
+      // understand is still a container and still boots.
+      state: c.state || null,
     };
     return { fields: out, media: c.media || [] };
   }
@@ -497,6 +502,9 @@
     if (hint) o.hint = hint;
     var list = spec.media || [], i, todo = [];
     o.media = [];                    // in place, so the field keeps its order
+    // Last of all, and only when asked for: a snapshot is bulk nobody reads,
+    // and everything above it is what somebody opening the file came for.
+    if (spec.state) o.state = spec.state;
     for (i = 0; i < list.length; i++) todo.push(buildMedium(list[i], spec));
     return Promise.all(todo).then(function (media) {
       o.media = media;

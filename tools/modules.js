@@ -27,6 +27,7 @@ const MODULES = [
   'src/info.js',
   'src/audio.js',
   'src/fil.js',
+  'src/state.js',
   'src/app.js',
 ];
 

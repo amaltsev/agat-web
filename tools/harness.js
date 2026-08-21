@@ -77,6 +77,24 @@ function makeMachine(ctx, roms, opts) {
   return m;
 }
 
+// The machine a container was saved in the middle of, put back into the machine
+// just built — the same thing App.applyAgc does after the media load, so that a
+// container carrying a `state` resumes at the command line as it does on the
+// page. Returns the sentence for whoever is printing a line, empty when the
+// container carried no state; a state that does not fit says why and the
+// machine is left booting, which is the behavior the page has.
+//
+// `slots` beside `machine` is the whole of what state.js asks of an App, so the
+// machine itself does — makeMachine hangs the resolved map on it.
+function resume(ctx, m, agc) {
+  if (!agc || !agc.state) return Promise.resolve('');
+  const A = ctx.AGAT;
+  const app = { machine: m, slots: m.slots };
+  return A.state.restore(app, agc.state).then(
+    (s) => A.state.describe(s),
+    (e) => 'booted - ' + e.message);
+}
+
 // Put media into whichever controller can read it; returns the slot used.
 function insert(m, media) {
   const A = m.constructor;
@@ -105,6 +123,6 @@ function keyCode(c) {
 }
 
 module.exports = {
-  loadModules, loadRoms, sniffFile, mountFile, makeMachine, insert, keyCode,
+  loadModules, loadRoms, sniffFile, mountFile, makeMachine, insert, keyCode, resume,
   ROOT, MODULES,
 };

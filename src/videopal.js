@@ -84,14 +84,20 @@
   Palette.prototype.select = function (reg) {
     if (reg > 3) return;
     this.regs[reg >> 1] = reg & 1;
-    this.index = this.regs[0] | (this.regs[1] << 1);
-    this.cur = PALETTES[this.index];
+    this.setIndex(this.regs[0] | (this.regs[1] << 1));
   };
 
-  Palette.prototype.reset = function () {
-    this.regs[0] = this.regs[1] = 0;
-    this.index = 0;
-    this.cur = PALETTES[0];
+  Palette.prototype.reset = function () { this.setIndex(0); };
+
+  // The two flip-flops, the number they make and the table it picks, set
+  // together. `cur` is one of the four shared tables rather than a copy of one,
+  // so anything that puts a palette back has to come through here: an index
+  // written on its own would leave the renderer painting from the last one.
+  Palette.prototype.setIndex = function (i) {
+    this.index = i & 3;
+    this.regs[0] = this.index & 1;
+    this.regs[1] = (this.index >> 1) & 1;
+    this.cur = PALETTES[this.index];
   };
 
   Palette.LIST = PALETTES;

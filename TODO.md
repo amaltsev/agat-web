@@ -5,7 +5,9 @@
   and it can be blank, with patches going over the blank media? Then the
   "system" boot disk can stay write protected (a flag in AGC), but the
   storage disk can then be changed to for work, replicating how it was
-  done on device.
+  done on device. A container that carries a `state` makes this sharper: the
+  machine resumes into whatever disks the container names, so which media a
+  saved session comes back to is a question the format now has to answer.
 * A container that knows where it lives. A `hosted_at` field, with a digest to
   check the fetched copy against, would let a container dropped on the page put
   itself back into the address: today a dropped one cannot be named there at
@@ -13,3 +15,6 @@
 * What does "Boot" do exactly? Fix or document better.
 * Sound card: https://agatcomp.ru/agat/Hardware/SoundNCL.shtml
 * Configurable char gen: https://gsqsoft.atlassian.net/browse/AGT-1
+* Make space smaller when it's the only key left in that area of
+  the keyboard (or make it always smaller in custom "controls" driven
+  keyboars, about half the normal width).

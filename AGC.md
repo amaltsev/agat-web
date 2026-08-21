@@ -7,7 +7,9 @@ front of you sends the byte the program is waiting for? None of that is in a
 
 An `.agc` file is one program and everything needed to run it: the disk image
 (with its patches, and with whatever a program has written to it), the machine,
-the settings, and the keyboard.
+the settings, and the keyboard. It can carry one more thing when it is asked
+to — the machine as it stood, so that it reopens where it was left rather than
+booting.
 
 It is JSON: everything a person writes or reads is text in the file, and only
 the disk image inside it is packed — base64, gzipped when that makes it smaller,
@@ -436,6 +438,68 @@ from. Then the whole nibble stream is saved instead, as a `.nib` payload with no
 patches. It is a bigger file, but not a lossy one, and it reloads without any of
 this having to know: media are identified by size.
 
+### `state` — the machine as it stood
+
+Everything above says what a program *is*. `state` says where a particular
+person had got to in it: the RAM, the CPU's registers, the raster counter, the
+banking registers on every card, where each drive left its head. A container
+that carries one **resumes** when it is opened, instead of booting.
+
+```json
+"state": {
+  "version": 1,
+  "cycles": 91234567,
+  "cpu": { "a": 0, "x": 3, "y": 255, "s": 248, "p": 52, "pc": 2051 },
+  "machine": {
+    "model": 7, "ramSize": 65536,
+    "mode": 6, "rasterLine": 143, "nextLine": 91234700.5, "irqRaw": true,
+    "psromMode": 1, "kbdLatch": 0, "cyrillic": false, "speaker": 0,
+    "palette": 0, "mem7": 0,
+    "ram": { "gz": ["…"] }
+  },
+  "slots": {
+    "2": { "state": 128, "ram": { "gz": ["…"] }, "card": "psrom", "size": 32768 },
+    "3": { "drv": 0, "motor": 1, "time": 91234000, "seed": 623456789,
+           "heads": [{ "phase": 34, "track": 17, "index": 3312, "rotated": 1 },
+                     { "phase": 20, "track": 10, "index": 0, "rotated": 0 }],
+           "card": "fdd140", "locked": false }
+  }
+}
+```
+
+| field | |
+|---|---|
+| `version` | the snapshot's own format version — `1`. Not `agc`: see below. |
+| `cycles` | the master clock, in CPU cycles since the machine was switched on. Every other timestamp in the block is an absolute value on this one scale. |
+| `cpu` | `a x y s p pc`, and `halted`/`irqLine`/`irqPending`/`nmiEdge` where they are set |
+| `machine` | the model and base RAM size it is for, every register `reset()` touches, and `ram` — base RAM, as a payload is written |
+| `slots` | one entry per fitted card, keyed by slot number |
+
+A slot entry is whatever that card holds, plus three fields the slot rather than
+the card contributes: `card` and `size`, which say what has to be in the slot
+for the snapshot to mean anything, and `locked`, the disk's write lock — which
+is the person's choice rather than the program's and would otherwise come back
+on.
+
+**The disk is not in here.** What a program wrote to it is carried by the
+medium's `patches`, as it is in any container, so a restored drive finds the
+disk it was reading and a container that is saved twice is the same file both
+times.
+
+Neither is anything host-side: the speaker's queue, the pointer, the wall clock.
+The cone's *position* is the machine's — a program can read it at `$C030` — and
+that is saved; the queue of edges waiting to be played is the page's and is not.
+
+**A `state` that does not fit the machine is refused, not forced.** It names the
+model, the base RAM size and every card, and if the machine that got built is
+not that machine the container boots as it would have without one and the page
+says why. That is what makes `#agc=game.agc&model=9` do something sensible: the
+address asks for a machine the snapshot is not about, and the program starts
+from the beginning on it.
+
+Saving one is a checkbox on **Save AGC**, and it is off unless the container
+being saved arrived with a state already — see [Making one](#from-the-emulator).
+
 ---
 
 ## Making one
@@ -444,8 +508,16 @@ this having to know: media are identified by size.
 
 **Save AGC** writes a container from the machine as it stands: what is in the
 drives, the model and RAM, the live remap, and anything a program has written
-to an unlocked disk. It asks nothing — including about compression, which is
-decided per payload and per patch by whether it pays.
+to an unlocked disk. It asks one thing, and only because the answer is a
+different document either way: whether to carry the [machine
+state](#state--the-machine-as-it-stood) — where the program had got to — along
+with the program. A container without one is something to hand to somebody; one
+with a state is where a particular person was. The box starts ticked for a
+container that already came with a state and clear for one that did not,
+including every bare image.
+
+Nothing else is asked, including about compression, which is decided per
+payload, per patch and per snapshot by whether it pays.
 
 A container that was loaded from a file keeps its own title and filename. One
 made from a bare image takes the image's name for both, so `game.dsk` saves as
@@ -488,7 +560,10 @@ runs on, so a link to one somebody else hosts is a link to something that runs.
 The address's other keys go
 into the machine the container builds rather than on top of it, so
 `#agc=…&model=9` tries the program on the other machine without editing the
-file, and the other machine is the one it boots on. Each of them is a
+file, and the other machine is the one it boots on. **Boots**, and does not
+resume: a container carrying a [`state`](#state--the-machine-as-it-stood) put on
+a machine the snapshot is not about says so and starts the program from the
+beginning. Each of them is a
 difference: a key appears only where the machine and the container disagree, so
 a container running as it asks to leaves `#agc=…` and nothing else, and the
 address follows the container if the container is later changed.
@@ -643,6 +718,11 @@ which is the machine having one `←`.
   readers, and a reader that folds them together loses which is which for good.
 - A payload carries `data` or `gz`, and a patch one of `hex`, `data` or `gz` —
   never two. Read any of them; refuse a record that gives more than one.
+- `state` has a version of its own, and it is not `agc`. A container carrying a
+  snapshot a reader does not understand is still a container and should still
+  boot; only the snapshot is refused. That is also why adding `state` did not
+  move `agc`: a reader that has never heard of it ignores it and boots, which is
+  a correct outcome rather than a broken one.
 - Which encoding to *write* is a size decision and nothing else. The forms mean
   the same bytes, so a reader must take whichever it is handed, and a writer
   that only ever emitted `data` would still produce files this one reads.
@@ -650,4 +730,6 @@ which is the machine having one `←`.
 The reference implementation is [`src/agc.js`](src/agc.js) — about 500 lines,
 no dependencies, and the same file reads and writes. Both directions are
 asynchronous there, because gzip in a browser is a stream; everything between
-them works in plain bytes, and a patch in memory is `{ at, bytes }`.
+them works in plain bytes, and a patch in memory is `{ at, bytes }`. `state`
+passes through it packed and untouched: what is inside a snapshot belongs to
+[`src/state.js`](src/state.js), which is also where the fitting check lives.

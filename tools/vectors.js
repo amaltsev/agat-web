@@ -2143,6 +2143,118 @@ async function agcTests() {
       eq('a container\'s cards move with the model',
          [seven.slots[4].card, seven.slots[6].card, seven.slots[2].card],
          ['xram', 'mouse-mars-rom', 'psrom']);
+
+      // --- and the machine it had got to ------------------------------------
+      //
+      // A container that carries a state resumes it instead of booting, and
+      // the whole of the question is whether the machine that comes back is
+      // the one that went in. It is checked field by field rather than by
+      // running the two on, because vectors.js is the one-second suite and
+      // `check.js state` is where two machines are run side by side.
+
+      // What the state has to agree with the built machine about, and what
+      // happens when it does not. No gzip in here at all: `fits` is
+      // synchronous so that this can be asked cheaply, of a stub.
+      const stub = (model, ram, slots) =>
+        ({ machine: { model: model, ramSize: ram }, slots: slots });
+      const st = (model, ram, slots) =>
+        ({ version: 1, machine: { model: model, ramSize: ram }, slots: slots });
+      const stock7 = { 2: { card: 'psrom', ram: 0x8000 },
+                       3: { card: 'fdd140' } };
+      eq('a state fits the machine it was taken from',
+         A.state.fits(stub(7, 0x10000, stock7), st(7, 0x10000, {
+           2: { card: 'psrom', size: 0x8000 }, 3: { card: 'fdd140' } })), '');
+      eq('a state for the other model is refused',
+         A.state.fits(stub(9, 0x20000, stock7), st(7, 0x10000, {})),
+         'the state is for an Agat-7 and this is an Agat-9');
+      eq('so is one for another amount of base RAM',
+         A.state.fits(stub(7, 0x20000, stock7), st(7, 0x10000, {})),
+         'the state is for 64K of base RAM and this machine has 128K');
+      eq('a card that is not there is refused',
+         A.state.fits(stub(7, 0x10000, { 3: { card: 'fdd140' } }),
+                      st(7, 0x10000, { 2: { card: 'psrom', size: 0x8000 } })),
+         'the state wants a psrom in slot 2 and this machine has an empty slot');
+      eq('...and so is a card that is there and should not be',
+         A.state.fits(stub(7, 0x10000, stock7),
+                      st(7, 0x10000, { 3: { card: 'fdd140' } })),
+         'this machine has a psrom in slot 2 and the state does not');
+      eq('a card of the wrong size is refused',
+         A.state.fits(stub(7, 0x10000, { 2: { card: 'psrom', ram: 0x20000 } }),
+                      st(7, 0x10000, { 2: { card: 'psrom', size: 0x8000 } })),
+         'the state wants 32K in slot 2 and this machine has 128K');
+      eq('a state from a newer emulator is refused rather than guessed at',
+         A.state.fits(stub(7, 0x10000, stock7),
+                      { version: 99, machine: { model: 7, ramSize: 0x10000 } }),
+         'the state was made by a newer emulator (state 99, this reads 1)');
+
+      // The round trip. Fingerprints in three places a snapshot has to reach —
+      // base RAM, a card's own RAM, and a drive head — and then out through
+      // Save and back in through a fresh App.
+      const running = await load(stock);
+      eq('a container with no state says so, and boots',
+         [running.agcState, running.machine.cpu.pc], [null, 0xc300]);
+      for (let i = 0; i < 50000; i++) running.machine.cpu.step();
+      running.machine.ram[0x1234] = 0xa5;
+      running.machine.psrom.ram[0x77] = 0x5a;
+      running.machine.psrom.state = 0xa0;
+      running.machine.cards[3].heads[0].track = 17;
+      running.machine.cards[3].heads[0].index = 3312;
+      running.machine.cards[3].media.locked = false;
+      running.machine.kbdLatch = 0x8d;
+      running.machine.cyrillic = true;
+
+      const withState = await running.toAgc({ state: true });
+      const asJson = JSON.parse(withState);
+      eq('the state goes in last, after the media',
+         Object.keys(asJson).slice(-2), ['media', 'state']);
+
+      const resumed = await load(ctx.Uint8Array.from(Buffer.from(withState)));
+      const cpuOf = (a) => [a.machine.cpu.cycles, a.machine.cpu.pc, a.machine.cpu.a,
+                            a.machine.cpu.x, a.machine.cpu.y, a.machine.cpu.s,
+                            a.machine.cpu.p];
+      eq('a container with a state resumes the CPU rather than booting',
+         cpuOf(resumed), cpuOf(running));
+      eq('...and the raster with it',
+         [resumed.machine.rasterLine, resumed.machine.nextLine],
+         [running.machine.rasterLine, running.machine.nextLine]);
+      eq('...and base RAM, byte for byte',
+         Buffer.compare(Buffer.from(resumed.machine.ram),
+                        Buffer.from(running.machine.ram)), 0);
+      eq('...and the card RAM behind $D000',
+         [Buffer.compare(Buffer.from(resumed.machine.psrom.ram),
+                         Buffer.from(running.machine.psrom.ram)),
+          resumed.machine.psrom.state],
+         [0, 0xa0]);
+      eq('...and where the drive head was left',
+         [resumed.machine.cards[3].heads[0].track,
+          resumed.machine.cards[3].heads[0].index], [17, 3312]);
+      eq('...and the lock the person had taken off the disk',
+         resumed.machine.cards[3].media.locked, false);
+      eq('...and the keyboard the program can read',
+         [resumed.machine.kbdLatch, resumed.machine.cyrillic], [0x8d, true]);
+      eq('the state block records the container it came from',
+         !!resumed.agcState, true);
+      // The palette's four tables are shared module constants, so restoring the
+      // index has to leave the renderer pointed at one of them and not a copy.
+      eq('the palette comes back as one of the four, not a copy of one',
+         resumed.machine.palette.cur === A.Palette.LIST[resumed.machine.palette.index],
+         true);
+
+      // Saving a resumed container again gives the same file: nothing
+      // accumulates, which is what `writeBack` is held to as well.
+      eq('a resumed container saves as itself',
+         await resumed.toAgc({ state: true }) === withState, true);
+      // ...and the box is not ticked for anyone: asked for without one, the
+      // same machine writes the container it would have written before.
+      eq('and saves without one when it is not asked for',
+         JSON.parse(await resumed.toAgc()).state, undefined);
+
+      // The refusal, through the whole loop: the address puts the program on
+      // the other machine, which is not the machine the snapshot is about.
+      const elsewhere = await load(ctx.Uint8Array.from(Buffer.from(withState)),
+                                   { model: 9 });
+      eq('a state refused on another machine leaves it booting the medium',
+         [elsewhere.model, elsewhere.machine.cpu.pc], [9, 0xc600]);
     }
 
     // --- the video interrupts ------------------------------------------------

@@ -21,6 +21,10 @@
 //                                                built from a fragment, and the
 //                                                fragment written back out
 //   node tools/check.js modules                  index.html vs tools/modules.js
+//   node tools/check.js state  <image> [cycles]  save the machine mid-run,
+//                                                restore it into a fresh one,
+//                                                and run both on: the two have
+//                                                to stay in step
 //
 // --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
 // --cold skips the boot and cold-starts into the monitor instead,
@@ -684,6 +688,102 @@ async function urlkeysCmd(roms) {
   process.exit(fail ? 1 : 0);
 }
 
+// A snapshot is only worth anything if the machine it restores goes on running
+// the same program the same way, and two machines that agree at the moment of
+// the restore and disagree a second later is exactly the failure this can have.
+// So: boot one, run it, save it, restore into a second, and then run *both* the
+// same distance again and require them to still agree — on the clock, on the
+// screen, and on every byte of RAM.
+//
+// The disk is not in a snapshot — a container carries what was written to it as
+// patches instead — so the media is copied across by hand here, which is what
+// the container does by another route and what leaves this measuring the state
+// machinery alone.
+if (cmd === 'state') {
+  H.loadRoms(ctx).then(stateCmd).catch(die);
+  return;
+}
+
+async function stateCmd(roms) {
+  const A = ctx.AGAT;
+  const target = rest[0];
+  const cycles = Number(rest[1] || 40e6);
+  if (!target) die('need an image');
+  const sniffed = await H.sniffFile(ctx, target);
+  const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
+  const agc = sniffed.agc;
+  const build = () => {
+    const m = H.makeMachine(ctx, roms, {
+      model: model,
+      ramSize: agc && agc.machine.ram ? agc.machine.ram * 1024 : undefined,
+    });
+    let slot = A.Machine.SLOTS[model].fdd840;
+    if (sniffed.kind && sniffed.kind !== 'fil') slot = H.insert(m, A.mount(sniffed));
+    if (flags.slot) slot = Number(flags.slot);
+    m.reset();
+    if (!flags.cold) m.bootSlot(slot);
+    return { m, slot };
+  };
+  const run = (m, n) => {
+    const end = m.cpu.cycles + n;
+    while (m.cpu.cycles < end && !m.cpu.halted) m.cpu.step();
+  };
+  // `slots` beside `machine` is the whole of what state.js asks of an App, so a
+  // two-field stand-in does here as it does for writeBack.
+  const app = (m) => ({ machine: m, slots: m.slots });
+
+  const a = build();
+  run(a.m, cycles);
+  const saved = await A.state.save(app(a.m));
+  const text = JSON.stringify(saved);
+
+  const b = build();
+  const media = a.m.cards[a.slot] && a.m.cards[a.slot].media;
+  if (media) {
+    b.m.cards[b.slot].media.bytes.set(media.bytes);
+    if (media.attrs) b.m.cards[b.slot].media.attrs.set(media.attrs);
+  }
+  await A.state.restore(app(b.m), JSON.parse(text));
+
+  console.log('image      ' + path.basename(target) + '  (' + sniffed.kind + ')' +
+              (agc ? '  .agc "' + agc.title + '"' : ''));
+  console.log('machine    Agat-' + model + ', boot slot ' + a.slot);
+  console.log('saved      ' + Math.round(text.length / 1024) + 'K at ' +
+              hex(saved.cpu.pc) + ', ' + (saved.cycles / 1.02e6).toFixed(2) + ' s in');
+
+  let bad = 0;
+  const same = (what, x, y) => {
+    if (JSON.stringify(x) === JSON.stringify(y)) return;
+    bad++;
+    console.log('DIFFERS    ' + what + '\n  saved   ' + JSON.stringify(x) +
+                '\n  restored ' + JSON.stringify(y));
+  };
+  const shot = (m) => A.Video.dumpText(m);
+  const regs = (m) => [m.cpu.cycles, m.cpu.pc, m.cpu.a, m.cpu.x, m.cpu.y,
+                       m.cpu.s, m.cpu.p, m.rasterLine];
+  same('the machine it came back as', regs(a.m), regs(b.m));
+  same('the screen it came back with', shot(a.m), shot(b.m));
+
+  // And then the half that only running can answer.
+  run(a.m, cycles);
+  run(b.m, cycles);
+  same('the machine after another ' + (cycles / 1.02e6).toFixed(1) + ' s',
+       regs(a.m), regs(b.m));
+  same('the screen after it', shot(a.m), shot(b.m));
+  let ram = -1;
+  for (let i = 0; i < a.m.ram.length; i++) {
+    if (a.m.ram[i] !== b.m.ram[i]) { ram = i; break; }
+  }
+  if (ram >= 0) {
+    bad++;
+    console.log('DIFFERS    RAM, first at ' + hex(ram, 5) + ': ' +
+                hex(a.m.ram[ram], 2) + ' vs ' + hex(b.m.ram[ram], 2));
+  }
+  console.log('pc         ' + hex(a.m.cpu.pc) + ' both');
+  console.log(bad ? 'DIVERGED' : 'OK - in step');
+  process.exit(bad ? 1 : 0);
+}
+
 // --- everything else boots a machine ----------------------------------------
 
 const target = rest[0];
@@ -726,6 +826,10 @@ H.loadRoms(ctx).then(async (roms) => {
 
   m.reset();
   if (!flags.cold) m.bootSlot(slot);
+  // A container may carry the machine it was saved in the middle of, and then
+  // this runs on from there rather than from the boot ROM — the same thing the
+  // page does, so that what a tool reports is what a browser would show.
+  const resumed = flags.cold ? '' : await H.resume(ctx, m, agc);
 
   const cpu = m.cpu;
   const end = cpu.cycles + cycles;
@@ -749,6 +853,7 @@ H.loadRoms(ctx).then(async (roms) => {
               (agc ? '  .agc "' + agc.title + '"' : ''));
   console.log('machine    Agat-' + model + (flags.cold ? ', cold start' : ', boot slot ' + slot) +
               (flags.irq ? ', irq ' + flags.irq : ''));
+  if (resumed) console.log('state      ' + resumed);
   console.log('cycles     ' + cpu.cycles + ' (' + (cpu.cycles / 1.02e6).toFixed(2) + ' s)');
   console.log('pc         ' + hex(cpu.pc) + '   a=' + hex(cpu.a, 2) + ' x=' + hex(cpu.x, 2) +
               ' y=' + hex(cpu.y, 2) + ' s=' + hex(cpu.s, 2) + ' p=' + hex(cpu.p, 2));

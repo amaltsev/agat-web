@@ -81,7 +81,7 @@
      under the pointer when the layout is switched. */
   #layout { min-width: 8ch; text-align: center; }
   #gear { min-width: 4ch; text-align: center; }
-  #gear.on { border-color: var(--accent); }
+  #gear.on, #save.on { border-color: var(--accent); }
   /* Something has been written to a disk and is in memory only. Red, as the
      drive lamps are: this is the drives saying it, not the page. */
   #save.lit { color: #ff8078; border-color: #6a2a24; }
@@ -91,14 +91,21 @@
   /* The settings section. Under the bar rather than over it: the screen is
      above, so opening this moves the keyboard and the help and never the
      picture. */
-  #settings {
+  #settings, #saveopts {
     width: min(94vw, var(--page)); margin-top: 8px;
     background: var(--panel); border: 1px solid var(--edge);
     border-radius: 6px; padding: 8px 10px;
   }
-  #settings .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  #settings .row + .row { margin-top: 8px; }
-  #settings .key { color: var(--dim); font-size: 12.5px; min-width: 8ch; }
+  #settings .row, #saveopts .row {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  #settings .row + .row, #saveopts .row + .row { margin-top: 8px; }
+  #settings .key, #saveopts .key {
+    color: var(--dim); font-size: 12.5px; min-width: 8ch;
+  }
+  /* The one line the save panel says about what it is about to write. Dim and
+     small, because it is a note and not a control. */
+  #saveopts .note { color: var(--dim); font-size: 12.5px; }
   /* The drive lamps. Red, as the drives' own LEDs are, and as nothing else on
      the page is: an accent-blue dot among these controls reads as a button. */
   .lamps { display: flex; gap: 12px; align-items: center; }
@@ -333,7 +340,7 @@
 
 <div class="bar">
   <label class="file">Open… <input type="file" id="file" multiple></label>
-  <button id="save" title="Write what is loaded, the settings it is running under, and anything written to a disk, as an .agc container">Save AGC</button>
+  <button id="save" title="Write what is loaded, the settings it is running under, and anything written to a disk, as an .agc container — and offer to put the machine as it stands in with it, so the file reopens where it was left">Save AGC</button>
   <select id="model">
     <option value="7">Agat-7</option>
     <option value="9">Agat-9</option>
@@ -350,6 +357,24 @@
   <button id="gear" title="Memory sizes, mouse, monitor and volume" aria-expanded="false">⚙</button>
   <span class="lamps" id="lamps"></span>
   <span id="status">loading…</span>
+</div>
+
+<!-- What Save AGC is about to write. One question, and only because the answer
+     is a different document either way: a container is a program to be handed
+     to somebody, and one person's session halfway through it is not. The disk
+     and its writes are not a question — they are what a container is — so the
+     panel is one checkbox and the two buttons. -->
+<div id="saveopts" hidden>
+  <div class="row">
+    <span class="key">Save AGC</span>
+    <label title="Write the machine as it stands — the RAM, the CPU, the drive heads — so the container reopens where it was left rather than booting. It costs a few tens of kilobytes, and a container that carries one resumes on any machine of the same shape; asked for on another model it says so and boots instead."><input type="checkbox" id="savestate"> machine state</label>
+    <span class="note" id="savenote"></span>
+  </div>
+  <div class="row">
+    <span class="key"></span>
+    <button id="savego">Save</button>
+    <button id="savecancel">Cancel</button>
+  </div>
 </div>
 
 <!-- The settings a machine is run under rather than the controls it is driven
@@ -454,7 +479,9 @@
       the card under the screen, and what the program is — title, author,
       date, where it came from, a description, and one line to whoever is
       about to play, which is the card below that. <b>Save AGC</b> writes one from the
-      machine as it stands. The format is written up in
+      machine as it stands, and asks whether the machine itself should go in
+      with it — the RAM, the CPU, the drive heads, so that the container
+      reopens where it was left rather than booting. The format is written up in
       <a href="https://amaltsev.github.io/agat-web/AGC.html">AGC.md</a>.
     </td></tr>
     <tr><td><b>Drives</b></td><td>
@@ -539,6 +566,7 @@
 <script src="src/info.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/fil.js"></script>
+<script src="src/state.js"></script>
 <script src="src/app.js"></script>
 <script>
 (function () {
@@ -555,6 +583,10 @@
   var layoutBtn = document.getElementById('layout');
   var gearBtn = document.getElementById('gear');
   var settingsEl = document.getElementById('settings');
+  var saveEl = document.getElementById('save');
+  var saveOptsEl = document.getElementById('saveopts');
+  var saveStateBox = document.getElementById('savestate');
+  var saveNoteEl = document.getElementById('savenote');
   var keyboardEl = document.getElementById('keyboard');
   var controlsEl = document.getElementById('controls');
   var infoEl = document.getElementById('info');
@@ -908,6 +940,10 @@
 
   function afterLoad() {
     screen.classList.remove('empty');
+    // The save panel is about the container that was loaded, down to which way
+    // its checkbox starts, so a new one closes it rather than leaving it saying
+    // something true of the program before.
+    closeSaveOpts();
     syncMachineUI();
     // A container may have brought a key set with it: the board draws which
     // host key reaches which code, and the menu offers to draw only those.
@@ -1165,25 +1201,52 @@
   // complement is settled on — survives as a file rather than as a memory of
   // which menus were touched.
 
-  // Nothing is asked. A container that came from a file keeps its own title and
-  // filename; one made from a bare image takes the image's name for both. That
-  // is a guess, and renaming a downloaded file is easier than answering a
-  // dialog before every save.
-  document.getElementById('save').addEventListener('click', function () {
+  // The name is not asked about. A container that came from a file keeps its own
+  // title and filename; one made from a bare image takes the image's name for
+  // both. That is a guess, and renaming a downloaded file is easier than
+  // answering a dialog before every save.
+  //
+  // The one question is whether the machine goes in with the program, because
+  // the answer makes it a different document: a container without a state is a
+  // program to hand to somebody, and one with a state is where a particular
+  // person had got to. So the box starts checked for a container that already
+  // carried one — that file has already been decided about — and clear for one
+  // that did not, including every bare image.
+  saveEl.addEventListener('click', function () {
+    if (!saveOptsEl.hidden) { closeSaveOpts(); return; }
+    if (!app.agcName()) { say('nothing loaded to save', true); return; }
+    saveStateBox.checked = !!app.agcState;
+    saveNoteEl.textContent = app.agcState
+      ? 'this container came with one' : '';
+    saveOptsEl.hidden = false;
+    syncLamps();                       // the button lights while the panel is up
+  });
+
+  document.getElementById('savecancel').addEventListener('click', closeSaveOpts);
+
+  function closeSaveOpts() {
+    saveOptsEl.hidden = true;
+    syncLamps();
+  }
+
+  document.getElementById('savego').addEventListener('click', function () {
     var name = app.agcName();
     if (!name) { say('nothing loaded to save', true); return; }
+    closeSaveOpts();
+    var withState = saveStateBox.checked;
     // Writing is asynchronous — a payload is compressed if that makes it
-    // smaller — so the download starts a moment after the click rather than
-    // inside it. That is the one thing here a browser policing downloads
-    // outside a user gesture could take against, and where to look first if a
-    // save ever goes quiet on one.
-    app.toAgc().then(function (text) {
+    // smaller, and so is a snapshot's RAM — so the download starts a moment
+    // after the click rather than inside it. That is the one thing here a
+    // browser policing downloads outside a user gesture could take against, and
+    // where to look first if a save ever goes quiet on one.
+    app.toAgc({ state: withState }).then(function (text) {
       var a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
       a.download = name;
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
-      say('saved ' + name + ' — ' + Math.round(text.length / 1024) + 'K');
+      say('saved ' + name + (withState ? ' with the machine' : '') +
+          ' — ' + Math.round(text.length / 1024) + 'K');
     }).catch(function (e) { say(e.message, true); });
   });
 
@@ -1368,7 +1431,6 @@
   // that takes ten seconds to load otherwise looks exactly like a hang.
 
   var lampsEl = document.getElementById('lamps');
-  var saveEl = document.getElementById('save');
   var lampEls = [];
   var trackEls = [];
   var lockEls = [];
@@ -1445,8 +1507,13 @@
       syncLock(lockEls[i], d);
     }
     // Lit rather than relabelled: the bar is one line and a button that changes
-    // width shuffles everything after it out from under the pointer.
-    var pending = app.hasWrites() ? 'lit' : '';
+    // width shuffles everything after it out from under the pointer. The panel
+    // being open is folded in here rather than set where it is opened, because
+    // this runs ten times a second and assigns the class outright.
+    var marks = [];
+    if (app.hasWrites()) marks.push('lit');
+    if (!saveOptsEl.hidden) marks.push('on');
+    var pending = marks.join(' ');
     if (saveEl.className !== pending) saveEl.className = pending;
     // $C000 changes on a keypress and is cleared by the program that reads it,
     // so the readout has to be polled rather than pushed.

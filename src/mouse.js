@@ -81,6 +81,18 @@
     this.btn = 0;
   };
 
+  // The two counters, the remainder held outside them, and the buttons. The
+  // read counts `countersFor` keeps are diagnostics and stay out of it.
+  MouseNippel.prototype.saveState = function () {
+    return { x: this.x, y: this.y, fx: this.fx, fy: this.fy, btn: this.btn };
+  };
+
+  MouseNippel.prototype.loadState = function (s) {
+    this.x = s.x; this.y = s.y;
+    this.fx = s.fx; this.fy = s.fy;
+    this.btn = s.btn;
+  };
+
   // Y counts *down* as the pointer goes down the screen — nippelmouse.c
   // subtracts dymouse (`regs[1] -= ...`) where it adds dxmouse.
   MouseNippel.prototype.step = function (ix, iy) {
@@ -169,6 +181,21 @@
     return ((this.btn & 2) ? (v & ~0x40) : (v | 0x40)) & 0xff;
   };
 
+  // The two ports and the buttons, which is all either parallel mouse shares.
+  // `portBIdle` is not state: it says which card the mouse is on, and state.js
+  // has already checked that the fitted card is the same one.
+  Parallel.prototype.saveState = function () {
+    return { fx: this.fx, fy: this.fy, btn: this.btn,
+             portA: this.portA, portB: this.portB };
+  };
+
+  Parallel.prototype.loadState = function (s) {
+    this.fx = s.fx; this.fy = s.fy;
+    this.btn = s.btn;
+    this.portA = s.portA;
+    this.portB = s.portB;
+  };
+
   Parallel.prototype.read = function (reg, now) {
     this.polls++;
     this.regs[reg & 15]++;
@@ -254,6 +281,25 @@
     this.at = 0;
   };
 
+  // Plus what the ball still owes the driver, which lines are asserted, and
+  // when they last changed — `at` is a cpu-cycle stamp like every other.
+  MouseMars.prototype.saveState = function () {
+    var out = Parallel.prototype.saveState.call(this);
+    out.pendX = this.pendX;
+    out.pendY = this.pendY;
+    out.lines = this.lines;
+    out.at = this.at;
+    return out;
+  };
+
+  MouseMars.prototype.loadState = function (s) {
+    Parallel.prototype.loadState.call(this, s);
+    this.pendX = s.pendX;
+    this.pendY = s.pendY;
+    this.lines = s.lines;
+    this.at = s.at;
+  };
+
   MouseMars.prototype.step = function (ix, iy) {
     this.pendX += ix;
     this.pendY += iy;
@@ -333,6 +379,26 @@
     this.portA = 0;
     this.portB = this.portBIdle;
     this.state = 0x23;
+  };
+
+  // Plus the free-running position, what each axis has already been told, and
+  // the latched port C reading.
+  MouseMM8031.prototype.saveState = function () {
+    var out = Parallel.prototype.saveState.call(this);
+    out.x = this.x;
+    out.y = this.y;
+    out.last = [this.last[0], this.last[1]];
+    out.state = this.state;
+    return out;
+  };
+
+  MouseMM8031.prototype.loadState = function (s) {
+    Parallel.prototype.loadState.call(this, s);
+    this.x = s.x;
+    this.y = s.y;
+    this.last[0] = s.last[0];
+    this.last[1] = s.last[1];
+    this.state = s.state;
   };
 
   MouseMM8031.prototype.step = function (ix, iy) {

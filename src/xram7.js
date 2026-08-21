@@ -45,6 +45,15 @@
   // hardware.)
   Xram7.prototype.reset = function () { this.state = 0; };
 
+  Xram7.prototype.saveState = function () {
+    return { state: this.state, ram: this.ram };
+  };
+
+  Xram7.prototype.loadState = function (s) {
+    this.state = s.state & 0x7f;
+    if (s.ram) this.ram.set(s.ram);
+  };
+
   // Whether $8000-$BFFF is the card's rather than base RAM's.
   Xram7.prototype.selected = function () { return (this.state & 0x08) !== 0; };
 

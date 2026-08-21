@@ -33,6 +33,11 @@
     this.agcRam = 0;                      // its base RAM in bytes, 0 if unsaid
     this.agcCards = null;
     this.agcMonitor = '';                 // the monitor it asked for, '' if unsaid
+    // The machine as the container found it, still packed, or null. Unlike the
+    // fields above it is not a standing choice: it belongs to the one file, and
+    // what it is for after the load is the Save popup's checkbox, which offers
+    // to write a state back for a container that came with one.
+    this.agcState = null;
     this.overCards = opts.cards || null;
     this.slotOverrides = null;            // derived: the merge, as slots
     this.slots = AGAT.Machine.resolveSlots(this.model, this.cardSlots());
@@ -446,6 +451,7 @@
     if (!from) {
       this.title = this.author = this.date = this.url = '';
       this.notes = this.info = this.hint = this.fromAgc = '';
+      this.agcState = null;
       AGAT.keyboard.setRemap(null);
       AGAT.keyboard.setControls(null);
     }
@@ -575,6 +581,7 @@
                  : (over.ramSize || this.agcRam
                     || AGAT.Machine.PROFILES[this.model].ram);
     this.agcMonitor = c.machine.monitor || '';
+    this.agcState = c.state || null;
     this.monitor = over.monitor || this.agcMonitor || AGAT.MONITOR_DEFAULT;
     this.overCards = 'cards' in over ? over.cards : null;
     this.build();
@@ -607,14 +614,36 @@
         self.machine.reset();
         self.machine.bootSlot(disks[0]);
       }
-      return self.agcLoaded(c, keys, ctl);
+      // Last, over the top of the boot the media just did: a container that
+      // carries a machine resumes it rather than starting the program again.
+      // The disks have to be in first — the drives' heads are part of what is
+      // being put back, and there has to be a drive to put them in.
+      return self.restoreState(c.state);
+    }).then(function (note) {
+      return self.agcLoaded(c, keys, ctl, note);
+    });
+  };
+
+  // The container's machine, if it brought one. A state that does not fit the
+  // machine that got built — the address named the other model, a card was
+  // resized — is refused rather than forced, and the container boots as it
+  // would have without one; the reason goes on the status line, because a
+  // program silently starting from the beginning is exactly the kind of thing
+  // nobody would think to ask about.
+  App.prototype.restoreState = function (state) {
+    if (!state || !AGAT.state) return Promise.resolve('');
+    return AGAT.state.restore(this, state).then(function (s) {
+      return AGAT.state.describe(s);
+    }, function (e) {
+      return 'booted — ' + e.message;
     });
   };
 
   // The line a container's load leaves behind: what it is, and what it brought
   // with it that the page will be drawing.
-  App.prototype.agcLoaded = function (c, keys, ctl) {
+  App.prototype.agcLoaded = function (c, keys, ctl, note) {
     this.onStatus(this.credit() +
+                  (note ? ' — ' + note : '') +
                   (keys.ok ? ' — ' + keys.ok + ' key' + (keys.ok > 1 ? 's' : '') +
                              (keys.remapped ? ', ' + keys.remapped + ' remapped' : '')
                            : '') +
@@ -736,10 +765,25 @@
   // and RAM it is running as, the live remap and the controls it came in with.
   // A promise: what a payload is written as is decided by trying it, and the
   // platform's gzip is a stream.
-  App.prototype.toAgc = function () {
-    var media = [], k;
+  //
+  // `opts.state` adds the machine itself — the RAM, the CPU, the drive heads.
+  // Off unless asked for, because a container is a program to hand to somebody
+  // and one person's session in the middle of it is a different document.
+  App.prototype.toAgc = function (opts) {
+    var media = [], k, self = this;
     for (k in this.sources) media.push(this.writeBack(k));
+    var state = opts && opts.state && AGAT.state
+              ? AGAT.state.save(this) : Promise.resolve(null);
+    return state.then(function (st) {
+      return self.agcSpec(media, st);
+    });
+  };
+
+  // The spec AGAT.agc.build is handed, split out so there is one list of what a
+  // container is made of whether or not a state is going into it.
+  App.prototype.agcSpec = function (media, state) {
     return AGAT.agc.build({
+      state: state,
       title: this.title || (media.length ? media[0].name : ''),
       author: this.author,
       date: this.date,

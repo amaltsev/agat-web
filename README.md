@@ -83,7 +83,8 @@ write. That is what an Agat-9 system disk is asking for when it says «СИСТ�
 ИСПОРЧЕНА», and what DOS needs before `SAVE` or `INIT` will work. Writes go to
 memory and nowhere else — the file on your disk is never touched, and closing
 the tab loses them; **Save AGC** lights up while there are any, and keeps them
-as patches on the image they came from.
+as patches on the image they came from. It can also keep the machine itself, if
+you tick the box it puts up — see [`.agc`](#agc--the-agat-container) below.
 
 The **⚙** holds the settings a machine is run under rather than driven by: the
 volume, the machine's memory sizes, which monitor it is plugged into, and
@@ -203,6 +204,16 @@ A patch past 32 bytes is base64 like the payload instead. What a program writes
 to an unlocked disk is saved the same way: the written track is read back into
 the sectors it was built from, so a saved game costs a patch and not a second
 copy of the disk.
+
+A container can also carry the machine **as it stood** — the RAM, the CPU's
+registers, the drive heads, the raster counter — and then it reopens where it
+was left instead of booting. That is the one thing **Save AGC** asks about,
+because the answer makes it a different document: a container without a state is
+a program to hand to somebody, and one with a state is where a particular person
+had got to. The box starts ticked for a container that arrived with a state and
+clear for one that did not. A snapshot names the machine it is for, so a
+container resumed on another — `#agc=…&model=9`, or a card resized — says so and
+boots the program from the beginning instead.
 
 Bulk is gzipped where that helps: a payload or a patch that gets at least a
 tenth smaller is written as `gz` instead of `data`, base64 either way. An Agat

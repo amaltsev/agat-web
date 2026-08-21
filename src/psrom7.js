@@ -42,6 +42,20 @@
   // machine again. Its RAM keeps its contents, as the chips do.
   Psrom7.prototype.reset = function () { this.state = 0x80; };
 
+  // The card as a snapshot: the bank register and the chips behind it. A
+  // Uint8Array here is packed by state.js; the card never sees base64.
+  Psrom7.prototype.saveState = function () {
+    return { state: this.state, ram: this.ram };
+  };
+
+  // Into the card that is already fitted, never over it: `ram` is filled in
+  // place so everything holding a reference to it goes on holding the same
+  // array. state.js has already checked the size matches.
+  Psrom7.prototype.loadState = function (s) {
+    this.state = s.state & 0xff;
+    if (s.ram) this.ram.set(s.ram);
+  };
+
   Psrom7.prototype.readsRam = function () { return (this.state & 0x20) !== 0; };
 
   // $D000-$DFFF comes from one half of the bank, $E000-$FFFF from the top half.

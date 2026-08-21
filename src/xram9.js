@@ -61,6 +61,20 @@
     this.ofs = (this.mode & 8) ? 0 : -0x1000;
   };
 
+  // The windows, what each is pointed at, and the RAM behind them. `ofs` is
+  // derived from `mode` and comes back through setMode rather than being
+  // written twice.
+  Xram9.prototype.saveState = function () {
+    return { mode: this.mode, map: this.map, on: this.on, ram: this.ram };
+  };
+
+  Xram9.prototype.loadState = function (s) {
+    if (s.map) this.map.set(s.map);
+    if (s.on) this.on.set(s.on);
+    this.setMode(s.mode);
+    if (s.ram) this.ram.set(s.ram);
+  };
+
   // ---- $Cn00-$CnFF: the mapping register file -------------------------------
   //
   // Addressed rather than written, like everything else on this machine: the
