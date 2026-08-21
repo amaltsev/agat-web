@@ -77,10 +77,18 @@
   button:hover, select:hover, label.file:hover { border-color: var(--accent); }
   button:active { transform: translateY(1px); }
   select:disabled { opacity: .45; cursor: default; }
-  /* ЛАТ and РУС are not the same width, and neither are ⏸ and ▶: the bar
-     must not shuffle under the pointer when a button changes face. */
+  /* ЛАТ and РУС are not the same width, and neither is a held machine's face
+     the running one's: the bar must not shuffle under the pointer when a
+     button changes. */
   #layout { min-width: 8ch; text-align: center; }
   #pause, #gear { min-width: 4ch; text-align: center; }
+  /* Drawn rather than set in a glyph: ⏸ and ▶ come from different Unicode
+     blocks, and the fonts that have both draw them at wildly different sizes.
+     12px inside a 21px line box, so the button is the height of its
+     neighbours. */
+  #pause svg {
+    width: 12px; height: 12px; vertical-align: -1px; fill: currentColor;
+  }
   #gear.on, #save.on, #pause.on { border-color: var(--accent); }
   /* Something has been written to a disk and is in memory only. Red, as the
      drive lamps are: this is the drives saying it, not the page. */
@@ -341,7 +349,7 @@
 <div class="bar">
   <label class="file">Open… <input type="file" id="file" multiple></label>
   <button id="save" title="Save as AGC machine settings, initial media, and disk writes (optionally including full running state)">Save AGC</button>
-  <button id="pause" title="Pause">⏸︎</button>
+  <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg></button>
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
@@ -448,7 +456,7 @@
     the <a href="#examples" id="tolist">bundled examples</a> below.
   </p>
   <table>
-    <tr><td><b>⏸︎ / ▶︎</b></td><td>
+    <tr><td><b>Pause</b></td><td>
       Holds the machine still. Nothing is saved and nothing is lost — the
       clock stops, and goes on from where it was. <b>Boot</b>, <b>Reset</b>
       and dropping a file all mean <i>run this</i>, so any of them starts a
@@ -593,6 +601,8 @@
   var settingsEl = document.getElementById('settings');
   var saveEl = document.getElementById('save');
   var pauseEl = document.getElementById('pause');
+  var HOLD_FACE = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg>';
+  var PLAY_FACE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.6 1 11.2 6 2.6 11z"/></svg>';
   var saveOptsEl = document.getElementById('saveopts');
   var saveStateBox = document.getElementById('savestate');
   var saveNoteEl = document.getElementById('savenote');
@@ -1559,13 +1569,17 @@
     if (saveEl.className !== pending) saveEl.className = pending;
     var held = app.paused ? 'on' : '';
     if (pauseEl.className !== held) pauseEl.className = held;
-    // The glyph is what the click does, not what the machine is doing, and the
-    // lit border says which of the two it is. Both faces sit in a fixed 4ch,
-    // because a Pause/Resume label would shuffle the bar under the pointer.
-    var face = app.paused ? '\u25b6\ufe0e' : '\u23f8\ufe0e';
-    if (pauseEl.textContent !== face) {
-      pauseEl.textContent = face;
-      pauseEl.title = app.paused ? 'Resume' : 'Pause';
+    // The face is what the click does, not what the machine is doing, and the
+    // lit border says which of the two it is. Both sit in a fixed 4ch, because
+    // a Pause/Resume label would shuffle the bar under the pointer.
+    // Guarded on the name rather than on the markup: innerHTML reads back
+    // through the browser's own serializer, which need not spell the drawing
+    // the way it was written.
+    var name = app.paused ? 'Resume' : 'Pause';
+    if (pauseEl.title !== name) {
+      pauseEl.title = name;
+      pauseEl.setAttribute('aria-label', name);
+      pauseEl.innerHTML = app.paused ? PLAY_FACE : HOLD_FACE;
     }
     // $C000 changes on a keypress and is cleared by the program that reads it,
     // so the readout has to be polled rather than pushed.

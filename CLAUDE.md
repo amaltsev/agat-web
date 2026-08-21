@@ -156,7 +156,8 @@ Both have cost real time here:
 
 ## Development
 
-Commit on 'main' unless specifically asked to branch.
+Commit on 'main' unless specifically asked to branch. Commit when asked
+to, not automatically.
 
 Keep prose brief; especially in UI, including element title
 hints. Describe current state, not why and how that state was arrived
