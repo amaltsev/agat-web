@@ -340,12 +340,12 @@
 
 <div class="bar">
   <label class="file">Open… <input type="file" id="file" multiple></label>
-  <button id="save" title="Write what is loaded, the settings it is running under, and anything written to a disk, as an .agc container — and offer to put the machine as it stands in with it, so the file reopens where it was left">Save AGC</button>
+  <button id="save" title="Save as AGC machine settings, initial media, and disk writes (optionally including full running state)">Save AGC</button>
   <button id="pause" title="Hold the machine still. Nothing is lost and nothing is saved — the clock simply stops, and starts again from where it was. Boot, Reset and loading a file all start it running again.">Pause</button>
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
-  <select id="kbd" title="Draw the keyboard and light the key each host keypress reaches. АГАТ is the machine's own board, PC the keys the scancode table maps, and the last is the АГАТ board with only the keys the loaded container names — as a whole, or cut to one of its control groups.">
+  <select id="kbd" title="On-screen keyboard: АГАТ's own board, PC with scancode map, or container controls, if defined">
     <option value="">Keyboard off</option>
     <option value="agat">АГАТ keyboard</option>
     <option value="pc">PC keyboard</option>
@@ -368,7 +368,7 @@
 <div id="saveopts" hidden>
   <div class="row">
     <span class="key">Save AGC</span>
-    <label title="Write the machine as it stands — the RAM, the CPU, the drive heads — so the container reopens where it was left rather than booting. It costs a few tens of kilobytes, and a container that carries one resumes on any machine of the same shape; asked for on another model it says so and boots instead."><input type="checkbox" id="savestate"> machine state</label>
+    <label title="Include full machine state — so the container reopens where it was left"><input type="checkbox" id="savestate"> machine state</label>
     <span class="note" id="savenote"></span>
   </div>
   <div class="row">
@@ -384,12 +384,12 @@
 <div id="settings" hidden>
   <div class="row">
     <span class="key">Memory</span>
-    <select id="ram" title="Base RAM on the motherboard. It is what the video controller scans, and it masks the video mode register's page field, so software can tell.">
+    <select id="ram" title="Base RAM on the motherboard">
       <option value="32768">32K base</option>
       <option value="65536">64K base</option>
       <option value="131072">128K base</option>
     </select>
-    <select id="psrom" title="ЭмПЗУ in slot 2 — RAM behind $D000-$FFFF. Agat-7 software that installs its own vectors, character generator or disk driver needs it.">
+    <select id="psrom" title="ЭмПЗУ — RAM behind $D000-$FFFF (slot 2 by default)">
       <option value="16">16K ЭмПЗУ</option>
       <option value="32">32K ЭмПЗУ</option>
       <option value="48">48K ЭмПЗУ</option>
@@ -397,7 +397,7 @@
       <option value="128">128K ЭмПЗУ</option>
       <option value="0">no ЭмПЗУ</option>
     </select>
-    <select id="xram" title="ОЗУ expansion in slot 4 — the 16K window at $8000-$BFFF, banked out of the card's own RAM.">
+    <select id="xram" title="ОЗУ expansion — the 16K window at $8000-$BFFF (slot 4 by default)">
       <option value="16">16K ОЗУ</option>
       <option value="32">32K ОЗУ</option>
       <option value="48">48K ОЗУ</option>
@@ -405,7 +405,7 @@
       <option value="128">128K ОЗУ</option>
       <option value="0">no ОЗУ</option>
     </select>
-    <select id="xram9" title="ОЗУ expansion in slot 2 — 128K addressed through the same eight 8K windows as the motherboard's RAM, each window taken over one at a time.">
+    <select id="xram9" title="ОЗУ expansion — addressed through the same eight 8K windows as the motherboard's RAM">
       <option value="32">32K ОЗУ</option>
       <option value="64">64K ОЗУ</option>
       <option value="128">128K ОЗУ</option>
@@ -414,21 +414,21 @@
   </div>
   <div class="row">
     <span class="key">Mouse</span>
-    <select id="mouse" title="A mouse was bought separately and nothing that came with the machine expects one, so the standard machine has none. Ниппель is a card of its own; the other two hang off the printer card's parallel port, and that card comes two ways — with its ROM page fitted or without. A program reads the page before it looks at the ports, and they disagree: MouseGraf 1.6 wants the page empty, MouseGraf 4.4 and Klondike want the ROM. So the «Марсианка» is offered on either card, and the ММ-8031 on the one its own programs look for.">
+    <select id="mouse" title="Mouse: Ниппель is a card of its own; the other two hang off the printer card's parallel port">
       <option value="">no mouse</option>
       <option value="nippel">Ниппель mouse</option>
       <option value="mars">«Марсианка» mouse</option>
       <option value="mars-rom">«Марсианка» mouse (w/ROM)</option>
       <option value="mm8031">ММ-8031 mouse</option>
     </select>
-    <label title="Steer the mouse trackpad-style instead of capturing the pointer: moves over the screen feed it, scaled down, with no click to hand it over and none to take it back. A touchscreen works this way regardless — strokes steer, a tap is button A, a second finger is B, and a touch right after a tap drags."><input type="checkbox" id="trackpad"> trackpad</label>
+    <label title="Steer the mouse trackpad-style instead of capturing the pointer (default on touchscreen devices)"><input type="checkbox" id="trackpad"> trackpad</label>
   </div>
   <div class="row">
     <span class="key">Monitor</span>
-    <select id="monitor" title="The machine puts a bare 4-bit color code on the RGB connector, and the monitor decides what color that is. The common ВТЦ 202 reads bit 3 as brightness; an earlier modification read it the other way round, darkening codes 8-F; a monitor without the bit wired shows eight colors, and software drawn on one mixes the two halves freely — pick that monitor and it looks as its author saw it. «Видеосигнал» is the composite connector's gray ladder, in which green is darker than red by design.">
+    <select id="monitor" title="The machine output is a 4-bit color code — the monitor decides what color that is">
       <option value="color16">16-color RGB</option>
+      <option value="color16inv">16-color RGB (inverted brightness)</option>
       <option value="color8">8-color RGB (no brightness bit)</option>
-      <option value="color16inv">16-color RGB, inverted brightness</option>
       <option value="gray">Grayscale</option>
     </select>
   </div>

@@ -6,7 +6,7 @@
   "url": "https://github.com/amaltsev/agat-snake",
   "machine": {
     "model": 7,
-    "ram": 64
+    "ram": 32
   },
   "keys": {
     "ArrowUp": {},

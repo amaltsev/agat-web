@@ -18,3 +18,7 @@
 * Make space smaller when it's the only key left in that area of
   the keyboard (or make it always smaller in custom "controls" driven
   keyboars, about half the normal width).
+* `agc.js`'s `readJson` keeps only the fields it knows, so an unknown
+  top-level or `media` field is dropped on load and gone from the next
+  Save. AGC.md's implementer note asks a reader to carry through what it
+  does not understand; only patch records do.
