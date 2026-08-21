@@ -314,12 +314,23 @@ screen of a ported game:
   byte is in the *next* byte, so a row has to be unpacked before it is painted.
   What the C also has and the Agat-9 does not is `fill`, the bleed into the
   dark dot after a colored run: it sets that from `cursystype != SYSTEM_9`.
-- `apaint_t40_addr` remaps the character. `$A0-$FF` is already the Agat-9
-  font's Latin-then-Cyrillic block and passes through; `$00-$9F` — the inverse
-  and flashing halves — folds onto `$A0-$DF` as `$A0 + ((ch + $20) & $3F)`.
+- `apaint_t40_addr` remaps the character, and **the fold stops at `$80`**:
+  `$80-$FF` is normal video and indexes the Agat-9 font directly, while the
+  inverse and flashing halves below it carry six bits of character, which the
+  controller reads out of the font's own `$80` block as `$80 + (ch & $3F)`.
   Bits 7..6 are the attribute: `0` inverse, `1` inverse while the flash is on,
   `2` and `3` normal. Without the fold an Apple program's `(C) 1985` comes out
   as `PCT 1985`, which looks like a font bug and is not one.
+
+  The boundary is the whole question, because `$80-$9F` and `$C0-$DF` are the
+  same `@A-Z` glyphs apart from two codes — `·` at `$9E`, **`Ё` at `$9F`** —
+  and `$C0-$DF` carries `^` and `_` in their place. A fold that swallowed
+  `$80-$9F` as well prints every Russian `Ё` as `_`;
+  `examples/Alice_v2_840.agc` prints one in «сушёными фруктами», which is
+  where the boundary can be read off the screen. agat-emulator's Windows trunk
+  folds `< $A0` onto `$A0-$DF` (`videoprocs.c` at r281) and loses those two
+  glyphs; its Qt tree — 1.29.1, and the lineage the Linux package is built
+  from — folds `< $80` onto `$80`, and is what is transcribed here.
 
 ### The monitor, and the sixteen colors
 

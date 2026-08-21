@@ -1791,8 +1791,8 @@ async function agcTests() {
 // --- Apple video on the Agat-9 ----------------------------------------------
 // Both rules are videoprocs.c's. A lone hires dot is colored by the column it
 // lands in and by bit 7 of its byte; two in a row read as white. And the
-// character set an Apple program writes is not the Agat-9 font's, so $00-$9F
-// folds onto the $A0-$DF the Latin glyphs are in.
+// character set an Apple program writes is not the Agat-9 font's, so the
+// inverse and flashing halves below $80 fold onto the font's own $80 block.
 {
   // A machine as the painters read one: physical RAM, an identity map, and the
   // palette register a text mode takes its pair from.
@@ -1837,6 +1837,13 @@ async function agcTests() {
   eq('$68 is the flashing half', chars(0x68), OFF);
   eq('$A8 is not', chars(0xa8), ON);
   v.flash = false;
+  // The fold stops at $80: normal video reaches the font unchanged, which is
+  // the only way the $80 block's own two glyphs — `·` at $9E and `Ё` at $9F —
+  // are ever asked for. $C0-$DF carries `^` and `_` in their place.
+  font[0x9f * 8] = 0x40;
+  eq('$9F is the font glyph it names, not $DF', chars(0x9f), ON);
+  eq('and inverse $1F reaches it', chars(0x1f), OFF);
+  font[0x9f * 8] = 0;
 }
 
 // --- the font/mask pairing --------------------------------------------------

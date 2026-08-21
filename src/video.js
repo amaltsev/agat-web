@@ -184,11 +184,14 @@
   }
 
   // The character set an Apple program writes is not the one the Agat-9's font
-  // is in. $A0-$FF is already that font's own Latin-then-Cyrillic block and
-  // passes through; everything below it — the inverse and flashing halves —
-  // folds onto $A0-$DF (videoprocs.c, apaint_t40_addr).
+  // is in. $80-$FF is normal video and reaches the font unchanged; the inverse
+  // and flashing halves below it carry six bits of character, which the
+  // controller reads out of the font's own $80 block — bit 7 set, bit 6 clear
+  // (videoprocs.c, apaint_t40_addr). That block is `@A-Z` again, and differs
+  // from the $C0-$DF one at exactly two codes: `·` at $9E and `Ё` at $9F,
+  // which is the Ё a Russian program prints.
   function appleGlyphOf(ch) {
-    return ch < 0xa0 ? 0xa0 + ((ch + 0x20) & 0x3f) : ch;
+    return ch < 0x80 ? 0x80 + (ch & 0x3f) : ch;
   }
 
   // Glyph bits are 6..0 here whatever font window the machine's own text modes
