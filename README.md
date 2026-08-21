@@ -30,8 +30,17 @@ an `.aim`.
 | `.fil` | a single program with its DOS 3.3 catalog entry, poked straight into memory |
 | `.agc` | an Agat Container: one of the above plus the machine and keys it wants |
 
-**Boot** is `PR#N` — restart from the disk. **Reset** cold-starts into the
-machine's own monitor, which is where you land with no disk in.
+**Pause** holds the machine still: nothing is saved and nothing is lost, the
+clock simply stops and goes on from where it was. **Boot** is `PR#N` — restart
+from the disk. **Reset** cold-starts into the machine's own monitor, which is
+where you land with no disk in. All three of Boot, Reset and dropping a file
+mean *run this*, so any of them starts a paused machine again.
+
+**Save AGC** pauses too, for as long as its panel is up: a snapshot is of one
+moment, and the moment worth keeping is the one that was on the screen when you
+pressed the button rather than wherever the program has got to by the time
+you have read the box. A machine you had already paused stays paused when the
+panel closes.
 
 Keys go through the Agat's own scancode table, so **ЛАТ/РУС** switches to a
 JCUKEN layout and Cyrillic comes from where a key sits, not from what your host

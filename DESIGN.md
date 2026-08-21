@@ -760,6 +760,25 @@ budget on a 60 Hz refresh runs the machine 20% fast, and at 120 Hz twice that �
 audible immediately as pitch and tempo in anything that makes sound, and the
 reason the audio queue would otherwise drift.
 
+**Pausing is that loop not being scheduled**, and nothing else: `cpu.cycles`
+stops advancing, and every timestamp hung off it — the next raster line, both
+drives' byte clocks — stays where it was. `start()` zeroing `lastTime` is what
+makes coming back cheap: the first frame after a minute's pause takes its usual
+20 ms rather than a minute of catch-up.
+
+`App.paused` is separate from `running` and **sticky**, because every path that
+touches the machine calls `start()` on its way out — `build()`, `loadOne()`,
+`reset()`, `boot()` — and a pause any of them undid would be a pause that never
+lasted. So `start()` refuses while it is set, and what clears it is only the
+things that mean *run this*: the button, Boot, Reset, and a file arriving. The
+gear's settings deliberately do not; resizing a card is not an instruction to
+run.
+
+The Save AGC panel takes the same hold while it is open, so a snapshot is of the
+moment the button was pressed rather than of wherever the program got to while
+the box was being read. It gives the hold back only if it took it — a machine
+already paused by hand stays paused when the panel closes.
+
 ---
 
 ## Diagnostics

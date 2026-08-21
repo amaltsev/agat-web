@@ -18,6 +18,12 @@
     this.speaker = new AGAT.Speaker();
     this.image = null;
     this.running = false;
+    // Held still on purpose, as against merely not running. It is sticky —
+    // start() refuses while it is set — because everything that touches the
+    // machine calls start() on its way out, and a pause any of them undid would
+    // be a pause that never lasted. What clears it is the things that mean "run
+    // this": the button itself, Boot, Reset, and a file arriving.
+    this.paused = false;
     this.model = opts.model === 9 ? 9 : 7;     // the commoner machine, and the
     var profile = AGAT.Machine.PROFILES[this.model];  // one most native
     this.ramSize = this.model === 9                   // software expects
@@ -811,20 +817,34 @@
   // ---- run loop ------------------------------------------------------------
 
   App.prototype.start = function () {
-    if (this.running) return;
+    if (this.running || this.paused) return;
     this.running = true;
+    // Zeroed rather than set to now, so the first frame back takes its usual
+    // 20 ms instead of the whole length of the pause: the machine goes on from
+    // where it stopped rather than running the pause off in catch-up.
     this.lastTime = 0;
     requestAnimationFrame(this.frame);
   };
 
   App.prototype.stop = function () { this.running = false; };
 
+  // The machine held still. Nothing is saved and nothing is put back — the
+  // frame loop simply stops being scheduled, so cpu.cycles stops advancing and
+  // every timestamp hung off it stays where it was.
+  App.prototype.setPaused = function (on) {
+    this.paused = !!on;
+    if (this.paused) this.stop();
+    else this.start();
+  };
+
   App.prototype.reset = function () {
+    this.paused = false;               // Reset and Boot mean "run this"
     this.machine.reset();
     this.start();
   };
 
   App.prototype.boot = function (slot) {
+    this.paused = false;
     this.machine.reset();
     this.machine.bootSlot(slot === undefined ? this.slotFor('aim840') : slot);
     this.start();
@@ -906,6 +926,14 @@
     var m = this.machine;
     if (!m) return [];
     var bits = [];
+    // First, and colored: a machine that is not moving explains every other bit
+    // on the line — a dark drive lamp, a screen that has stopped — and it is
+    // the one thing on the line the person did on purpose.
+    if (this.paused) {
+      bits.push({ text: 'paused', cls: 'quiet',
+                  title: 'The machine is held still. Nothing is lost — the ' +
+                         'clock stops, and goes on from here.' });
+    }
     bits.push('Agat-' + m.model);
     if (m.model === 7) bits.push((this.ramSize >> 10) + 'K');
     bits.push(m.appleVideo

@@ -81,7 +81,7 @@
      under the pointer when the layout is switched. */
   #layout { min-width: 8ch; text-align: center; }
   #gear { min-width: 4ch; text-align: center; }
-  #gear.on, #save.on { border-color: var(--accent); }
+  #gear.on, #save.on, #pause.on { border-color: var(--accent); }
   /* Something has been written to a disk and is in memory only. Red, as the
      drive lamps are: this is the drives saying it, not the page. */
   #save.lit { color: #ff8078; border-color: #6a2a24; }
@@ -341,10 +341,7 @@
 <div class="bar">
   <label class="file">Open… <input type="file" id="file" multiple></label>
   <button id="save" title="Write what is loaded, the settings it is running under, and anything written to a disk, as an .agc container — and offer to put the machine as it stands in with it, so the file reopens where it was left">Save AGC</button>
-  <select id="model">
-    <option value="7">Agat-7</option>
-    <option value="9">Agat-9</option>
-  </select>
+  <button id="pause" title="Hold the machine still. Nothing is lost and nothing is saved — the clock simply stops, and starts again from where it was. Boot, Reset and loading a file all start it running again.">Pause</button>
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
@@ -353,6 +350,10 @@
     <option value="agat">АГАТ keyboard</option>
     <option value="pc">PC keyboard</option>
     <option value="used">Only mapped keys</option>
+  </select>
+  <select id="model">
+    <option value="7">Agat-7</option>
+    <option value="9">Agat-9</option>
   </select>
   <button id="gear" title="Memory sizes, mouse, monitor and volume" aria-expanded="false">⚙</button>
   <span class="lamps" id="lamps"></span>
@@ -447,6 +448,13 @@
     the <a href="#examples" id="tolist">bundled examples</a> below.
   </p>
   <table>
+    <tr><td><b>Pause</b></td><td>
+      Holds the machine still. Nothing is saved and nothing is lost — the
+      clock stops, and goes on from where it was. <b>Boot</b>, <b>Reset</b>
+      and dropping a file all mean <i>run this</i>, so any of them starts a
+      paused machine again. <b>Save AGC</b> pauses for as long as its panel is
+      up, so what a snapshot carries is the moment the button was pressed.
+    </td></tr>
     <tr><td><b>Keyboard</b></td><td>
       The Agat's own board, or the PC keys the table maps. The cap your
       keypress reaches is lit, with <code>$C000</code> shown underneath.
@@ -584,6 +592,7 @@
   var gearBtn = document.getElementById('gear');
   var settingsEl = document.getElementById('settings');
   var saveEl = document.getElementById('save');
+  var pauseEl = document.getElementById('pause');
   var saveOptsEl = document.getElementById('saveopts');
   var saveStateBox = document.getElementById('savestate');
   var saveNoteEl = document.getElementById('savenote');
@@ -943,7 +952,11 @@
     // The save panel is about the container that was loaded, down to which way
     // its checkbox starts, so a new one closes it rather than leaving it saying
     // something true of the program before.
+    heldForSave = false;
     closeSaveOpts();
+    // And a file arriving is an instruction to run it, however the machine came
+    // to be standing still — the panel's hold, or the Pause button.
+    app.setPaused(false);
     syncMachineUI();
     // A container may have brought a key set with it: the board draws which
     // host key reaches which code, and the menu offers to draw only those.
@@ -1219,6 +1232,12 @@
     saveNoteEl.textContent = app.agcState
       ? 'this container came with one' : '';
     saveOptsEl.hidden = false;
+    // The machine is held still while the panel is up. A snapshot is of one
+    // moment, and the moment worth saving is the one that was on the screen
+    // when the button was pressed — not wherever the program has got to by the
+    // time the box has been read and the button found. It also makes the answer
+    // to "what am I about to save" something that stops long enough to look at.
+    holdForSave();
     syncLamps();                       // the button lights while the panel is up
   });
 
@@ -1226,7 +1245,23 @@
 
   function closeSaveOpts() {
     saveOptsEl.hidden = true;
+    releaseSave();
     syncLamps();
+  }
+
+  // The hold is only ours to give back if we took it: a machine the person had
+  // already paused stays paused when the panel closes, which is the one case
+  // where releasing it outright would undo something they asked for.
+  var heldForSave = false;
+
+  function holdForSave() {
+    heldForSave = !app.paused;
+    if (heldForSave) app.setPaused(true);
+  }
+
+  function releaseSave() {
+    if (heldForSave) app.setPaused(false);
+    heldForSave = false;
   }
 
   document.getElementById('savego').addEventListener('click', function () {
@@ -1248,6 +1283,15 @@
       say('saved ' + name + (withState ? ' with the machine' : '') +
           ' — ' + Math.round(text.length / 1024) + 'K');
     }).catch(function (e) { say(e.message, true); });
+  });
+
+  // Held still, and lit rather than relabelled for the reason Save AGC is: the
+  // bar is one line, and a button that changes width shuffles everything after
+  // it out from under the pointer.
+  pauseEl.addEventListener('click', function () {
+    app.setPaused(!app.paused);
+    say(app.describe());
+    syncLamps();
   });
 
   document.getElementById('boot').addEventListener('click', function () { app.boot(); });
@@ -1515,6 +1559,8 @@
     if (!saveOptsEl.hidden) marks.push('on');
     var pending = marks.join(' ');
     if (saveEl.className !== pending) saveEl.className = pending;
+    var held = app.paused ? 'on' : '';
+    if (pauseEl.className !== held) pauseEl.className = held;
     // $C000 changes on a keypress and is cleared by the program that reads it,
     // so the readout has to be polled rather than pushed.
     if (kbView) kbView.sync();
@@ -1569,7 +1615,11 @@
     syncKbd(!agcUrl);
     if (agcUrl) loadUrl(agcUrl, urlOverrides());
     say('ready — drop a file, or press Reset for the monitor');
-    setInterval(function () { if (app.running) say(app.describe()); }, 500);
+    // A paused machine gets the line too: it is not running, and the reason it
+    // is not running is the first thing on it.
+    setInterval(function () {
+      if (app.running || app.paused) say(app.describe());
+    }, 500);
     // The lamps run five times faster than the status line: at 500 ms a drive
     // that reads a couple of tracks flickers or is missed altogether.
     syncLamps();

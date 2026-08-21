@@ -2249,6 +2249,31 @@ async function agcTests() {
       eq('and saves without one when it is not asked for',
          JSON.parse(await resumed.toAgc()).state, undefined);
 
+      // --- held still ------------------------------------------------------
+      // Pausing is the frame loop not being scheduled, so what there is to
+      // assert is that it is sticky: everything that touches the machine calls
+      // start() on its way out, and a pause any of them undid would be a pause
+      // that never lasted.
+      const held = await load(stock);
+      held.setPaused(true);
+      eq('a paused machine is not running',
+         [held.paused, held.running], [true, false]);
+      held.start();
+      eq('...and start() will not undo it',
+         [held.paused, held.running], [true, false]);
+      held.build();
+      eq('...nor will a rebuild, which is what the gear does',
+         [held.paused, held.running], [true, false]);
+      held.reset();
+      eq('Reset means run this, so it gives the machine back',
+         [held.paused, held.running], [false, true]);
+      held.setPaused(true);
+      held.boot(3);
+      eq('...and so does Boot', [held.paused, held.running], [false, true]);
+      held.setPaused(true);
+      eq('a held machine says so before anything else on the line',
+         held.describe()[0].text, 'paused');
+
       // The refusal, through the whole loop: the address puts the program on
       // the other machine, which is not the machine the snapshot is about.
       const elsewhere = await load(ctx.Uint8Array.from(Buffer.from(withState)),
