@@ -231,15 +231,39 @@ function keysCmd(loaded) {
   const half = (sp) => sp.textContent + (/\bnamed\b/.test(sp.className) ? '*' : '');
   const capText = (c) => c.gone ? '·'
     : '[' + half(c.top) + (c.bot.textContent ? '/' + half(c.bot) : '') + ']';
+  // Measured as the drawing goes, off the widths on the nodes rather than off
+  // the table they came from — the two gaps are the stylesheet's, .kb-row's
+  // between caps and .kb-board's between blocks. The board is a flex row of
+  // blocks and wraps when they do not fit the width it sized itself to, and a
+  // wrapped block — the arrows under ПРОБЕЛ rather than beside it — looks
+  // exactly like this drawing.
+  const em = (v) => parseFloat(v) || 0;
+  const lines = [];
+  let wide = 0, blocks = 0;
   for (const b of view.blocks) {
-    if (b.el.style.display === 'none') { console.log('  (block winnowed away)'); continue; }
+    if (b.el.style.display === 'none') { lines.push(['  (block winnowed away)', '']); continue; }
+    let most = 0;
     for (const r of b.rows) {
       if (r.el.style.display === 'none') continue;
-      const pad = ' '.repeat(Math.round(parseFloat(r.el.style.marginLeft) || 0));
-      console.log('  ' + pad + r.caps.map(capText).join(' '));
+      const pad = ' '.repeat(Math.round(em(r.el.style.marginLeft)));
+      let w = em(r.el.style.marginLeft);
+      for (const c of r.caps) w += em(c.el.style.width) + em(c.el.style.marginLeft);
+      w += 0.18 * (r.caps.length - 1);
+      // The row's own width beside it: a cap that grows is drawn no differently
+      // from one that does not, and this is where ПРОБЕЛ filling its block
+      // shows — its row measures what the widest row in the block measures.
+      lines.push(['  ' + pad + r.caps.map(capText).join(' '), w.toFixed(2) + 'em']);
+      most = Math.max(most, w);
     }
+    wide += most + (blocks++ ? 1.4 : 0);
   }
-  console.log('  board: ' + view.board.style.fontSize);
+  const col = Math.max(...lines.map(([l]) => l.length)) + 3;
+  for (const [l, w] of lines) console.log(w ? l.padEnd(col) + w : l);
+  const div = /\/ ([\d.]+)\)/.exec(view.board.style.fontSize || '');
+  console.log('  board: ' + view.board.style.fontSize +
+              (div ? '  ' + wide.toFixed(2) + 'em laid out, ' +
+                     (wide <= +div[1] ? 'fits' : 'OVERFLOWS — the blocks wrap')
+                   : ''));
 
   // Then build every other board over the same container. Only the winnowed one
   // is drawn above, and a field that exists there and nowhere else — plan() sets

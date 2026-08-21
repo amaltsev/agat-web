@@ -56,10 +56,13 @@
   // ---- the АГАТ board ------------------------------------------------------
   //
   // `w` is a cap's width in units and `gap` the space before it; `pad` is the
-  // row's left indent, and the stagger is the real board's. `act` marks a cap
-  // that does something other than send a byte: СБР resets, РУС and LAT switch
-  // layout, УПР and РЕГ are the modifiers, and ПВТ and the pad's `=` send
-  // nothing the shipped table carries.
+  // row's left indent, and the stagger is the real board's. `uw` is where a cap
+  // starts on the winnowed board, for one the machine makes far wider than a
+  // program needs it: it grows from there to fill the block it is in, so this is
+  // the width it has when nothing is beside it. `act` marks a cap that does
+  // something other than send a byte: СБР resets, РУС and LAT switch layout,
+  // УПР and РЕГ are the modifiers, and ПВТ and the pad's `=` send nothing the
+  // shipped table carries.
   //
   // РЕД is the Esc, $9B. The scancode table cannot say which cap owns that byte,
   // since host Esc and УПР+Ш both produce it.
@@ -103,7 +106,7 @@
       L(0x58), L(0x42), L(0x40), P(0x2c, 0x3c), P(0x2f, 0x3f), L(0x5f),
       C('РЕГ', { act: 'shift', red: 1, w: 1.6, gap: 0.1 }),
     ] },
-    { pad: 4.2, keys: [C('ПРОБЕЛ', { code: 0x20, w: 9 })] },
+    { pad: 4.2, keys: [C('ПРОБЕЛ', { code: 0x20, w: 9, uw: 4.5 })] },
   ];
 
   // The pad's caps are numbered 1-9 top to bottom, where a PC numpad runs 7-9
@@ -263,6 +266,14 @@
   // them, and a row that closed up over its gaps would put them somewhere the
   // machine never had them.
   var SLIVER = 0.5;
+
+  // A cap's width in units, on the board it is being drawn for. ПРОБЕЛ is nine
+  // units on the machine and it is what the winnowed board would be sized to
+  // fit — a row of nine units and one key against rows of slivers — so there it
+  // starts at half that and size() gives it whatever its block leaves over.
+  function units(def, used) {
+    return (used && def.uw !== undefined ? def.uw : def.w) || 1;
+  }
 
   // Which codes the machine's own board carries on a cap of their own, and so
   // which cap owns a code there: $88 is the ← cap, $99 the ↑ one and $9B РЕД,
@@ -449,7 +460,7 @@
     var el = document.createElement('button');
     var top = document.createElement('span');
     var bot = document.createElement('span');
-    var w = (def.w || 1) * 2.3 + 'em';
+    var w = units(def, this.view === 'used') * 2.3 + 'em';
     el.type = 'button';
     el.tabIndex = -1;                 // the canvas keeps the keyboard focus
     el.style.width = w;
@@ -704,26 +715,36 @@
   // four-and-a-fifth slivers, which keeps it under the letters it sits under on
   // the machine instead of nine ems out to their right. A block that kept
   // everything keeps its indents, which is what holds ↑ over ↓ in the cluster.
+  //
+  // An indent holds a row against the rows around it, so the last row left in a
+  // block has none: Snake's board is ПРОБЕЛ and the arrows, and four slivers of
+  // stagger in front of the space bar are four slivers of nothing.
   KeyView.prototype.winnow = function () {
-    var i, j, k, b, r, live, any;
+    var i, j, k, b, r, live;
     for (i = 0; i < this.blocks.length; i++) {
       b = this.blocks[i];
-      any = false;
+      b.live = 0;
       for (j = 0; j < b.rows.length; j++) {
         r = b.rows[j];
         live = false;
         for (k = 0; k < r.caps.length; k++) if (!r.caps[k].gone) live = true;
         r.el.style.display = live ? '' : 'none';
-        if (r.pad) r.el.style.marginLeft = r.pad * padEm(b) + 'em';
-        if (live) any = true;
+        if (live) b.live++;
       }
-      b.el.style.display = any ? '' : 'none';
+      // Second pass: whether a row is the only one left is a question about the
+      // block, and the first pass is what answers it.
+      for (j = 0; j < b.rows.length; j++) {
+        r = b.rows[j];
+        if (r.pad) r.el.style.marginLeft = padOf(b, r) + 'em';
+      }
+      b.el.style.display = b.live ? '' : 'none';
     }
   };
 
-  // What one unit of a block's indent is worth, in ems.
-  function padEm(b) {
-    return b.thin ? SLIVER : 2.3;
+  // A row's indent in ems: cap widths on a block that kept its caps, sliver
+  // widths on one that did not, and none at all where it is the only row left.
+  function padOf(b, r) {
+    return b.live > 1 ? r.pad * (b.thin ? SLIVER : 2.3) : 0;
   }
 
   // Size the winnowed board off its own width, which is the one number the
@@ -732,29 +753,66 @@
   // do not scale with the font; the ceiling stops a four-key board from being
   // drawn as four enormous keys. A browser without container units drops the
   // whole declaration and keeps the rule in the stylesheet.
+  //
+  // The measure is rounded *up*, with a tenth of an em to spare, because the
+  // board wraps: it is a flex row of blocks, and a divisor a hundredth short of
+  // what the caps lay out in puts the last block on a line of its own. Snake's
+  // board is ПРОБЕЛ and the arrows, and that is the difference between the
+  // arrows beside the space bar and under it.
+  //
+  // A block is as wide as its widest row, and a cap with a `uw` takes whatever
+  // the rows beside it leave over: ПРОБЕЛ ends under the letters instead of
+  // stopping short of them, and where it is the whole block it is the whole
+  // block. Measured first and stretched after, since the width to fill is the
+  // widest row and that is not known until every row is measured.
   KeyView.prototype.size = function () {
-    var wide = 0, most, row, n, i, j, k, b, r, cap;
+    var wide = 0, most, w, i, j, b, rows;
     for (i = 0; i < this.blocks.length; i++) {
       b = this.blocks[i];
       if (b.el.style.display === 'none') continue;
+      rows = [];
       most = 0;
       for (j = 0; j < b.rows.length; j++) {
-        r = b.rows[j];
-        if (r.el.style.display === 'none') continue;
-        row = r.pad * padEm(b);
-        n = r.caps.length;
-        for (k = 0; k < n; k++) {
-          cap = r.caps[k];
-          row += cap.gone ? SLIVER : (cap.def.w || 1) * 2.3 + (cap.def.gap || 0) * 2.3;
-        }
-        row += 0.18 * (n - 1);        // the row's flex gap, between every pair
-        if (row > most) most = row;
+        w = b.rows[j].el.style.display === 'none' ? -1 : rowWide(b, b.rows[j]);
+        rows.push(w);
+        if (w > most) most = w;
+      }
+      for (j = 0; j < b.rows.length; j++) {
+        if (rows[j] >= 0) fill(b.rows[j], most - rows[j]);
       }
       wide += most + (wide ? 1.4 : 0); // and the board's, between the blocks
     }
+    var fit = (Math.ceil(wide * 10) + 1) / 10;
     this.board.style.fontSize = wide
-      ? 'min(calc((100cqw - 22px) / ' + wide.toFixed(1) + '), 26px)' : '';
+      ? 'min(calc((100cqw - 22px) / ' + fit.toFixed(1) + '), 26px)' : '';
   };
+
+  // What a row lays out in, in ems, with every cap at the width the table gives
+  // it. The 0.18 is the row's flex gap in the stylesheet, between every pair.
+  function rowWide(b, r) {
+    var w = padOf(b, r), k, cap;
+    for (k = 0; k < r.caps.length; k++) {
+      cap = r.caps[k];
+      w += cap.gone ? SLIVER
+         : units(cap.def, true) * 2.3 + (cap.def.gap || 0) * 2.3;
+    }
+    return w + 0.18 * (r.caps.length - 1);
+  }
+
+  // Hand a row's slack to the cap that grows, and there is at most one on a row.
+  // A winnowed-away cap is a sliver holding a place and does not take it, and no
+  // cap grows past the width the machine gives it: a board with nothing winnowed
+  // away is the machine's own proportions, ПРОБЕЛ's nine units included.
+  function fill(r, slack) {
+    var k, cap;
+    for (k = 0; k < r.caps.length; k++) {
+      cap = r.caps[k];
+      if (cap.gone || cap.def.uw === undefined) continue;
+      cap.w = Math.min(cap.def.uw * 2.3 + slack, (cap.def.w || 1) * 2.3) + 'em';
+      cap.el.style.width = cap.w;
+      return;
+    }
+  }
 
   // A legend's three states: unreachable at all, reachable but not from this
   // layout, and reachable now — plus `lit` for the half the current register

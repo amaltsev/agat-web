@@ -633,8 +633,29 @@ one printed there; `marks()` is what draws that distinction.
 An indent is measured in cap widths, so in a block that lost caps to slivers it
 collapses with them — ПРОБЕЛ stays under the letters instead of nine ems to their
 right — while a block that kept everything keeps its indents, which is what holds
-↑ over ↓. The board is then sized off its own measured width in ems, the one
-number the stylesheet cannot know: what is left depends on the container.
+↑ over ↓. The last row left in a block has no indent at all: an indent holds a
+row against the rows around it, and there is nothing above Snake's space bar to
+hold it against.
+
+**ПРОБЕЛ grows into what is left over.** Nine units on a row of their own are the
+widest thing on the winnowed board, and every other cap was sized down to make
+room for them. `uw` in the table is where it starts instead — half the machine's
+width — and `size()` hands it whatever the widest row in its block leaves over,
+never more than its machine width. So it reaches the end of the letters where
+there are letters, is the whole block where it is the only row left, and is the
+machine's own nine units on a board with nothing winnowed away. Snake's board
+went from 31.5 units of width to 19.0 that way, which on a 366px phone is a 41px
+cap instead of a 25px one.
+
+The board is then sized off its own measured width in ems, the one number the
+stylesheet cannot know: what is left depends on the container. Rounded up, with a
+tenth of an em to spare — the board is a flex row of blocks, and a divisor a
+hundredth short of the measure puts the last block on a line of its own, which
+for Snake is the arrows under the space bar rather than beside it. The 26px
+ceiling is what keeps a two-key board from being drawn as two enormous keys.
+`check.js keys` prints every row's laid-out width and then the measure beside the
+divisor, since a wrapped block and a stretched cap both draw exactly like the
+ones that are not.
 
 The winnowing is redone on every `refresh()`, since a key declared as-is is a
 different cap in ЛАТ than in РУС. With no container loaded there is nothing to
