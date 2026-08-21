@@ -865,6 +865,23 @@ reach and easy to get wrong. `urlkeys` runs the real loop: a fragment into the
 menus, the menus into a machine, a real `.agc` loaded into it, and the machine
 back out as a fragment.
 
+**The stub scope is the maintenance cost, and it is easy to underpay.** Lifting
+the page's functions means re-declaring every page variable they touch and
+building the App with every argument `index.html` builds it with — so *adding* a
+control to the page breaks these two as surely as renaming a function does, and
+adding one is the far commoner edit. The two ways it goes wrong are not equally
+loud. Miss a variable and the command dies on a `ReferenceError` before its
+first assertion: one bare line, no pass/fail count, which reads like less than a
+failed test and invites being skimmed past. Supply the variable but not the App
+argument and it goes green while standing for a machine the page does not build.
+The monitor menu managed both.
+
+So `open()` mirrors `index.html`'s own `new AGAT.App({…})` argument for
+argument, and a stub `<select>` is built from the table the page's own menu is
+built from — `Object.keys(AGAT.MONITORS)` for the monitor — which makes a value
+added there a value the test already offers. Neither is a formality: the second
+kind of failure is silent, and only the first announces itself at all.
+
 `tools/corpus.js` walks a directory of images, infers the model from the path
 (`*7a` → 7, `*9a` → 9, as `agat.sh` does), boots each, and emits a Markdown
 table. The images stay local and uncommitted; the table is the regression

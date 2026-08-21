@@ -514,7 +514,8 @@ async function urlkeysCmd(roms) {
     set value(v) { this._value = String(v); },
   });
 
-  let modelSel, ramSel, psromSel, xramSel, xram9Sel, mouseSel, kbdSel;
+  let modelSel, ramSel, psromSel, xramSel, xram9Sel, mouseSel, kbdSel,
+      monitorSel;
   let mouseSlot, url, agcUrl, urlCardLayer, pinned, wantKbd, app;
   const location = { hash: '', replace(h) { this.hash = h; } };
   global.AGAT = A;
@@ -570,9 +571,12 @@ async function urlkeysCmd(roms) {
     location.hash = hash;
     readSettings();
     syncMemEnabled();
+    // Every argument index.html hands the App, and in the same way: a menu
+    // this leaves out is a menu the test cannot see the effect of, and it will
+    // pass while the page it stands for does the other thing.
     app = new A.App({ canvas, model: Number(modelSel.value),
-                      ramSize: Number(ramSel.value), cards: menuCards(),
-                      onStatus: () => {} });
+                      ramSize: Number(ramSel.value), monitor: monitorSel.value,
+                      cards: menuCards(), onStatus: () => {} });
     app.roms = roms;
     app.build();
     app.modelPinned = pinned;
@@ -600,6 +604,10 @@ async function urlkeysCmd(roms) {
     xram9Sel = sel([32, 64, 128, 0]);
     mouseSel = sel(['', 'nippel', 'mars', 'mars-rom', 'mm8031']);
     kbdSel = sel(['', 'agat', 'pc', 'used']);
+    // From AGAT.MONITORS rather than a list written out here, so a monitor
+    // added to the table is one this menu already offers. Its first key is
+    // MONITOR_DEFAULT, which is what sel() takes as the value to start at.
+    monitorSel = sel(Object.keys(A.MONITORS));
     MEM_SEL = { psrom: psromSel, xram: xramSel, xram9: xram9Sel }; };
 
   // --- a machine and no container: everything it is, written out -------------
@@ -607,6 +615,16 @@ async function urlkeysCmd(roms) {
   eq('a stock machine says nothing at all', await open(''), '#');
   eq('and is the stock machine', fitted(),
      ['2:psrom', '3:fdd140', '4:xram', '5:fdd840']);
+
+  // The monitor is a standing choice like the memory sizes, and travels the
+  // same way: named in the address only where it differs from the default,
+  // read back into the menu, and handed to the App that paints with it.
+  eq('the monitor is a difference', await open('#monitor=gray'), '#monitor=gray');
+  eq('...and reaches the machine that paints',
+     [app.monitor, monitorSel.value], ['gray', 'gray']);
+  eq('the default monitor is not written out', await open(''), '#');
+  eq('...and is the one the machine gets', app.monitor, A.MONITOR_DEFAULT);
+  eq('a monitor no menu offers is not a choice', await open('#monitor=sepia'), '#');
 
   eq('a mouse is a difference', await open('#mouse=nippel'), '#mouse=nippel');
   eq('and is fitted where the Agat-7 leaves room', fitted(),

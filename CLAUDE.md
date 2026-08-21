@@ -33,8 +33,18 @@ terms interspersed freely where they are the thing's own name (ЭмПЗУ, ЛА�
 ```sh
 node tools/vectors.js          # pure-function tests, ~1s
 node tools/check.js modules    # index.html vs the module list
+node tools/check.js kbdmenu    # the page's keyboard menu, load order and all
+node tools/check.js urlkeys    # the page's address, around the whole loop
 node tools/cputest.js          # Klaus Dormann; slow, run on CPU changes
 ```
+
+The two page commands belong in that list even for a change that is not about
+the page, because of how they work: each lifts functions out of `index.html` and
+runs them against stubs it builds itself, so a control added to the page and
+used from a function they already borrow makes them **crash rather than fail** —
+one bare line and no pass/fail count, which reads like less than a failed
+assertion and is easy to skim past. Whatever the stub scope does not supply, the
+test cannot see.
 
 Anything touching video, disks or timing should also be exercised headlessly —
 `tools/check.js boot <image>`, `tools/shot.js`, `tools/tone.js`,
