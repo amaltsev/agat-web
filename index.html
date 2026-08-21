@@ -77,10 +77,10 @@
   button:hover, select:hover, label.file:hover { border-color: var(--accent); }
   button:active { transform: translateY(1px); }
   select:disabled { opacity: .45; cursor: default; }
-  /* ЛАТ and РУС are not the same width, and the bar must not shuffle
-     under the pointer when the layout is switched. */
+  /* ЛАТ and РУС are not the same width, and neither are ⏸ and ▶: the bar
+     must not shuffle under the pointer when a button changes face. */
   #layout { min-width: 8ch; text-align: center; }
-  #gear { min-width: 4ch; text-align: center; }
+  #pause, #gear { min-width: 4ch; text-align: center; }
   #gear.on, #save.on, #pause.on { border-color: var(--accent); }
   /* Something has been written to a disk and is in memory only. Red, as the
      drive lamps are: this is the drives saying it, not the page. */
@@ -341,7 +341,7 @@
 <div class="bar">
   <label class="file">Open… <input type="file" id="file" multiple></label>
   <button id="save" title="Save as AGC machine settings, initial media, and disk writes (optionally including full running state)">Save AGC</button>
-  <button id="pause" title="Hold the machine still. Nothing is lost and nothing is saved — the clock simply stops, and starts again from where it was. Boot, Reset and loading a file all start it running again.">Pause</button>
+  <button id="pause" title="Pause">⏸︎</button>
   <button id="boot">Boot</button>
   <button id="reset">Reset</button>
   <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
@@ -448,7 +448,7 @@
     the <a href="#examples" id="tolist">bundled examples</a> below.
   </p>
   <table>
-    <tr><td><b>Pause</b></td><td>
+    <tr><td><b>⏸︎ / ▶︎</b></td><td>
       Holds the machine still. Nothing is saved and nothing is lost — the
       clock stops, and goes on from where it was. <b>Boot</b>, <b>Reset</b>
       and dropping a file all mean <i>run this</i>, so any of them starts a
@@ -1285,9 +1285,7 @@
     }).catch(function (e) { say(e.message, true); });
   });
 
-  // Held still, and lit rather than relabelled for the reason Save AGC is: the
-  // bar is one line, and a button that changes width shuffles everything after
-  // it out from under the pointer.
+  // Held still. The button's face and its lit border are syncLamps'.
   pauseEl.addEventListener('click', function () {
     app.setPaused(!app.paused);
     say(app.describe());
@@ -1561,6 +1559,14 @@
     if (saveEl.className !== pending) saveEl.className = pending;
     var held = app.paused ? 'on' : '';
     if (pauseEl.className !== held) pauseEl.className = held;
+    // The glyph is what the click does, not what the machine is doing, and the
+    // lit border says which of the two it is. Both faces sit in a fixed 4ch,
+    // because a Pause/Resume label would shuffle the bar under the pointer.
+    var face = app.paused ? '\u25b6\ufe0e' : '\u23f8\ufe0e';
+    if (pauseEl.textContent !== face) {
+      pauseEl.textContent = face;
+      pauseEl.title = app.paused ? 'Resume' : 'Pause';
+    }
     // $C000 changes on a keypress and is cleared by the program that reads it,
     // so the readout has to be polled rather than pushed.
     if (kbView) kbView.sync();
