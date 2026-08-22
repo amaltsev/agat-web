@@ -326,7 +326,7 @@ screen of a ported game:
   same `@A-Z` glyphs apart from two codes — `·` at `$9E`, **`Ё` at `$9F`** —
   and `$C0-$DF` carries `^` and `_` in their place. A fold that swallowed
   `$80-$9F` as well prints every Russian `Ё` as `_`;
-  `examples/Alice_v2_840.agc` prints one in «сушёными фруктами», which is
+  the Alice game in `examples/` prints one in «сушёными фруктами», which is
   where the boundary can be read off the screen. agat-emulator's Windows trunk
   folds `< $A0` onto `$A0-$DF` (`videoprocs.c` at r281) and loses those two
   glyphs; its Qt tree — 1.29.1, and the lineage the Linux package is built
