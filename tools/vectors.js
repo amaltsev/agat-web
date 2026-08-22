@@ -2118,6 +2118,23 @@ async function agcTests() {
           [...reopened.media[0].payload].some((b) => b !== 0)],
          [7, 64, 1, 'x.dsk', 143360, false]);
 
+      // The Boot button, which takes no slot: it starts the drive the disk is
+      // in, not a fixed one. A 140K disk booted from slot 5 would sit in the
+      // 840K controller's ROM waiting for a disk that is not there.
+      plain.boot();
+      eq('Boot starts the drive holding the disk', plain.machine.cpu.pc, 0xc300);
+      nine.boot();
+      eq('...on the Agat-9 too, where that is slot 6', nine.machine.cpu.pc, 0xc600);
+      plain.boot(5);
+      eq('a slot given outright is still honored', plain.machine.cpu.pc, 0xc500);
+      plain.boot();
+      eq('...and Boot goes back to the drive with the disk',
+         plain.machine.cpu.pc, 0xc300);
+      plain.ejectAll();
+      plain.boot();
+      eq('with no disk anywhere it is the 840K controller',
+         plain.machine.cpu.pc, 0xc500);
+
       const carded = await agc({ model: 7, ram: 64,
                                  slots: { 4: { card: 'xram', ram: 128 } } });
       eq('a container sizes its cards', (await load(carded)).slots[4].ram, 0x20000);

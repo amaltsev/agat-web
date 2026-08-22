@@ -55,6 +55,10 @@
     // one monitor looks wrong on another.
     this.monitor = AGAT.MONITORS[opts.monitor] ? opts.monitor : AGAT.MONITOR_DEFAULT;
     this.drives = {};                     // slot -> {name, kind}
+    // The media kind of the drive booted last, so Boot starts that one
+    // again. A kind and not a slot: switching models moves the 140K drive
+    // from slot 3 to slot 6, and the disk moves with it.
+    this.lastBoot = '';
     // What was loaded, as it arrived: slot -> {name, bytes, patches, kind,
     // offset, prodos}, plus 'fil:<name>' for programs poked into memory. The
     // mounted Media is normalized and the drives keep only a name, so without
@@ -399,6 +403,7 @@
       if (card && card.eject) card.eject();
     }
     this.drives = {};
+    this.lastBoot = '';
   };
 
   App.prototype.insert = function (media) {
@@ -408,6 +413,29 @@
     card.insert(media);
     this.drives[slot] = { name: media.name, kind: media.kind };
     return slot;
+  };
+
+  // Reset and enter a slot's card ROM — ПР#n, and the whole of what starting a
+  // disk is. The drive is remembered: Boot on its own starts the same one.
+  App.prototype.bootFrom = function (slot) {
+    this.lastBoot = this.drives[slot] ? this.drives[slot].kind : '';
+    this.machine.reset();
+    this.machine.bootSlot(slot);
+  };
+
+  // Which drive Boot means: the one whose disk was booted last while it still
+  // holds one, else whichever drive has a disk in it. The 840K controller is
+  // the fallback when both are empty, because entering its ROM is what the
+  // monitor's own start does.
+  App.prototype.bootDrive = function () {
+    var kinds = [this.lastBoot, 'nib140', 'aim840'], i, slot, card;
+    for (i = 0; i < kinds.length; i++) {
+      if (!kinds[i]) continue;
+      slot = this.slotFor(kinds[i]);
+      card = this.machine.cards[slot];
+      if (card && card.media) return slot;
+    }
+    return this.slotFor('aim840');
   };
 
   // Disks are inserted and booted; .fil files are poked straight into memory.
@@ -483,8 +511,7 @@
     }
     var slot = this.insert(AGAT.mount(s));
     this.remember(slot, name, bytes, from, s);
-    this.machine.reset();
-    this.machine.bootSlot(slot);
+    this.bootFrom(slot);
     this.start();
     this.onStatus('booting ' + name + ' from slot ' + slot);
     return { kind: s.kind, slot: slot };
@@ -617,10 +644,7 @@
       }).then(function (r) { if (r.slot !== undefined) disks.push(r.slot); });
     });
     return chain.then(function () {
-      if (disks.length > 1) {
-        self.machine.reset();
-        self.machine.bootSlot(disks[0]);
-      }
+      if (disks.length > 1) self.bootFrom(disks[0]);
       // Last, over the top of the boot the media just did: a container that
       // carries a machine resumes it rather than starting the program again.
       // The disks have to be in first — the drives' heads are part of what is
@@ -846,8 +870,7 @@
 
   App.prototype.boot = function (slot) {
     this.paused = false;
-    this.machine.reset();
-    this.machine.bootSlot(slot === undefined ? this.slotFor('aim840') : slot);
+    this.bootFrom(slot === undefined ? this.bootDrive() : slot);
     this.start();
   };
 
