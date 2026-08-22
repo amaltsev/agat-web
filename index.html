@@ -22,9 +22,14 @@
     margin: 0; background: var(--bg); color: var(--ink);
     font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
     display: flex; flex-direction: column; align-items: center;
-    min-height: 100vh; padding: 18px 12px 32px;
+    min-height: 100vh; padding: 12px 12px 32px;
   }
-  h1 { font-size: 17px; font-weight: 600; margin: 0 0 16px; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 10px; }
+  /* A masthead, not a link to somewhere: it takes the page back to a bare
+     machine, which is worth a hover and not worth the page's link color above
+     the picture. */
+  h1 a { color: inherit; text-decoration: none; }
+  h1 a:hover { color: var(--accent); }
   .screen {
     background: #000; border: 1px solid var(--edge); border-radius: 6px;
     padding: 10px; width: min(94vw, var(--page)); position: relative;
@@ -65,9 +70,22 @@
   }
   #mbtnA { left: 5%; }
   #mbtnB { right: 5%; }
+  /* The controls, in three groups: what a file is done with on the left, the
+     keyboard on the right, and the one control that is neither in the middle.
+     A grid rather than a flex row, so Pause sits at the page's center and not
+     at the center of whatever the two groups leave over. */
   .bar {
-    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-    width: min(94vw, var(--page)); margin-top: 10px;
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px;
+    align-items: center; width: min(94vw, var(--page)); margin-top: 10px;
+  }
+  .bar .grp { display: flex; gap: 8px; align-items: center; }
+  .bar .grp.right { justify-self: end; }
+  /* Narrow enough that the three groups do not fit a line: Open and Save keep
+     the left, Pause keeps the right, and the keyboard drops under them rather
+     than pushing anything off the edge. */
+  @media (max-width: 620px) {
+    .bar { grid-template-columns: 1fr auto; }
+    .bar .grp.right { grid-column: 1 / -1; }
   }
   select, button, label.file {
     font: inherit; color: var(--ink); background: var(--panel);
@@ -283,15 +301,33 @@
   /* The hint is the line worth acting on rather than reading, so it is the one
      thing on the card in the page's own ink and weight. */
   .info-hint { font-weight: 600; margin-top: 6px; }
+  /* What the machine is doing, directly under the picture it is doing it on:
+     the drive lamps on the left, the run loop's line on the right. Above the
+     controls rather than below them, so nothing a button opens moves it. */
+  .readout {
+    display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center;
+    width: min(94vw, var(--page)); margin-top: 8px; min-height: 22px;
+  }
+  /* One line, always. What the line says changes as a program runs — it picks
+     up a video mode, it picks up a mouse — and a line that can take a second row
+     is a page that moves under the finger. Narrower than the line needs, it is
+     cut rather than wrapped: the machine and the mode are the head of it. */
   #status {
     color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
-    /* The longest line the run loop can build measures 73 characters — an
-       Agat-7 at 128K in `text 64 inv` with both drives loaded and a «Марсианка»
-       on the card with the ROM — and the two to spare are for the Cyrillic in
-       it, which is only one `ch` wide while it is coming from the monospace
-       face. Wider than the bar has to spare, so the line takes a row of its
-       own rather than wrapping inside one. */
-    margin-left: auto; text-align: right; max-width: 75ch;
+    margin-left: auto; text-align: right;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* Whether the readout is one row or two is the width's to decide, not the
+     line's. The longest the run loop can build is an Agat-7 at 128K in
+     `text 64 inv` with a «Марсианка» (w/ROM) on the card — 49 characters, 353px
+     in this face — and the lamps are 228px at their widest, so the two stop
+     fitting side by side at about 630px of window. Under 680 the line takes the
+     row below them, and both rows are then centered under a centered picture:
+     the outer edges are worth holding only while there is one row between
+     them. */
+  @media (max-width: 680px) {
+    .readout { justify-content: center; }
+    #status { flex: 1 0 100%; margin-left: 0; text-align: center; }
   }
   #status.err { color: var(--warn); }
   /* The two things about a mouse that are worth seeing rather than reading: the
@@ -346,26 +382,27 @@
   <div class="mbtn" id="mbtnB" hidden>B</div>
 </div>
 
-<div class="bar">
-  <label class="file">Open… <input type="file" id="file" multiple></label>
-  <button id="save" title="Save as AGC machine settings, initial media, and disk writes (optionally including full running state)">Save AGC</button>
-  <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg></button>
-  <button id="boot">Boot</button>
-  <button id="reset">Reset</button>
-  <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
-  <select id="kbd" title="On-screen keyboard: АГАТ's own board, PC with scancode map, or container controls, if defined">
-    <option value="">Keyboard off</option>
-    <option value="agat">АГАТ keyboard</option>
-    <option value="pc">PC keyboard</option>
-    <option value="used">Only mapped keys</option>
-  </select>
-  <select id="model">
-    <option value="7">Agat-7</option>
-    <option value="9">Agat-9</option>
-  </select>
-  <button id="gear" title="Memory sizes, mouse, monitor and volume" aria-expanded="false">⚙</button>
+<div class="readout">
   <span class="lamps" id="lamps"></span>
   <span id="status">loading…</span>
+</div>
+
+<div class="bar">
+  <span class="grp">
+    <label class="file">Open… <input type="file" id="file" multiple></label>
+    <button id="save" title="Save as AGC machine settings, initial media, and disk writes (optionally including full running state)">Save AGC</button>
+    <button id="gear" title="The machine, its memory sizes, the mouse, the monitor and the volume" aria-expanded="false">⚙</button>
+  </span>
+  <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg></button>
+  <span class="grp right">
+    <button id="layout" title="Keyboard layout; software reads which is active at $C063">ЛАТ</button>
+    <select id="kbd" title="On-screen keyboard: АГАТ's own board, PC with scancode map, or container controls, if defined">
+      <option value="">Keyboard off</option>
+      <option value="agat">АГАТ keyboard</option>
+      <option value="pc">PC keyboard</option>
+      <option value="used">All mapped</option>
+    </select>
+  </span>
 </div>
 
 <!-- What Save AGC is about to write. One question, and only because the answer
@@ -386,10 +423,20 @@
   </div>
 </div>
 
-<!-- The settings a machine is run under rather than the controls it is driven
-     by: touched once for a program, if ever, and carried by an .agc so they
-     need not be touched again. Out of the bar, which has to fit one line. -->
+<!-- The machine, rather than the program running on it: which Agat it is, what
+     is fitted, and the two buttons that start it over. Touched once for a
+     program, if ever, and carried by an .agc so they need not be touched
+     again. Out of the bar, which has to fit one line. -->
 <div id="settings" hidden>
+  <div class="row">
+    <span class="key">Machine</span>
+    <select id="model">
+      <option value="7">Agat-7</option>
+      <option value="9">Agat-9</option>
+    </select>
+    <button id="boot" title="Start from the disk in the drive">Boot</button>
+    <button id="reset" title="Reset the CPU; memory and disks stay as they are">Reset</button>
+  </div>
   <div class="row">
     <span class="key">Memory</span>
     <select id="ram" title="Base RAM on the motherboard">
@@ -513,7 +560,8 @@
       <b>Save AGC</b> keeps them, as patches on the disk they came from.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
-      The machine's memory sizes, the mouse, the monitor and the volume.
+      Which Agat this is, its memory sizes, the mouse, the monitor and the
+      volume, with <b>Boot</b> and <b>Reset</b>.
       The monitor matters for color: the machine outputs 4-bit color codes
       and the monitor decides what they look like, so a program drawn on an
       8-color monitor wants one here too.
@@ -1148,13 +1196,24 @@
   // load because the groups belong to the container, and an optgroup rather than
   // four flat options because "Cheats" on its own in a list of keyboards reads
   // like a third kind of board.
-  function buildKbdOptions() {
+  //
+  // `have` is whether anything has named a key at all. With nothing to winnow
+  // by, the whole-set entry is out of the menu rather than in it and dead: an
+  // image is the ordinary case and a permanently grey line is a thing to wonder
+  // about. It goes back in its own place — after the two boards, before the
+  // groups — because that is the order these are appended in.
+  function buildKbdOptions(have) {
     var gs = AGAT.keyboard.controlGroups(), i, o;
     if (usedBox) { kbdSel.removeChild(usedBox); usedBox = null; }
-    usedOpt.textContent = gs ? 'All controls' : 'Only mapped keys';
+    if (have !== hasKbdOption('used')) {
+      if (have) kbdSel.appendChild(usedOpt);
+      else kbdSel.removeChild(usedOpt);
+    }
+    if (!have) return;
+    usedOpt.textContent = gs ? 'All controls' : 'All mapped';
     if (!gs) return;
     usedBox = document.createElement('optgroup');
-    usedBox.label = 'Only controls';
+    usedBox.label = 'Controls…';
     for (i = 0; i < gs.length; i++) {
       o = document.createElement('option');
       o.value = 'used:' + gs[i].name;
@@ -1180,8 +1239,13 @@
   function syncKbd(loaded) {
     var have = AGAT.keyboard.keyCount() > 0 || AGAT.keyboard.controlCount() > 0;
     var was = kbdSel.value;
-    buildKbdOptions();
-    usedOpt.disabled = !have;
+    // A board the menu is about to stop offering, while the container that would
+    // justify it is still on the wire: hand it back to `wantKbd`, where a
+    // bookmarked group already waits for the same file. Taking the entry out
+    // takes the selection with it, and the browser lands the select on its first
+    // option rather than holding one that is no longer there.
+    if (!have && !loaded && (was === 'used' || groupOf(was))) wantKbd = was;
+    buildKbdOptions(have);
     if (!kbdSel.value && groupOf(was)) kbdSel.value = 'used';
     if (wantKbd && pick(kbdSel, wantKbd)) wantKbd = '';
     if (panel) panel.destroy();
@@ -1193,7 +1257,10 @@
       // past that would drop it on whatever is loaded by hand next.
       if (wantKbd) { if (have) kbdSel.value = 'used'; wantKbd = ''; }
       if (groupOf(kbdSel.value) && !hasKbdOption(kbdSel.value)) kbdSel.value = 'used';
-      if (!have && kbdSel.value === 'used') kbdSel.value = 'agat';
+      // Read off `was`, because the entry that board was on has just been taken
+      // out of the menu and a select holding an option that is gone reads the
+      // same as one holding Keyboard off.
+      if (!have && (was === 'used' || groupOf(was))) kbdSel.value = 'agat';
       else if (have && handheld && !kbdChosen) kbdSel.value = 'used';
     }
     // The board is only rebuilt when the menu has actually moved; the panel is
@@ -1295,10 +1362,10 @@
     }).catch(function (e) { say(e.message, true); });
   });
 
-  // Held still. The button's face and its lit border are syncLamps'.
+  // Held still. The button's face and its lit border are syncLamps', and they
+  // are the whole of what says so: the status line does not carry the hold.
   pauseEl.addEventListener('click', function () {
     app.setPaused(!app.paused);
-    say(app.describe());
     syncLamps();
   });
 
@@ -1548,8 +1615,11 @@
       // advancing, so the lamp would sit frozen wherever the machine left it.
       var state = app.running ? d.lamp : 0;
       var cls = 'lamp' + (state === 2 ? ' busy' : state === 1 ? ' on' : '');
+      // Everything about the drive that is not already drawn on it: what is in
+      // it and what format that image is in. The status line used to carry the
+      // format, and it is worth a hover rather than a permanent two words.
       var title = 'slot ' + d.slot + ' — ' +
-                  (d.name ? d.name + ', track ' + d.track : 'empty') +
+                  (d.name ? d.name + ', ' + d.kind + ', track ' + d.track : 'empty') +
                   (d.name && d.written ? ', written to' : '');
       // An empty drive's head is somewhere too, and saying where is noise.
       var track = d.name ? 'T' + d.track : '';
@@ -1635,8 +1705,8 @@
     syncKbd(!agcUrl);
     if (agcUrl) loadUrl(agcUrl, urlOverrides());
     say('ready — drop a file, or press Reset for the monitor');
-    // A paused machine gets the line too: it is not running, and the reason it
-    // is not running is the first thing on it.
+    // A paused machine gets the line too: it is standing on a video mode and a
+    // mouse, and a settings change reaches it while it stands there.
     setInterval(function () {
       if (app.running || app.paused) say(app.describe());
     }, 500);

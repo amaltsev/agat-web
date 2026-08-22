@@ -2270,9 +2270,13 @@ async function agcTests() {
       held.setPaused(true);
       held.boot(3);
       eq('...and so does Boot', [held.paused, held.running], [false, true]);
+      // The hold is the Pause button's to show, and only its: a word that comes
+      // and goes on the line is a line whose width comes and goes with it, and
+      // under it a page that moves while a thumb is over it.
+      const line = JSON.parse(JSON.stringify(held.describe()));
       held.setPaused(true);
-      eq('a held machine says so before anything else on the line',
-         held.describe()[0].text, 'paused');
+      eq('a hold leaves the line alone — the button carries it',
+         held.describe(), line);
 
       // The refusal, through the whole loop: the address puts the program on
       // the other machine, which is not the machine the snapshot is about.

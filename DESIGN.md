@@ -659,9 +659,12 @@ ones that are not.
 
 The winnowing is redone on every `refresh()`, since a key declared as-is is a
 different cap in ЛАТ than in РУС. With no container loaded there is nothing to
-winnow by and every cap it has is drawn; the menu grays the option out until
+winnow by and every cap it has is drawn; the menu carries the option only while
 something names keys or controls, and on a handheld a container that names them
-opens with it. `node tools/check.js keys <file.agc>` draws the same board in a
+opens with it. The entry ships in the static markup, so an address naming it is
+answered before any container is — and `syncKbd` hands the board back to
+`wantKbd` when it takes the entry out, or a bookmarked `kbd=used` would be spent
+on a menu that has not got the file yet. `node tools/check.js keys <file.agc>` draws the same board in a
 terminal, against a stub `document` — which is what makes it testable at all.
 
 `setView('used:Cheats')` cuts it to one of the container's control groups. The

@@ -212,7 +212,7 @@ The value is either the code to send, or `{ "code": …, "hint": … }`, or — 
 no code at all — a declaration that the program uses the key **as it already
 is**. `"Space": { "hint": "Jump" }` and a bare `"ArrowUp": null` change nothing
 about what those keys send; they say that these are among the program's keys,
-which is what the on-screen board's **Only mapped keys** view is drawn from. A
+which is what the on-screen board's **All mapped** view is drawn from. A
 game whose controls need no remapping still has controls, and this is how it
 names them.
 

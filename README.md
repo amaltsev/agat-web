@@ -32,10 +32,10 @@ an `.aim`.
 
 **Pause** — the ⏸ button — holds the machine still: nothing is saved and
 nothing is lost, the clock simply stops and goes on from where it was. A held
-machine's button is ▶, and its border is lit. **Boot** is `PR#N` — restart from the disk. **Reset**
-cold-starts into the machine's own monitor, which is where you land with no
-disk in. All three of Boot, Reset and dropping a file mean *run this*, so any
-of them starts a paused machine again.
+machine's button is ▶, and its border is lit. In the ⚙ popup, **Boot** is `PR#N`
+— restart from the disk — and **Reset** cold-starts into the machine's own
+monitor, which is where you land with no disk in. All three of Boot, Reset and
+dropping a file mean *run this*, so any of them starts a paused machine again.
 
 **Save AGC** pauses too, for as long as its panel is up: a snapshot is of one
 moment, and the moment worth keeping is the one that was on the screen when you
@@ -54,7 +54,7 @@ out what the other layout can no longer type — РУС cannot reach `' , / ;` a
 ЛАТ cannot reach `Ю`, `Ч` or `Ъ`. Caps can be clicked, so a key your host will
 not send is still reachable. Hovering one names every host key that reaches it.
 
-**Only mapped keys** shrinks everything the loaded container does not name out
+**All mapped** shrinks everything the loaded container does not name out
 of the way, leaving the keys the program is played with where the machine puts
 them — in three areas that collapse on their own, so an unused numeric pad
 disappears and one named arrow brings the whole cluster. It needs a `.agc` that
@@ -69,7 +69,7 @@ again goes back. The card says what the *program* wants and stays put; the board
 says which of your keys reaches it and moves with ЛАТ/РУС. Both come from the
 container's [`controls`](AGC.md#controls--what-the-program-reads-and-what-for).
 
-The bar picks the **machine**; the ⚙ popup has its memory. The default Agat-7 is
+The ⚙ popup picks the **machine** and has its memory. The default Agat-7 is
 the standard machine — 128K in three separate devices: 64K of base RAM, a 32K
 ЭмПЗУ card in slot 2 and a 32K ОЗУ expansion in slot 4. Base RAM is the one to
 set to match your disk, because it is the only memory the video controller scans
@@ -82,8 +82,9 @@ one yourself.
 Drives: 840K in slot 5 on both machines, 140K in slot 6 on the Agat-9 and slot 3
 on the Agat-7. A dropped image goes to whichever drive can read it.
 
-Each drive has a **lamp** in the bar: dim while its motor line is up, bright
-while bytes are reaching the CPU, with the track its head is on beside it. Disks
+Each drive has a **lamp** under the screen: dim while its motor line is up,
+bright while bytes are reaching the CPU, with the track its head is on beside it.
+Hovering one names the disk in the drive and the format its image is in. Disks
 of this era take their time — a boot can be ten seconds of reading — and the
 lamp is what tells that apart from a hang.
 

@@ -356,6 +356,7 @@
         slot: slot,
         label: want[i][1],
         name: this.drives[slot] ? this.drives[slot].name : '',
+        kind: this.drives[slot] ? this.drives[slot].kind : '',
         track: card.track,
         lamp: card.lamp(now),
         locked: !media || media.locked,
@@ -912,11 +913,13 @@
     requestAnimationFrame(this.frame);
   };
 
-  // What is running, in one line: the machine, the video mode and what is in the
-  // drives. Only what nothing else on the page states — the keyboard layout is
-  // on its own button, which can also change it; the head position is on the
-  // drive lamp, which is lit because the head is moving; and what the program is
-  // called is on the info card, which the run loop does not overwrite.
+  // What is running, in one line: the machine and the video mode. Only what
+  // nothing else on the page states — the keyboard layout is on its own button,
+  // which can also change it; the drives are on their lamps, down to which image
+  // each holds and where its head is; and what the program is called is on the
+  // info card, which the run loop does not overwrite. The line is short by
+  // design: it is read at a glance beside a picture, and a line that grows a
+  // word moves everything under it on a phone.
   //
   // The bits of that line rather than the line itself: a bit is a string, or
   // `{text, cls, title}` where it has a color and a sentence of its own. The
@@ -926,22 +929,14 @@
     var m = this.machine;
     if (!m) return [];
     var bits = [];
-    // First, and colored: a machine that is not moving explains every other bit
-    // on the line — a dark drive lamp, a screen that has stopped — and it is
-    // the one thing on the line the person did on purpose.
-    if (this.paused) {
-      bits.push({ text: 'paused', cls: 'quiet',
-                  title: 'The machine is held still. Nothing is lost — the ' +
-                         'clock stops, and goes on from here.' });
-    }
+    // A held machine is not on this line: the Pause button is showing ▶ with a
+    // lit border, which is where the eye already is, and a word that comes and
+    // goes is a line whose length comes and goes with it.
     bits.push('Agat-' + m.model);
     if (m.model === 7) bits.push((this.ramSize >> 10) + 'K');
     bits.push(m.appleVideo
       ? 'apple ' + (m.text ? 'text' : (m.hires ? 'hires' : 'lores'))
       : (AGAT.MODE_NAMES[m.videoMode().vtype] || 'mode ?'));
-    for (var s in this.drives) {
-      bits.push('S' + s + ' ' + this.drives[s].kind);
-    }
     var mouse = this.mouseCard();
     if (mouse) {
       // How long since the program last read the card. It is the one thing that

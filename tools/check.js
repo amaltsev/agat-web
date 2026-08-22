@@ -373,7 +373,7 @@ function kbdmenuCmd(loaded) {
   const reset = (urlKbd) => {
     kbdSel = new Select();
     for (const [v, t] of [['', 'Keyboard off'], ['agat', 'АГАТ keyboard'],
-                          ['pc', 'PC keyboard'], ['used', 'Only mapped keys']]) {
+                          ['pc', 'PC keyboard'], ['used', 'All mapped']]) {
       const o = opt('option'); o.value = v; o.textContent = t; kbdSel.appendChild(o);
     }
     usedOpt = kbdSel.querySelector();
@@ -419,7 +419,7 @@ function kbdmenuCmd(loaded) {
   applied = [];
   syncKbd(true);
   eq('no controls, no group entries', menu(), ['', 'agat', 'pc', 'used']);
-  eq('and the whole-set option says so', usedOpt.textContent, 'Only mapped keys');
+  eq('and the whole-set option says so', usedOpt.textContent, 'All mapped');
   eq('a board on `used` stays there', [kbdSel.value, applied], ['used', []]);
 
   // Nothing named at all.
@@ -427,8 +427,25 @@ function kbdmenuCmd(loaded) {
   applied = [];
   syncKbd(true);
   eq("a board with nothing to winnow by goes back to the machine's own",
-     [kbdSel.value, applied, usedOpt.disabled], ['agat', ['agat'], true]);
+     [kbdSel.value, applied, menu()], ['agat', ['agat'], ['', 'agat', 'pc']]);
   eq('and the panel is empty', panel.groups.length, 0);
+
+  // The whole-set entry itself, bookmarked, with its container still on the
+  // wire. The entry is in the static markup, so the address finds it and spends
+  // `wantKbd` on it before anything is loaded — and then the sync takes the
+  // entry back out, because nothing has named a key yet. It has to survive that
+  // the way a group does.
+  reset('used');
+  eq('the address finds the entry the markup ships with', kbdSel.value, 'used');
+  syncKbd(false);
+  // The board shuts while it waits, rather than standing there winnowed by a
+  // container that has not arrived — which is a board of nothing.
+  eq('a sync before the container takes it out of the menu and holds the board',
+     [menu(), wantKbd, applied], [['', 'agat', 'pc'], 'used', ['']]);
+  load('rise-out.agc');
+  syncKbd(true);
+  eq('and the container puts both back',
+     [kbdSel.value, wantKbd, applied], ['used', '', ['', 'used']]);
 
   // The panel is the groups and nothing else — the container's hint is drawn on
   // the info card below it, which tools/vectors.js checks.
