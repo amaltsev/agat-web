@@ -154,11 +154,13 @@ Both have cost real time here:
   ЭмПЗУ card in slot 2. Install through the monitor at `$03FE` instead —
   especially for anything meant to be compared against another emulator.
 
-## Development
+## Development Conventions
 
-Commit on 'main' unless specifically asked to branch. Commit when asked
-to, not automatically.
-
-Keep prose brief; especially in UI, including element title
-hints. Describe current state, not why and how that state was arrived
-at.
+- Work on 'main' git branch, unless specifically asked to branch. This
+  overrides the usual "branch before committing on the default branch".
+  Commit when asked to, not automatically.
+- UI text and the .md files are brief, and say what is so now — not
+  what it used to be, not why it changed. That belongs in the commit
+  message. Sharpest for title= hints, button faces and the status line,
+  where one sentence is already long. Code comments are the exception
+  and run as long as the reasoning needs.
