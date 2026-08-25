@@ -30,6 +30,20 @@ an `.aim`.
 | `.fil` | a single program with its DOS 3.3 catalog entry, poked straight into memory |
 | `.agc` | an Agat Container: one of the above plus the machine and keys it wants |
 
+**Opening replaces what was open.** The drives are emptied first, so a file
+opened after a session is a fresh start and not something added to it — and
+**Save AGC** writes what you opened rather than everything the machine has seen.
+Files opened *together* belong together, though: **Open…** takes several and so
+does a drop, and that is how one container comes to name two disks — drop a
+140K and an 840K at once and both drives are filled. Several `.fil` programs
+opened together are poked into memory in that order, which is how a program that
+wants its data loaded first is packaged.
+
+Everything opened is loaded first, and then one thing starts: the first disk
+opened, or — with no disk among them — the last `.fil`. A container can say
+otherwise with [`machine.boot`](AGC.md#media), which also has a value for
+*nothing starts*, so a `.fil` can run with a disk merely mounted beside it.
+
 **Pause** — the ⏸ button — holds the machine still: nothing is saved and
 nothing is lost, the clock simply stops and goes on from where it was. A held
 machine's button is ▶, and its border is lit. In the ⚙ popup, **Boot** is `PR#N`
@@ -244,9 +258,10 @@ board. Both are plain text, with one thing recognized in them: a bare
 `http`/`https` address becomes a link.
 Nothing but `agc` and `media` is required.
 
-**Save .agc** writes one out from the machine as it stands: what is in the
-drives, the model and its memory, and the live remap. Cards are written down
-only where they differ from the stock machine, so a container for an ordinary
+**Save .agc** writes one out from the machine as it stands: what was opened —
+what is in the drives, and any `.fil` poked into memory — the model and its
+memory, and the live remap. Cards are written down only where they differ from
+the stock machine, so a container for an ordinary
 Agat-7 stays short. It asks nothing. A container that was loaded from a file
 keeps its own title, and its filename with a `-yyyymmdd-hhmmss` stamp on it, so
 `game.agc` saves as `game-20260825-143012.agc` rather than over the file it came

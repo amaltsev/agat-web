@@ -8,6 +8,9 @@
   var MAX_CATCHUP_MS = 60;      // after a stall, drop the backlog rather than sprint
   var MOUSE_QUIET = 15 * CPU_HZ;   // no read for this long: the program is not using it
 
+  // What one load — a gesture, or a container — has brought in so far.
+  function newPending() { return { disks: [], boot: '', decided: false }; }
+
   function App(opts) {
     opts = opts || {};
     this.canvas = opts.canvas;
@@ -89,7 +92,17 @@
     this.mouseTouch = false;              // a touch has fed the card
     this.mousePolls = -1;                 // the card's read count, last status line
     this.mouseSeen = 0;                   // and the cycle it last went up
+    this.bootNote = '';                   // why a container's `boot` was not honored
     this.soundLog = null;
+    // Set by startOpen and spent by the first file of that gesture that turns
+    // out to be loadable: see startOpen.
+    this.freshOpen = false;
+    // Whether a gesture is still arriving, and what it has brought so far —
+    // the drives it filled and what it asked to boot. One load makes one boot
+    // decision, and it is made when the last of it is in: see finishOpen.
+    this.opening = false;
+    this.pending = newPending();
+    this.agcBoot = '';                    // the container's own `boot`, for Save
     this.onStatus = opts.onStatus || function () {};
     // What the on-screen keyboard watches: the byte a host key produced, the
     // key coming back up, and a modifier being held — which changes every cap
@@ -406,6 +419,77 @@
     this.lastBoot = '';
   };
 
+  // One gesture — a drop, an Open…, a link, the address — is about to hand
+  // over files, and whatever was open before is not part of what it says. The
+  // clear cannot happen here, for two reasons: a gesture carries any number of
+  // files and they belong together, and a file that turns out not to be an
+  // image should leave the running machine alone rather than empty it. So this
+  // only arms it, and `loadOne` spends it on the first file that loads.
+  //
+  // Files together, not one after another: Open… takes several and so does a
+  // drop, and that is how a container comes to name two disks — a system disk
+  // and a blank for it to write on.
+  App.prototype.startOpen = function () {
+    this.freshOpen = true;
+    this.opening = true;
+    this.pending = newPending();
+  };
+
+  // Spending it: the drives are emptied and `sources` with them, so that what
+  // gets saved is what was opened. The two go together — `sources` is what a
+  // mounted disk arrived as, and Save reads it to work out what the program
+  // wrote — and a disk left in a drive that the container would not carry is
+  // exactly the container that does not run.
+  App.prototype.takeFresh = function () {
+    if (!this.freshOpen) return;
+    this.freshOpen = false;
+    this.ejectAll();
+    this.sources = {};
+  };
+
+  // The rest of the gesture has arrived. Everything it named is in the drives
+  // or in memory, and this is where the one boot happens — unless what was
+  // opened has already said what boots, which is what a container does.
+  App.prototype.finishOpen = function () {
+    var p = this.pending;
+    this.opening = false;
+    this.pending = newPending();
+    if (!p.decided) this.decideBoot(p);
+    this.start();
+  };
+
+  // The boot itself. Without a `boot` the first disk opened wins, whichever
+  // drive it went into; with no disk at all there is nothing to boot and
+  // whatever a .fil left running stands. A `boot` that names a card this
+  // machine was not built with is not honored — there is no slot to enter —
+  // and the default is taken instead, with the reason on the status line.
+  App.prototype.decideBoot = function (p) {
+    var slot = -1, note = '';
+    this.bootNote = '';
+    if (p.boot === 'none') return;
+    if (p.boot === 'monitor') { this.machine.reset(); return; }
+    if (p.boot) {
+      slot = this.bootSlotOf(p.boot);
+      if (slot < 0) this.bootNote = note = 'no ' + p.boot + ' in this machine';
+    }
+    if (slot < 0) slot = p.disks.length ? p.disks[0] : -1;
+    if (slot < 0) {
+      if (note) this.onStatus(note);
+      return;
+    }
+    this.bootFrom(slot);
+    this.onStatus('booting ' + (this.drives[slot] ? this.drives[slot].name : 'slot ' + slot) +
+                  ' from slot ' + slot + (note ? ' — ' + note : ''));
+  };
+
+  // A `boot` value as a slot of the machine that got built: `slot:N` is that
+  // slot whether or not anything is in it, a card name is wherever this model
+  // puts that card. -1 for a card the machine has not got.
+  App.prototype.bootSlotOf = function (spec) {
+    var m = /^slot:([0-7])$/.exec(spec);
+    return m ? Number(m[1]) : AGAT.Machine.slotOf(this.slots, spec);
+  };
+
   App.prototype.insert = function (media) {
     var slot = this.slotFor(media.kind);
     var card = this.machine.cards[slot];
@@ -438,7 +522,9 @@
     return this.slotFor('aim840');
   };
 
-  // Disks are inserted and booted; .fil files are poked straight into memory.
+  // Disks are inserted and .fil files poked straight into memory. Neither
+  // boots: what starts is one decision, made once the whole gesture — or the
+  // whole container — is in. See finishOpen.
   //
   // `from` is the container entry this came out of, when it came out of one:
   // the bytes as they were packed and the patches applied to them, so a
@@ -483,9 +569,13 @@
     // A file dropped on its own belongs to no container, and the last one's
     // title and remap are about a different program: a game's movement keys
     // silently applying to the next disk would be worse than no remap at all.
+    // What was open before goes the same way, and for the same reason — see
+    // startOpen. Here rather than a line earlier: an unreadable file has said
+    // so above and left the machine as it was.
     if (!from) {
+      this.takeFresh();
       this.title = this.author = this.date = this.url = '';
-      this.notes = this.info = this.hint = this.fromAgc = '';
+      this.notes = this.info = this.hint = this.fromAgc = this.agcBoot = '';
       this.agcState = null;
       AGAT.keyboard.setRemap(null);
       AGAT.keyboard.setControls(null);
@@ -504,21 +594,31 @@
       if (!AGAT.loadFil) throw new Error('.fil loading is not built in yet');
       AGAT.loadFil(this.machine, s.payload);
       this.remember('fil:' + name, name, bytes, from, s);
-      this.start();
       this.onStatus('loaded ' + (s.filName || name) + ' at $' +
                     s.loadAddr.toString(16).toUpperCase());
-      return { kind: 'fil' };
+      return this.loaded({ kind: 'fil' });
     }
     var slot = this.insert(AGAT.mount(s));
     this.remember(slot, name, bytes, from, s);
-    this.bootFrom(slot);
-    this.start();
-    this.onStatus('booting ' + name + ' from slot ' + slot);
-    return { kind: s.kind, slot: slot };
+    this.pending.disks.push(slot);
+    this.onStatus(name + ' in slot ' + slot);
+    return this.loaded({ kind: s.kind, slot: slot });
+  };
+
+  // One medium is in. Inside a gesture the boot waits for the rest of it; a
+  // load that is not part of one — a tool, a test, the address — is the whole
+  // of what was opened and decides here.
+  App.prototype.loaded = function (r) {
+    if (this.opening) this.start();
+    else this.finishOpen();
+    return r;
   };
 
   // Keyed by slot, so re-dropping a disk into a drive replaces what was there
-  // rather than saving both.
+  // rather than saving both. A .fil has no slot to be replaced in, so it is
+  // keyed by its name instead: the several a container names stay apart, and
+  // opening one twice still leaves one. What keeps them from piling up over a
+  // session is the gesture's clear — see startOpen.
   App.prototype.remember = function (key, name, bytes, from, s) {
     this.sources[key] = {
       name: name,
@@ -592,6 +692,10 @@
     // A container describes a whole machine, so the drives start empty: a disk
     // left in another drive is not part of what it says, and build() would
     // otherwise carry it across into the machine the container asked for.
+    // Which is the gesture's clear as well, so it is spent here rather than
+    // left armed for a file opened alongside the container to fire it at the
+    // container's own media.
+    this.freshOpen = false;
     this.ejectAll();
     // What the container asks for, kept as it asked for it and beside the
     // machine that gets built: the page writes an address that says only where
@@ -615,6 +719,7 @@
                  : (over.ramSize || this.agcRam
                     || AGAT.Machine.PROFILES[this.model].ram);
     this.agcMonitor = c.machine.monitor || '';
+    this.agcBoot = c.machine.boot || '';
     this.agcState = c.state || null;
     this.monitor = over.monitor || this.agcMonitor || AGAT.MONITOR_DEFAULT;
     this.overCards = 'cards' in over ? over.cards : null;
@@ -633,18 +738,25 @@
     this.fromAgc = c.name;
     // In order, and one at a time: the media are loaded into a machine that
     // each of them changes — a drive is taken, a model is settled — and the
-    // status line below is about all of them together. Each disk boots as it
-    // goes in, so with two of them the machine is left booting the second;
-    // the first disk in the list is the one meant to boot, and it is booted
-    // again once every drive is loaded.
-    var self = this, chain = Promise.resolve(), disks = [];
+    // status line below is about all of them together. Nothing boots as it
+    // goes in; the container is a whole machine and says for itself what
+    // starts, which is decided below once every medium is in.
+    var self = this, chain = Promise.resolve();
+    var outer = this.pending, opening = this.opening;
+    this.pending = newPending();
+    this.pending.boot = this.agcBoot;
+    this.opening = true;
     c.media.forEach(function (m) {
       chain = chain.then(function () {
         return self.loadOne(m.payload, m.name, m);
-      }).then(function (r) { if (r.slot !== undefined) disks.push(r.slot); });
+      });
     });
     return chain.then(function () {
-      if (disks.length > 1) self.bootFrom(disks[0]);
+      var p = self.pending;
+      self.pending = outer;                // back to the gesture that held it
+      self.opening = opening;
+      outer.decided = true;                // the container has said what boots
+      self.decideBoot(p);
       // Last, over the top of the boot the media just did: a container that
       // carries a machine resumes it rather than starting the program again.
       // The disks have to be in first — the drives' heads are part of what is
@@ -674,6 +786,7 @@
   // with it that the page will be drawing.
   App.prototype.agcLoaded = function (c, keys, ctl, note) {
     this.onStatus(this.credit() +
+                  (this.bootNote ? ' — ' + this.bootNote : '') +
                   (note ? ' — ' + note : '') +
                   (keys.ok ? ' — ' + keys.ok + ' key' + (keys.ok > 1 ? 's' : '') +
                              (keys.remapped ? ', ' + keys.remapped + ' remapped' : '')
@@ -849,6 +962,7 @@
       model: this.model,
       ram: this.ramSize >> 10,
       monitor: this.monitor,
+      boot: this.agcBoot,
       slots: this.slotDiff(),
       keys: AGAT.keyboard.remap(),
       controls: AGAT.keyboard.controls(),

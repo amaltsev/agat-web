@@ -534,7 +534,9 @@
       <code>.aim</code> tagged track images, <code>.dsk</code> sector images and
       <code>.nib</code> nibble images — 140K and 840K of each — plus
       <code>.fil</code> program files. Format is detected by size, not by
-      extension.
+      extension. Opening replaces what was open, drives and all; files opened
+      together stay together, so a 140K and an 840K dropped at once fill both
+      drives and are saved as one container.
     </td></tr>
     <tr><td><b>AGC</b></td><td>
       An Agat Container: one of those images plus the machine it wants,
@@ -1031,6 +1033,10 @@
 
   function loadFiles(files) {
     unlockAudio();
+    // One gesture, however many files came with it: what was open before is
+    // replaced, and the files here are what the machine — and a container saved
+    // from it — is made of. Open two disks together and both drives are filled.
+    app.startOpen();
     var chain = Promise.resolve();
     Array.prototype.forEach.call(files, function (f) {
       chain = chain.then(function () {
@@ -1043,7 +1049,9 @@
         return app.readFile(f).then(afterLoad);
       }).catch(function (e) { say(e.message, true); });
     });
-    return chain;
+    // Whatever arrived, and whatever did not: the gesture is over, and what it
+    // brought boots now. A file that would not read has said so already.
+    return chain.then(function () { app.finishOpen(); });
   }
 
   // Fetch a container the address names. Served pages only — fetch is blocked
@@ -1053,6 +1061,7 @@
   function loadUrl(path, over) {
     unlockAudio();
     unstick();
+    app.startOpen();
     // Fetching and reading fail for unrelated reasons, so each says its own
     // piece. A file that never arrived is named here, and is the only case
     // Open… is an answer to; a file that arrived and would not read has named
@@ -1066,7 +1075,8 @@
     }).then(function (b) {
       return app.load(new Uint8Array(b), path.split('/').pop(), null, over)
         .then(afterLoad);
-    }).catch(function (e) { say(e.message, true); });
+    }).then(function () { app.finishOpen(); },
+            function (e) { say(e.message, true); app.finishOpen(); });
   }
 
   document.getElementById('file').addEventListener('change', function (e) {

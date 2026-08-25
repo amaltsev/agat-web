@@ -286,6 +286,10 @@
          : String(s).replace(/\s+/g, ' ').trim();
   }
 
+  // What `machine.boot` may say: a card, a slot of this machine, nothing at
+  // all, or the machine's own scan. `auto` is the default spelled out.
+  var BOOT = /^(auto|none|monitor|fdd140|fdd840|slot:[0-7])$/;
+
   // `machine.slots`: what this machine has that its model's stock complement
   // does not. Keys are slot numbers 0-7, values `{card, ram}` — kilobytes, as
   // `machine.ram` is — or `null` for a slot deliberately left empty. `card` is
@@ -363,6 +367,9 @@
         // A name in AGAT.MONITORS — the monitor the program was drawn for.
         // Anything else is dropped, as an unknown card is.
         monitor: AGAT.MONITORS[machine.monitor] ? machine.monitor : '',
+        // Which drive starts. Anything unrecognized is dropped and the
+        // container boots as one that said nothing.
+        boot: BOOT.test(machine.boot) && machine.boot !== 'auto' ? machine.boot : '',
         slots: parseSlots(machine.slots),
       },
       keys: c.keys || {},
@@ -493,6 +500,7 @@
     if (spec.monitor && spec.monitor !== AGAT.MONITOR_DEFAULT) {
       o.machine.monitor = spec.monitor;
     }
+    if (spec.boot) o.machine.boot = spec.boot;
     if (spec.slots) o.machine.slots = spec.slots;
     if (spec.keys && Object.keys(spec.keys).length) o.keys = spec.keys;
     if (spec.controls && Object.keys(spec.controls).length) o.controls = spec.controls;

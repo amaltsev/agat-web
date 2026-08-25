@@ -109,6 +109,7 @@ whoever opens it.
 | `model` | `7` or `9` |
 | `ram` | **base RAM in kilobytes**: `32`, `64` or `128`. Agat-7 only — the Agat-9 is always 128K. |
 | `monitor` | the monitor the program was drawn for: `"color16"` (the default, left unwritten), `"color8"`, `"color16inv"` or `"gray"` |
+| `boot` | what starts, when the default is not what this container wants. See [`media`](#media). |
 | `slots` | what this machine has that the model's stock complement does not. Optional. |
 
 `ram` is base RAM on the motherboard, not the machine's total. It is not
@@ -374,27 +375,39 @@ so each line stands on its own. A single long string is accepted on reading;
 hand-wrapped lines of any width are too.
 
 **`data` or `gz` is a size decision**, and the writer makes it: gzip is used
-when it saves at least a tenth, and `data` otherwise. An Agat disk is mostly
-empty and shrinks by ten times or more — a 140K disk that costs 208K as base64
-costs 20K as `gz`, which is the difference between a container that costs more
-than the disk it carries and one that costs a tenth of it. A `.fil` of packed
-code may not clear the bar, and then it stays readable. Nothing else in a
-container is ever compressed: the fields a person reads and edits are text
-either way, and they are a few hundred bytes.
+when it saves at least a tenth, and `data` otherwise.
 
-To read a `gz`: base64-decode it, then gunzip. On the command line, taking a
-container's first payload apart is
+Anything the emulator takes, a container carries: `.aim`, `.dsk` and
+`.nib` at 140K and 840K, and `.fil` programs. A container inside a
+container is refused.  Each image goes into the drive its size implies,
+so a container can fill both drives. Several `.fil` programs are loaded
+in the order they are listed (and the last loaded runs).
 
-```sh
-python3 -c 'import json,sys;print("".join(json.load(open(sys.argv[1]))["media"][0]["gz"]))' \
-  game.agc | base64 -d | gunzip > game.dsk
-```
+Everything listed is loaded first, in order; then one thing starts. Without a
+`boot` that is **the first disk listed**, whichever drive it went into, and a
+container of nothing but `.fil` programs is left running the last of them.
 
-Anything the emulator takes, a container carries: `.aim`, `.dsk` and `.nib` at
-140K and 840K, and `.fil` programs. A container inside a container is refused.
-Each image goes into the drive its size implies, so a container can fill both
-drives — a system disk and a blank for it to write on — and **the first disk
-listed is the one booted**.
+`machine.boot` overrides it:
+
+| | |
+|---|---|
+| `"fdd140"`, `"fdd840"` | that controller, wherever this model puts it |
+| `"slot:N"` | that slot, for a machine with two of the same card |
+| `"none"` | nothing — a `.fil` runs and the disk is only mounted |
+| `"monitor"` | the machine's own scan picks, as the hardware does |
+| `"auto"`, or absent | the default above |
+
+`"monitor"` is the real machine: both models enter the 840K controller in slot 5
+whether or not it holds a disk, so a container that names a 140K disk and asks
+for `"monitor"` sits there waiting, exactly as an Agat would. Everything else
+is `ПР#n` into the drive named.
+
+A `boot` naming a card this machine was not built with cannot be honored — there
+is no slot to enter — so the default is taken and the page says why. A slot that
+is empty but real is entered as asked.
+
+The same rules cover what is opened by hand: a drop or an **Open…** of several
+files is read as a container whose `media` are those files in that order.
 
 ### `patches`
 
@@ -411,11 +424,7 @@ gzipped and then base64. A reader takes all three. A record that gives two at
 once is an error, not a preference to resolve.
 
 The writer picks by size, and it is the same rule the payload gets: up to 32
-bytes hex, above that whichever of base64 and gzip is smaller by a tenth. A poke
-stays something to read, a rewritten sector does not cost three characters a
-byte, and a rewritten track — 6K of base64 — drops by a third again. In practice
-dense 6502 code under a kilobyte stays `data`, and a written disk track goes to
-`gz`.
+bytes hex, above that whichever of base64 and gzip is smaller.
 
 Any other key on a patch record is left alone — a container is hand-edited, and
 a `"why"` beside the bytes should survive being loaded and saved.
@@ -506,9 +515,12 @@ being saved arrived with a state already — see [Making one](#from-the-emulator
 
 ### From the emulator
 
-**Save AGC** writes a container from the machine as it stands: what is in the
-drives, the model and RAM, the live remap, and anything a program has written
-to an unlocked disk. It asks one thing, and only because the answer is a
+**Save AGC** writes a container from the machine as it stands: what was opened —
+what is in the drives, and any `.fil` poked into memory — the model and RAM, the
+live remap, and anything a program has written to an unlocked disk. What was
+opened and not what has been open: opening empties the drives first, so the
+container is about one program and the several files of one gesture rather than
+the session. It asks one thing, and only because the answer is a
 different document either way: whether to carry the [machine
 state](#state--the-machine-as-it-stood) — where the program had got to — along
 with the program. A container without one is something to hand to somebody; one
