@@ -711,11 +711,37 @@
     };
   };
 
-  // What a saved container should be called: the one it came from, or the
-  // loaded image with its extension swapped. A title good enough to publish is
-  // a decision for whoever renames the file afterwards.
-  App.prototype.agcName = function () {
-    if (this.fromAgc) return this.fromAgc;
+  // A stamp for a filename: local time, because it is read by whoever is
+  // sitting in front of the machine, and in the order that sorts.
+  function stamp(d) {
+    function pad(n, w) {
+      var s = String(n);
+      while (s.length < w) s = '0' + s;
+      return s;
+    }
+    return pad(d.getFullYear(), 4) + pad(d.getMonth() + 1, 2) + pad(d.getDate(), 2) +
+           '-' + pad(d.getHours(), 2) + pad(d.getMinutes(), 2) + pad(d.getSeconds(), 2);
+  }
+
+  // One we wrote ourselves, to be taken off before the next goes on: without
+  // this a container saved three times is called `game-…-…-….agc`.
+  var STAMPED = /-\d{8}-\d{6}$/;
+
+  // What a saved container should be called: the one it came from with a fresh
+  // timestamp, or the loaded image with its extension swapped. A title good
+  // enough to publish is a decision for whoever renames the file afterwards.
+  //
+  // The stamp is what keeps a re-save from being an overwrite. A container is
+  // loaded to be changed — another disk, a card, a snapshot taken further in —
+  // and saving it back under the name it arrived as leaves two files the
+  // browser tells apart by a `(1)` and nobody else can tell apart at all. The
+  // bare image keeps its plain name because that save is a first one: there is
+  // no earlier container of that name to sit beside.
+  App.prototype.agcName = function (now) {
+    if (this.fromAgc) {
+      return this.fromAgc.replace(/\.[^.\/]*$/, '').replace(STAMPED, '') +
+             '-' + stamp(now || new Date()) + '.agc';
+    }
     for (var k in this.sources) {
       return this.sources[k].name.replace(/\.[^.\/]*$/, '') + '.agc';
     }

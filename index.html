@@ -1292,8 +1292,10 @@
   // which menus were touched.
 
   // The name is not asked about. A container that came from a file keeps its own
-  // title and filename; one made from a bare image takes the image's name for
-  // both. That is a guess, and renaming a downloaded file is easier than
+  // title, and its filename with a `-yyyymmdd-hhmmss` stamp on it so a re-save
+  // lands beside the file it was made from rather than on top of it; one made
+  // from a bare image takes the image's name for both, unstamped, being a first
+  // save. That is a guess, and renaming a downloaded file is easier than
   // answering a dialog before every save.
   //
   // The one question is whether the machine goes in with the program, because

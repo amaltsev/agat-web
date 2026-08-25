@@ -151,6 +151,31 @@ function eq(what, got, want) {
   const marsRom = mk({ model: 9, cards: { mouse: { card: 'mouse-mars-rom' } } });
   eq('App fits a «Марсианка» on a card with the ROM',
      cards(marsRom), ['2:xram9', '4:mouse-mars-rom', '5:fdd840', '6:fdd140']);
+
+  // What Save AGC calls its file. The clock is passed in, so the stamp is a
+  // fact rather than whatever second the test ran in.
+  const at = new Date(2026, 7, 25, 14, 30, 12);   // months are 0-based
+  const named = (name, sources) => {
+    const app = mk({ model: 7 });
+    app.fromAgc = name;
+    app.sources = sources || {};
+    return app.agcName(at);
+  };
+
+  eq('agcName has nothing to save', named('', null), '');
+  eq('agcName stamps a re-saved container',
+     named('game.agc'), 'game-20260825-143012.agc');
+  // Twice over the same file has to give the same shape, not a longer one.
+  eq('agcName replaces its own stamp rather than adding one',
+     named('game-20240101-000000.agc'), 'game-20260825-143012.agc');
+  // A stamp is ours only in that exact shape; anything else is part of a name
+  // somebody chose and stays.
+  eq('agcName leaves a date that is not one of ours',
+     named('game-1989.agc'), 'game-1989-20260825-143012.agc');
+  // A first save off a bare image is not a re-save: no stamp, and the
+  // extension is swapped as before.
+  eq('agcName leaves a bare image unstamped',
+     named('', { 3: { name: 'game.dsk' } }), 'game.agc');
 }
 
 // --- the mice ---------------------------------------------------------------

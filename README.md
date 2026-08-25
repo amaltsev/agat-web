@@ -248,9 +248,12 @@ Nothing but `agc` and `media` is required.
 drives, the model and its memory, and the live remap. Cards are written down
 only where they differ from the stock machine, so a container for an ordinary
 Agat-7 stays short. It asks nothing. A container that was loaded from a file
-keeps its own title and filename; one made from a bare image takes the image's
-name for both, so `game.dsk` saves as `game.agc` titled `game.dsk` — rename it
-afterwards if it deserves better. From the command line:
+keeps its own title, and its filename with a `-yyyymmdd-hhmmss` stamp on it, so
+`game.agc` saves as `game-20260825-143012.agc` rather than over the file it came
+from; one made from a bare image takes the image's name for both, unstamped,
+that save being a first one, so `game.dsk` saves as `game.agc` titled
+`game.dsk` — rename either afterwards if it deserves better. From the command
+line:
 
 ```sh
 node tools/mkagc.js game.dsk --title="…" --author="…" --date=1989 \

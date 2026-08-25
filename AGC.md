@@ -519,10 +519,13 @@ including every bare image.
 Nothing else is asked, including about compression, which is decided per
 payload, per patch and per snapshot by whether it pays.
 
-A container that was loaded from a file keeps its own title and filename. One
-made from a bare image takes the image's name for both, so `game.dsk` saves as
-`game.agc` titled `game.dsk` — rename it, and open it in a text editor to add an
-author, a date and the keys.
+A container that was loaded from a file keeps its own title, and its filename
+with a `-yyyymmdd-hhmmss` stamp on it, so `game.agc` saves as
+`game-20260825-143012.agc` and sits beside the file it was made from instead of
+over it. An existing stamp is replaced rather than added to. One made from a
+bare image takes the image's name for both, unstamped — that save is a first
+one — so `game.dsk` saves as `game.agc` titled `game.dsk`. Rename either, and
+open it in a text editor to add an author, a date and the keys.
 
 ### From the command line
 
