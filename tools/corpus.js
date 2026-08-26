@@ -2,10 +2,10 @@
 // the project's regression harness.
 //
 //   node tools/corpus.js <dir> [--out=DIR] [--cycles=N] [--keys=~] [--md]
-//                              [--ram=32|64|128] [--nocards]
+//                              [--model=7|9] [--ram=32|64|128] [--nocards]
 //
-// The model comes from the path (…7a… -> Agat-7, …9a… -> Agat-9), the way
-// AgatF's own agat.sh infers it. With --out, a PNG is written per image.
+// The model is the Agat-9 unless a container names another or --model says so.
+// With --out, a PNG is written per image.
 //
 // `--ram` overrides the Agat-7's base RAM and `--nocards` pulls both of its
 // memory cards, which together are how you tell "this disk wants more memory"
@@ -68,7 +68,7 @@ H.loadRoms(ctx).then(async (roms) => {
       const s = await H.sniffFile(ctx, p, show(p));
       row.kind = s.kind || 'unknown';
       if (!s.kind) { rows.push(row); continue; }
-      const model = s.hintModel || 9;
+      const model = Number(flags.model) || H.modelOf(s) || 9;
       row.model = model;
       const m = H.makeMachine(ctx, roms,
         { model: model, ramSize: ramSize, slots: slots });

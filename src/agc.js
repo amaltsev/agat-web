@@ -2,8 +2,8 @@
 //
 // One JSON file holding everything needed to run an old program: the image, any
 // patches to it, a title, the machine it wants, and the controls it is played
-// with. A disk on its own says none of that — the model comes from a `7a` in
-// the filename, and which host key sends the byte the game reads is a puzzle.
+// with. A disk on its own says none of that — which machine it wants is a guess,
+// and which host key sends the byte the game reads is a puzzle.
 //
 //   {
 //     "agc": 1,

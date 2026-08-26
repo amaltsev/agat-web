@@ -7,7 +7,7 @@
 //   node tools/debug.js crash <image> [cycles] [n]            how it got somewhere bad
 //   node tools/debug.js flow  <image> [cycles] [n] [fromPC]   taken branches, loops folded
 //
-// AGAT_MODEL=7|9 overrides the model the image implies, AGAT_BOOT=cold skips
+// AGAT_MODEL=7|9 overrides the model a container names, AGAT_BOOT=cold skips
 // the boot and cold-starts into the monitor, AGAT_SP=xx overrides the stack
 // pointer bootSlot would have set.
 const H = require('./harness');
@@ -53,7 +53,7 @@ loadRoms(ctx).then(async (roms) => {
   // Same boot path as tools/check.js: insert the media, enter the controller's
   // ROM in whichever slot took it.
   const sniffed = await H.sniffFile(ctx, image);
-  const model = Number(process.env.AGAT_MODEL) || sniffed.hintModel || 9;
+  const model = Number(process.env.AGAT_MODEL) || H.modelOf(sniffed) || 9;
   const m = makeMachine(ctx, roms, { model: model });
   let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
   if (sniffed.kind && sniffed.kind !== 'fil') {

@@ -108,7 +108,7 @@ if (!target) { console.error('need an image'); process.exit(2); }
 H.loadRoms(ctx).then(async (roms) => {
   const sniffed = await H.sniffFile(ctx, target);
   let resumed = '';
-  const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
+  const model = flags.model ? Number(flags.model) : (H.modelOf(sniffed) || 9);
   const slots = {};
   const card = (n, name, kb) => {
     if (kb === undefined) return;

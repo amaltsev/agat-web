@@ -26,7 +26,7 @@
 //                                                and run both on: the two have
 //                                                to stay in step
 //
-// --model=7|9 overrides the model the filename implies, --slot=N the boot slot,
+// --model=7|9 overrides the model a container names, --slot=N the boot slot,
 // --cold skips the boot and cold-starts into the monitor instead,
 // --keys=STR types a string once the machine is up (~ Return, _ Space, ^ Esc,
 // ↑↓←→ the arrows) and --per=N is how many cycles each keystroke gets.
@@ -88,7 +88,7 @@ async function sniff() {
       extra = '  load=' + hex(s.loadAddr) + ' len=' + s.length +
               ' type=' + hex(s.fileType, 2) + ' "' + s.filName + '"';
     } else if (s.kind) {
-      extra = '  model-hint=' + (s.hintModel || '-') + (s.writeProtect ? ' WP' : '');
+      extra = '  model=' + (H.modelOf(s) || '-') + (s.writeProtect ? ' WP' : '');
     }
     // sniffFile unwraps a container to its first medium, so the line above
     // describes the image; this says which container it came out of.
@@ -557,7 +557,7 @@ async function urlkeysCmd(roms) {
 
   let modelSel, ramSel, psromSel, xramSel, xram9Sel, mouseSel, kbdSel,
       monitorSel;
-  let mouseSlot, url, agcUrl, urlCardLayer, pinned, wantKbd, app;
+  let mouseSlot, url, agcUrl, urlCardLayer, wantKbd, app;
   const location = { hash: '', replace(h) { this.hash = h; } };
   global.AGAT = A;
   const document = { title: '' };
@@ -588,21 +588,12 @@ async function urlkeysCmd(roms) {
 
   // The containers this drives, by the name the address would give them. The
   // two bundled ones are the cases that matter — a stock Agat-7 and an Agat-9
-  // with a card nothing else has — and the third is a container that names no
-  // machine at all, which reaches one through its medium's own 9a.
+  // with a card nothing else has.
   const files = {};
   for (const f of fs.readdirSync(path.join(H.ROOT, 'examples')).sort()) {
     if (/\.agc$/.test(f)) {
       files['examples/' + f] = fs.readFileSync(path.join(H.ROOT, 'examples', f));
     }
-  }
-  {
-    const j = JSON.parse(await A.agc.build({
-      title: 'hint', model: 9, ram: 128,
-      media: [{ name: 'x9a.dsk', bytes: new ctx.Uint8Array(143360) }],
-    }));
-    delete j.machine;
-    files['hint.agc'] = Buffer.from(JSON.stringify(j), 'utf8');
   }
 
   // The page, opened at an address: the fragment into the menus, a machine
@@ -620,7 +611,6 @@ async function urlkeysCmd(roms) {
                       cards: menuCards(), onStatus: () => {} });
     app.roms = roms;
     app.build();
-    app.modelPinned = pinned;
     if (agcUrl) {
       await app.load(ctx.Uint8Array.from(files[agcUrl]), agcUrl.split('/').pop(),
                      null, urlOverrides());
@@ -711,21 +701,11 @@ async function urlkeysCmd(roms) {
   eq("where the container's cards go where the Agat-7 puts them", fitted(),
      ['2:psrom', '3:fdd140', '4:xram', '5:fdd840', '6:mouse-mars-rom']);
 
-  // A container that names no machine reaches one through its medium's 9a, and
-  // that is as much what it asks for as a declared model would be.
-  eq('a model reached through the medium is still the container\'s',
-     await open('#agc=hint.agc'), '#agc=hint.agc');
-  eq('...which is the machine that got built', app.model, 9);
-  eq('and an address that overrules the hint says so',
-     await open('#agc=hint.agc&model=7'), '#agc=hint.agc&model=7');
-  eq('...and is the machine that got built', app.model, 7);
-
   // Every container in examples/, which is the whole of what the entry in the
   // program list has to produce: the list links to `#agc=<path>` and clicking
   // one must leave the address exactly there.
   start();
   for (const name of Object.keys(files)) {
-    if (name === 'hint.agc') continue;
     eq(name + ' runs at the address that names it',
        await open('#agc=' + encodeURIComponent(name)),
        '#agc=' + encodeURIComponent(name));
@@ -769,7 +749,7 @@ async function stateCmd(roms) {
   const cycles = Number(rest[1] || 40e6);
   if (!target) die('need an image');
   const sniffed = await H.sniffFile(ctx, target);
-  const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
+  const model = flags.model ? Number(flags.model) : (H.modelOf(sniffed) || 9);
   const agc = sniffed.agc;
   const build = () => {
     const m = H.makeMachine(ctx, roms, {
@@ -851,7 +831,7 @@ if (!target) { console.error('need an image'); process.exit(2); }
 
 H.loadRoms(ctx).then(async (roms) => {
   const sniffed = await H.sniffFile(ctx, target);
-  const model = flags.model ? Number(flags.model) : (sniffed.hintModel || 9);
+  const model = flags.model ? Number(flags.model) : (H.modelOf(sniffed) || 9);
   const agc = sniffed.agc;
   const m = H.makeMachine(ctx, roms, {
     model: model,

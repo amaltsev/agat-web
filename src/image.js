@@ -80,9 +80,6 @@
       // Agat Emulator's own heuristic, and the only signal a file carries about
       // its sector order.
       prodos: /\.po$/i.test(name) || /\.po\b/i.test(name),
-      // agat.sh infers the machine from the path; so do we, as a default only.
-      hintModel: /7a|\bagat-?7\b/i.test(name) ? 7
-               : /9a|\bagat-?9\b/i.test(name) ? 9 : null,
     };
   };
 

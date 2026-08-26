@@ -567,9 +567,7 @@
       The Agat-9 is 128K in 8K banks on the motherboard, plus a 128K
       ОЗУ expansion in slot 2. The standard Agat-7 is three separate
       devices — 64K of base RAM in 16K banks, a 32K ЭмПЗУ card
-      in slot 2, and a 32K ОЗУ expansion in slot 4. A filename
-      containing <code>7a</code> or <code>9a</code> picks the machine
-      for you until you choose one yourself.
+      in slot 2, and a 32K ОЗУ expansion in slot 4.
     </td></tr>
     <tr><td><b>Bookmarks</b></td><td>
       The machine, its memory sizes, the monitor and which keyboard is up ride
@@ -854,7 +852,7 @@
   // The address, into the menus. Everything the fragment says about the machine
   // ends up in a control, and what the page builds it builds from those — so
   // this runs before the App is made and nothing else has to read the fragment.
-  var url, agcUrl, urlCardLayer, pinned, wantKbd;
+  var url, agcUrl, urlCardLayer, wantKbd;
   function readSettings() {
     url = readUrl();
     agcUrl = url.agc || '';
@@ -865,7 +863,7 @@
     mouseSel.value = '';
     monitorSel.value = AGAT.MONITOR_DEFAULT;
     kbdSel.value = '';
-    pinned = pick(modelSel, url.model);
+    pick(modelSel, url.model);
     pick(monitorSel, url.monitor);
     // The machine's own sizes rather than whichever option happens to be listed
     // first: 64K of base RAM is an Agat-7, and 32K is a choice.
@@ -900,14 +898,11 @@
     onKeyUp: function (info) { if (kbView) kbView.light(info, 0, false); },
     onMods: function (m) { if (kbView) kbView.setMods(m); },
   });
-  // A machine named in the URL was chosen as deliberately as one picked from
-  // the menu, so a dropped file's 7a/9a hint does not overrule it either.
-  app.modelPinned = pinned;
 
   // The machine the App settled on, back into the controls and the tab. Worth
-  // doing after a load as well as after a menu choice: an unpinned machine
-  // follows the 7a/9a in a filename, and the title is what tells one tab from
-  // another when an Agat-7 and an Agat-9 are open side by side.
+  // doing after a load as well as after a menu choice: a container names its
+  // own machine, and the title is what tells one tab from another when an
+  // Agat-7 and an Agat-9 are open side by side.
   function syncMachineUI() {
     syncMenus();
     syncMouseButtons();
@@ -1099,7 +1094,6 @@
   // the App still holds the model they were read against.
   function applyModel() {
     syncMemEnabled();
-    app.modelPinned = true;
     app.overCards = menuCards();
     app.setModel(Number(modelSel.value), Number(ramSel.value));
     syncMachineUI();

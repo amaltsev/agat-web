@@ -11,7 +11,7 @@
 //   --info=TEXT           what the program is, at whatever length it takes,
 //                         printed on the card under the controls
 //   --hint=TEXT           one line to whoever plays it, printed under that
-//   --model=7|9           the machine it wants
+//   --model=7|9           the machine it wants, the Agat-7 by default
 //   --ram=32|64|128       Agat-7 RAM, in K
 //   --monitor=NAME        the monitor it was drawn for: color16 (the default,
 //                         left unwritten), color8, color16inv or gray
@@ -106,7 +106,6 @@ if (flags.monitor && !A.MONITORS[flags.monitor]) {
 main().catch((e) => { console.error(e.message); process.exit(1); });
 
 async function main() {
-  let modelHint = 0;                 // not the container's `hint`: the 7a/9a
   const media = files.map((f, i) => {
     const bytes = new ctx.Uint8Array(fs.readFileSync(f));
     // Sniffed for the error, not for the container: a container holds the file
@@ -114,7 +113,6 @@ async function main() {
     const s = A.sniff(bytes, path.basename(f));
     if (!s.kind) throw new Error(f + ': not a recognized Agat image');
     if (s.kind === 'agc') throw new Error(f + ': already a container');
-    if (!modelHint) modelHint = s.hintModel || 0;
     let patches = explicit;
     if (flags.diff) {
       if (i > 0) throw new Error('--diff applies to one image, and this is ' + f);
@@ -127,7 +125,7 @@ async function main() {
     return { name: path.basename(f), bytes: bytes, patches: patches };
   });
 
-  const model = Number(flags.model) || modelHint || 7;
+  const model = Number(flags.model) || 7;
   process.stdout.write(await A.agc.build({
     title: flags.title || '',
     author: flags.author || '',

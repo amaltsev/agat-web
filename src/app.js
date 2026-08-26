@@ -51,7 +51,6 @@
     this.slotOverrides = null;            // derived: the merge, as slots
     this.slots = AGAT.Machine.resolveSlots(this.model, this.cardSlots());
 
-    this.modelPinned = false;
     // Which monitor the machine is plugged into — a name in AGAT.MONITORS.
     // A standing choice like the RAM size: the machine outputs a 4-bit color
     // code and the monitor decides what color that is, so software drawn for
@@ -345,7 +344,7 @@
 
   // Switching machines takes the new one's own RAM size unless told otherwise:
   // an Agat-9's 128K is not a sensible thing to carry over to an Agat-7 just
-  // because a filename's `7a` moved the model.
+  // because the menu moved the model.
   App.prototype.setModel = function (model, ramSize) {
     this.model = model === 7 ? 7 : 9;
     var profile = AGAT.Machine.PROFILES[this.model];
@@ -580,16 +579,6 @@
       AGAT.keyboard.setRemap(null);
       AGAT.keyboard.setControls(null);
     }
-    // A container that names no model reaches one through its own medium, and
-    // that model is as much what the container asks for as a declared one is:
-    // the address has nothing to say about a machine it would arrive at by
-    // itself. Recorded whether or not the hint gets to act — with the model
-    // pinned from the address, this is what the address is disagreeing with.
-    if (from && s.hintModel && !this.agcModel) this.agcModel = s.hintModel;
-    // Honor the machine the filename implies, unless the user has chosen one.
-    if (s.hintModel && s.hintModel !== this.model && !this.modelPinned) {
-      this.setModel(s.hintModel);
-    }
     if (s.kind === 'fil') {
       if (!AGAT.loadFil) throw new Error('.fil loading is not built in yet');
       AGAT.loadFil(this.machine, s.payload);
@@ -711,10 +700,7 @@
                              scaleSlots(c.machine.slots))
       : null;
     var model = over.model || this.agcModel;
-    if (model) {
-      this.modelPinned = true;         // as deliberate as a machine off the menu
-      this.model = model;
-    }
+    if (model) this.model = model;
     this.ramSize = this.model === 9 ? 0x20000
                  : (over.ramSize || this.agcRam
                     || AGAT.Machine.PROFILES[this.model].ram);

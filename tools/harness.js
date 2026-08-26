@@ -37,10 +37,8 @@ function loadRoms(ctx) {
 // browser's own load path is a promise for the same reason.
 //
 // An .agc is unwrapped to its first medium, with the container left on the
-// result: a tool wants the image, and the machine the container names is a
-// better default than the one a filename implies. Its own `hintModel` is what
-// carries that, so every tool that already honors a `7a` in a path honors a
-// container without being changed.
+// result: a tool wants the image, and the container is where everything else it
+// might want — the machine, the RAM size — is written down.
 function sniffFile(ctx, p, displayName) {
   const bytes = new ctx.Uint8Array(fs.readFileSync(p));
   const s = ctx.AGAT.sniff(bytes, displayName || String(p));
@@ -49,10 +47,16 @@ function sniffFile(ctx, p, displayName) {
     const first = c.media[0];
     if (!first) throw new Error(p + ': container carries no media');
     const inner = ctx.AGAT.sniff(first.payload, first.name);
-    inner.hintModel = c.machine.model || inner.hintModel;
     inner.agc = c;
     return inner;
   });
+}
+
+// The machine a sniffed file asks for, or 0 if nothing does — which is every
+// bare image, since nothing about a disk says which Agat it belongs to. Written
+// once here because each tool falls back to a different default of its own.
+function modelOf(s) {
+  return (s.agc && s.agc.machine.model) || 0;
 }
 
 function mountFile(ctx, p) {
@@ -123,6 +127,7 @@ function keyCode(c) {
 }
 
 module.exports = {
-  loadModules, loadRoms, sniffFile, mountFile, makeMachine, insert, keyCode, resume,
+  loadModules, loadRoms, sniffFile, mountFile, modelOf, makeMachine, insert,
+  keyCode, resume,
   ROOT, MODULES,
 };

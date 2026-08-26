@@ -906,8 +906,8 @@ built from — `Object.keys(AGAT.MONITORS)` for the monitor — which makes a va
 added there a value the test already offers. Neither is a formality: the second
 kind of failure is silent, and only the first announces itself at all.
 
-`tools/corpus.js` walks a directory of images, infers the model from the path
-(`*7a` → 7, `*9a` → 9, as `agat.sh` does), boots each, and emits a Markdown
+`tools/corpus.js` walks a directory of images, boots each on the machine
+`--model` names — the Agat-9 unless it says otherwise — and emits a Markdown
 table. The images stay local and uncommitted; the table is the regression
 artifact.
 

@@ -90,8 +90,6 @@ set to match your disk, because it is the only memory the video controller scans
 and its size masks the video mode register's page field, so software can tell.
 The Agat-9's own 128K is fixed, but it takes a 128K ОЗУ expansion of its own in
 slot 2 — a different card, and MouseGraf will not start without it.
-A filename containing `7a` or `9a` picks the machine for you until you choose
-one yourself.
 
 Drives: 840K in slot 5 on both machines, 140K in slot 6 on the Agat-9 and slot 3
 on the Agat-7. A dropped image goes to whichever drive can read it.
@@ -160,8 +158,7 @@ the Agat-9 is always 128K; `psrom` and `xram` size the two Agat-7 memory cards
 in KB and `xram9` the Agat-9's, with `0` for a slot left empty; `mouse` is
 `nippel`, `mars`, `mars-rom` or `mm8031`, and empty for no mouse. A card can be
 given a slot of its own — `mouse=nippel:3` — for a machine that had one
-somewhere other than the slot this page leaves free. A machine named in the URL
-is treated as chosen, so a `7a`/`9a` filename does not override it.
+somewhere other than the slot this page leaves free.
 
 `agc=` names a container, which carries the file itself:
 
