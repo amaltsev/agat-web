@@ -3,33 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="agat.css">
 <title>Agat-7 / Agat-9 emulator</title>
 <style>
-  :root {
-    color-scheme: dark;
-    --bg: #14161a; --panel: #1d2026; --edge: #2c313a;
-    --ink: #d7dbe2; --dim: #8b93a1; --accent: #79c0ff;
-    /* The status line's two colors: something to be told, and something that
-       is going right. Nowhere else on the page — a lamp is red because a drive
-       LED is, and a keycap is red because the machine's own is. */
-    --warn: #ff9c8a; --ok: #6fd08c;
-    /* 768 of canvas — three 256-pixel columns — plus the panel's padding and
-       border, so the picture lands on a whole multiple of its own raster. */
-    --page: 790px;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
-    display: flex; flex-direction: column; align-items: center;
-    min-height: 100vh; padding: 12px 12px 32px;
-  }
-  h1 { font-size: 17px; font-weight: 600; margin: 0 0 10px; }
-  /* A masthead, not a link to somewhere: it takes the page back to a bare
-     machine, which is worth a hover and not worth the page's link color above
-     the picture. */
-  h1 a { color: inherit; text-decoration: none; }
-  h1 a:hover { color: var(--accent); }
   .screen {
     background: #000; border: 1px solid var(--edge); border-radius: 6px;
     padding: 10px; width: min(94vw, var(--page)); position: relative;
@@ -87,14 +63,6 @@
     .bar { grid-template-columns: 1fr auto; }
     .bar .grp.right { grid-column: 1 / -1; }
   }
-  select, button, label.file {
-    font: inherit; color: var(--ink); background: var(--panel);
-    border: 1px solid var(--edge); border-radius: 5px; padding: 5px 10px;
-    cursor: pointer;
-  }
-  button:hover, select:hover, label.file:hover { border-color: var(--accent); }
-  button:active { transform: translateY(1px); }
-  select:disabled { opacity: .45; cursor: default; }
   /* ЛАТ and РУС are not the same width, and neither is a held machine's face
      the running one's: the bar must not shuffle under the pointer when a
      button changes. */
@@ -111,27 +79,7 @@
   /* Something has been written to a disk and is in memory only. Red, as the
      drive lamps are: this is the drives saying it, not the page. */
   #save.lit { color: #ff8078; border-color: #6a2a24; }
-  input[type=file] { display: none; }
-  label.dim { color: var(--dim); font-size: 12.5px; cursor: default; }
   input[type=range] { width: 84px; vertical-align: middle; }
-  /* The settings section. Under the bar rather than over it: the screen is
-     above, so opening this moves the keyboard and the help and never the
-     picture. */
-  #settings, #saveopts {
-    width: min(94vw, var(--page)); margin-top: 8px;
-    background: var(--panel); border: 1px solid var(--edge);
-    border-radius: 6px; padding: 8px 10px;
-  }
-  #settings .row, #saveopts .row {
-    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-  }
-  #settings .row + .row, #saveopts .row + .row { margin-top: 8px; }
-  #settings .key, #saveopts .key {
-    color: var(--dim); font-size: 12.5px; min-width: 8ch;
-  }
-  /* The one line the save panel says about what it is about to write. Dim and
-     small, because it is a note and not a control. */
-  #saveopts .note { color: var(--dim); font-size: 12.5px; }
   /* The drive lamps. Red, as the drives' own LEDs are, and as nothing else on
      the page is: an accent-blue dot among these controls reads as a button. */
   .lamps { display: flex; gap: 12px; align-items: center; }
@@ -163,6 +111,10 @@
   .lamp button:disabled { opacity: .3; cursor: default; }
   .lamp button:disabled:hover { border-color: var(--edge); }
   .lamp button.rw { color: #ff8078; border-color: #6a2a24; }
+  /* The drive whose catalog is up. Blue, because the panel it opens is
+     the page's and not the machine's — the red on these buttons is the
+     drive's own lamp and its write lock. */
+  .lamp button.on { color: var(--ink); border-color: var(--accent); }
   /* An empty drive has nothing to lock, but it keeps the space: a disk being
      dropped in must not shift the drive beside it out from under the pointer. */
   .lamp button.blank { visibility: hidden; }
@@ -348,6 +300,8 @@
      that does not fit on a line already carrying a title. The tiles are the
      info card's idiom — panel, edge, accent on hover — because they load a
      program rather than say something about one. */
+  /* The catalog, under the row that names the drive it came off. */
+  #filespanel { margin-top: 8px; }
   #examplelist { display: grid; gap: 8px; margin: 8px 0 12px;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
   a.ex {
@@ -366,7 +320,6 @@
     border: 1px solid var(--edge); border-bottom-width: 2px;
     border-radius: 4px; padding: 1px 5px;
   }
-  a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -410,7 +363,7 @@
      to somebody, and one person's session halfway through it is not. The disk
      and its writes are not a question — they are what a container is — so the
      panel is one checkbox and the two buttons. -->
-<div id="saveopts" hidden>
+<div id="saveopts" class="panel" hidden>
   <div class="row">
     <span class="key">Save AGC</span>
     <label title="Include full machine state — so the container reopens where it was left"><input type="checkbox" id="savestate"> machine state</label>
@@ -423,11 +376,22 @@
   </div>
 </div>
 
+<!-- The files on the disk in one drive. Not part of the machine and not part
+     of saving it, so a panel of its own: it is the disk being worked on rather
+     than the program being run. -->
+<div id="files" class="panel" hidden>
+  <div class="row">
+    <span class="key">Files</span>
+    <button id="filesclose" class="sp">Close</button>
+  </div>
+  <div id="filespanel"></div>
+</div>
+
 <!-- The machine, rather than the program running on it: which Agat it is, what
      is fitted, and the two buttons that start it over. Touched once for a
      program, if ever, and carried by an .agc so they need not be touched
      again. Out of the bar, which has to fit one line. -->
-<div id="settings" hidden>
+<div id="settings" class="panel" hidden>
   <div class="row">
     <span class="key">Machine</span>
     <select id="model">
@@ -559,6 +523,15 @@
       writing.  Writes go to memory, and closing the tab loses them.
       <b>Save AGC</b> keeps them, as patches on the disk they came from.
     </td></tr>
+    <tr><td><b>⋯</b></td><td>
+      The files on that drive's disk: a catalog, and what each file can be
+      taken off or put onto it with. It edits the disk in the drive, so the
+      machine reads what is written and <b>Save AGC</b> keeps it — a running
+      DOS re-reads the catalog for every command, so the next <code>CATALOG</code>
+      shows the change. The machine is held while the panel is up. The same
+      panel is a page of its own at <a href="edit-dos.html">edit-dos.html</a>,
+      for a disk that is not in a drive.
+    </td></tr>
     <tr><td><b>⚙</b></td><td>
       Which Agat this is, its memory sizes, the mouse, the monitor and the
       volume, with <b>Boot</b> and <b>Reset</b>.
@@ -628,6 +601,8 @@
 <script src="src/info.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/fil.js"></script>
+<script src="src/dosfile.js"></script>
+<script src="src/dosui.js"></script>
 <script src="src/state.js"></script>
 <script src="src/app.js"></script>
 <script>
@@ -1001,6 +976,7 @@
   function unstick() { stuck = false; }
 
   function afterLoad() {
+    closeFiles();                          // a different disk, if any
     screen.classList.remove('empty');
     // The save panel is about the container that was loaded, down to which way
     // its checkbox starts, so a new one closes it rather than leaving it saying
@@ -1096,6 +1072,7 @@
   // The menus are read before setModel because that is what rebuilds, and while
   // the App still holds the model they were read against.
   function applyModel() {
+    closeFiles();                          // the drives it was showing are gone
     syncMemEnabled();
     app.overCards = menuCards();
     app.setModel(Number(modelSel.value), Number(ramSel.value));
@@ -1309,6 +1286,7 @@
   saveEl.addEventListener('click', function () {
     if (!saveOptsEl.hidden) { closeSaveOpts(); return; }
     if (!app.agcName()) { say('nothing loaded to save', true); return; }
+    closeFiles();
     saveStateBox.checked = !!app.agcState;
     saveNoteEl.textContent = app.agcState
       ? 'this container came with one' : '';
@@ -1318,7 +1296,7 @@
     // when the button was pressed — not wherever the program has got to by the
     // time the box has been read and the button found. It also makes the answer
     // to "what am I about to save" something that stops long enough to look at.
-    holdForSave();
+    holdMachine();
     syncLamps();                       // the button lights while the panel is up
   });
 
@@ -1326,23 +1304,27 @@
 
   function closeSaveOpts() {
     saveOptsEl.hidden = true;
-    releaseSave();
+    releaseMachine();
     syncLamps();
   }
 
   // The hold is only ours to give back if we took it: a machine the person had
   // already paused stays paused when the panel closes, which is the one case
   // where releasing it outright would undo something they asked for.
-  var heldForSave = false;
+  //
+  // One flag for both panels that take it, which is why opening either closes
+  // the other: two holds and one flag would leave the machine stopped when the
+  // second one let go.
+  var held = false;
 
-  function holdForSave() {
-    heldForSave = !app.paused;
-    if (heldForSave) app.setPaused(true);
+  function holdMachine() {
+    held = !app.paused;
+    if (held) app.setPaused(true);
   }
 
-  function releaseSave() {
-    if (heldForSave) app.setPaused(false);
-    heldForSave = false;
+  function releaseMachine() {
+    if (held) app.setPaused(false);
+    held = false;
   }
 
   document.getElementById('savego').addEventListener('click', function () {
@@ -1557,6 +1539,7 @@
   var lampEls = [];
   var trackEls = [];
   var lockEls = [];
+  var fileEls = [];
 
   // The write lock, one per drive. Every disk arrives read-only: a program that
   // writes to the disk it booted from would otherwise change the only copy the
@@ -1593,6 +1576,80 @@
     syncLamps();
   }
 
+  // ---- the files on a disk -------------------------------------------------
+  //
+  // The catalog of the disk in one drive, over the live media: what is written
+  // here goes into the stream the controller is reading, so the machine sees
+  // it, and Save AGC keeps it as a patch like any other write.
+  var filesEl = document.getElementById('files');
+  var filesUI = null;
+  var filesSlot = -1;
+
+  function openFiles(e) {
+    var slot = Number(e.currentTarget.getAttribute('data-slot'));
+    if (!filesEl.hidden && filesSlot === slot) { closeFiles(); return; }
+    if (!app.machine.cards[slot] || !app.machine.cards[slot].media) {
+      say('slot ' + slot + ' is empty', true);
+      return;
+    }
+    if (!filesUI) {
+      filesUI = new AGAT.DosUI(document.getElementById('filespanel'), {
+        onStatus: say,
+        // A write is a write: the Save button lights the same way it does for
+        // one the program made.
+        onChange: syncLamps,
+      });
+    }
+    if (!saveOptsEl.hidden) closeSaveOpts();
+    // Held while the panel is up, for the same reason Save AGC holds: what is
+    // being looked at should stop long enough to look at. It does not make
+    // editing safe under a booted DOS — that keeps its own copy of the catalog
+    // in RAM — which is what the panel's own line says.
+    if (filesEl.hidden) holdMachine();
+    filesEl.hidden = false;
+    showFiles(slot);
+  }
+
+  function showFiles(slot) {
+    var card = app.machine.cards[slot], src = app.sources[slot];
+    filesSlot = slot;
+    // Built fresh every time: the machine has been running, and a track
+    // decoded before it wrote is not that track any more.
+    var sec = new AGAT.Sectors(card.media.kind, null,
+                               { media: card.media, prodos: !!(src && src.prodos) });
+    var dos;
+    try {
+      dos = new AGAT.Dos33(sec);
+    } catch (err) {
+      filesUI.mount(null, {});
+      say(err.message, true);
+      syncLamps();
+      return;
+    }
+    filesUI.mount(dos, {
+      label: app.drives[slot] ? app.drives[slot].name : 'slot ' + slot,
+      writable: !card.media.locked,
+      // Just the lock: syncLamps carries the new state into the panel, the
+      // same way it does when the drive's own RO/RW button is the one clicked.
+      onUnlock: app.canUnlock(slot) ? function () {
+        app.setLocked(slot, false);
+        syncLamps();
+      } : null,
+    });
+    syncLamps();
+  }
+
+  function closeFiles() {
+    if (filesEl.hidden) return;
+    filesEl.hidden = true;
+    filesSlot = -1;
+    if (filesUI) filesUI.mount(null, {});
+    releaseMachine();
+    syncLamps();
+  }
+
+  document.getElementById('filesclose').addEventListener('click', closeFiles);
+
   function syncLamps() {
     var list = app.driveLamps(), i;
     for (i = lampEls.length; i < list.length; i++) {
@@ -1600,18 +1657,24 @@
       var dot = document.createElement('i');
       var trk = document.createElement('b');
       var lock = document.createElement('button');
+      var files = document.createElement('button');
       el.className = 'lamp';
       el.appendChild(dot);
       el.appendChild(document.createTextNode(list[i].label));
       el.appendChild(trk);
       el.appendChild(lock);
+      el.appendChild(files);
+      files.textContent = '⋯';
+      files.title = 'The files on this disk';
       // The slot is on the element rather than closed over, because the list is
       // rebuilt for a different model and the elements outlive one machine.
       lock.addEventListener('click', toggleLock);
+      files.addEventListener('click', openFiles);
       lampsEl.appendChild(el);
       lampEls.push(el);
       trackEls.push(trk);
       lockEls.push(lock);
+      fileEls.push(files);
     }
     for (i = 0; i < list.length; i++) {
       var d = list[i];
@@ -1631,6 +1694,22 @@
       if (lampEls[i].title !== title) lampEls[i].title = title;
       if (trackEls[i].textContent !== track) trackEls[i].textContent = track;
       syncLock(lockEls[i], d);
+      // An empty drive has no catalog to show. The button keeps its place, so
+      // a disk dropped into the drive beside it does not shift this one out
+      // from under the pointer — the same reason the lock keeps its.
+      var mark = !d.name ? 'blank' : filesSlot === d.slot ? 'on' : '';
+      if (fileEls[i].className !== mark) fileEls[i].className = mark;
+      // The write lock can be turned from either end — the drive's RO/RW
+      // button or the panel's own — and the panel is drawn from it, so this is
+      // where the two are kept in step. Cheap enough to check every tick, and
+      // it is the only thing that catches the button beside the one that
+      // opened the panel.
+      if (filesUI && filesSlot === d.slot && filesUI.writable === d.locked) {
+        filesUI.setWritable(!d.locked, filesUI.onUnlock);
+      }
+      if (fileEls[i].getAttribute('data-slot') !== String(d.slot)) {
+        fileEls[i].setAttribute('data-slot', d.slot);
+      }
     }
     // Lit rather than relabelled: the bar is one line and a button that changes
     // width shuffles everything after it out from under the pointer. The panel

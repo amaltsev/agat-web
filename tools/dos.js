@@ -3,6 +3,8 @@
 //   node tools/dos.js ls    <image> [pattern...]   the catalog, as DOS prints it
 //   node tools/dos.js rm    <image> <name>...      delete
 //   node tools/dos.js mv    <image> <old> <new>    rename
+//   node tools/dos.js lock  <image> <name>...      set the lock mark
+//   node tools/dos.js unlock <image> <name>...     clear it
 //   node tools/dos.js get   <image> <name> [out]   a file off the disk
 //   node tools/dos.js put   <image> <file> [name]  a file onto it
 //   node tools/dos.js tget  <image> <name> [out]   the same, Agat text -> UTF-8
@@ -101,7 +103,7 @@ function help(full) {
   return out.join('\n').replace(/\n+$/, '');
 }
 
-const COMMANDS = ['ls', 'rm', 'mv', 'get', 'put', 'tget', 'tput'];
+const COMMANDS = ['ls', 'rm', 'mv', 'lock', 'unlock', 'get', 'put', 'tget', 'tput'];
 if (!cmd || flags.help || cmd === 'help') {
   console.log(help(flags.help || cmd === 'help'));
   process.exit(0);
@@ -114,6 +116,7 @@ if (COMMANDS.indexOf(cmd) < 0) {
 
 const ctx = H.loadModules();
 const A = ctx.AGAT;
+const F = A.dosfile;
 const die = (e) => { console.error(e.message || e); process.exit(1); };
 const hex = (n, w) => '$' + (n >>> 0).toString(16).toUpperCase().padStart(w || 4, '0');
 
@@ -197,54 +200,13 @@ function line(dos, e) {
   if (e.deleted) s = s.replace(/^./, 'x') + '   (deleted, T/S list was on track ' +
                                e.tsTrack + ')';
   if (!flags.long) return s;
-  s = s.padEnd(44) + ' ts=' + e.tsTrack + '/' + e.tsSector;
-  try {
-    const bytes = dos.read(e);
-    const len = dos.length(e, bytes);
-    s += ' sectors=' + Math.ceil(bytes.length / 256);
-    if (len) {
-      s += ' len=' + len.len;
-      if (len.addr >= 0) s += ' addr=' + hex(len.addr);
-    }
-  } catch (err) {
-    s += ' ' + err.message;
-  }
+  const d = F.describe(dos, e);
+  s = s.padEnd(44) + ' ts=' + d.tsTrack + '/' + d.tsSector;
+  if (d.error) return s + ' ' + d.error;
+  s += ' sectors=' + d.sectors;
+  if (d.len !== undefined) s += ' len=' + d.len;
+  if (d.addr !== undefined) s += ' addr=' + hex(d.addr);
   return s;
-}
-
-// ---- the file's contents ----------------------------------------------------
-
-// The bytes `get --body` writes: the type's own prefix off the front, trimmed
-// to the length the file declares. For a type that declares nothing there is
-// nothing to trim to and the stream is all there is.
-function body(dos, entry, bytes) {
-  const len = dos.length(entry, bytes);
-  if (!len) return bytes;
-  return bytes.subarray(len.at, Math.min(len.at + len.len, bytes.length));
-}
-
-// A DOS text file ends its lines with `$8D` — a carriage return with bit 7
-// set, as every printable byte in one has. `chars.decode` drops bit 7, so the
-// terminator arrives here as the `\x0D` escape and goes back out as one; the
-// escape re-encodes with bit 7 on, which is the byte DOS wants.
-function toUtf8(bytes) {
-  return A.chars.decode(bytes).replace(/\\x0D/g, '\n');
-}
-
-function fromUtf8(text) {
-  return A.chars.encode(text.replace(/\r\n/g, '\n').replace(/\n/g, '\\x0D'));
-}
-
-function outName(entry, ext) {
-  return entry.name.replace(/[\\/\x00-\x1f]/g, '_') + ext;
-}
-
-function parseAddr(v) {
-  if (v === undefined) return -1;
-  const s = String(v).replace(/^\$/, '').replace(/^0x/i, '');
-  const n = /^[0-9a-f]+$/i.test(s) ? parseInt(s, 16) : NaN;
-  if (isNaN(n) || n < 0 || n > 0xffff) throw new Error('--addr=' + v + ': not an address');
-  return n;
 }
 
 // ---- commands ---------------------------------------------------------------
@@ -268,6 +230,8 @@ async function main() {
   if (cmd === 'ls') return ls(img, dos);
   if (cmd === 'rm') return commit(img, sec, rm(dos));
   if (cmd === 'mv') return commit(img, sec, mv(dos));
+  if (cmd === 'lock') return commit(img, sec, lock(dos, true));
+  if (cmd === 'unlock') return commit(img, sec, lock(dos, false));
   if (cmd === 'get') return get(dos, false);
   if (cmd === 'tget') return get(dos, true);
   if (cmd === 'put') return commit(img, sec, await put(dos, false));
@@ -319,6 +283,18 @@ function expand(dos, name) {
   return got;
 }
 
+function lock(dos, on) {
+  if (!rest.length) throw new Error(cmd + ': need a name');
+  const done = [];
+  for (const name of rest) {
+    for (const e of expand(dos, name)) {
+      dos.setLocked(e, on);
+      done.push('"' + e.name + '"');
+    }
+  }
+  return (on ? 'locked ' : 'unlocked ') + done.join(', ');
+}
+
 function mv(dos) {
   if (rest.length !== 2) throw new Error('mv: need an old name and a new one');
   const e = dos.find(rest[0]);
@@ -339,29 +315,20 @@ function mv(dos) {
 function get(dos, asText) {
   if (!rest.length) throw new Error(cmd + ': need a name');
   const e = dos.find(rest[0]);
-  const stream = dos.read(e);
-  let out;
-  if (asText) {
-    if (e.type !== 0x00 && !flags.force) {
-      throw new Error('"' + e.name + '" is type ' + e.typeLetter +
-                      ', not T — tget --force to read it as text anyway');
-    }
-    out = Buffer.from(toUtf8(body(dos, e, stream)), 'utf8');
-  } else if (flags.raw) {
-    out = Buffer.from(stream);
-  } else if (flags.body) {
-    out = Buffer.from(body(dos, e, stream));
-  } else {
-    out = Buffer.from(A.fil.build({
-      raw: e.raw, type: e.type, locked: e.locked, data: stream,
-    }));
+  if (asText && e.type !== 0x00 && !flags.force) {
+    throw new Error('"' + e.name + '" is type ' + e.typeLetter +
+                    ', not T — tget --force to read it as text anyway');
   }
-  const to = rest[1] || (asText ? '-' : outName(e, flags.raw || flags.body ? '.bin' : '.fil'));
+  const got = F.unpack(dos, e, asText ? 'text' :
+                               flags.raw ? 'raw' : flags.body ? 'body' : 'fil');
+  const out = got.text !== undefined ? Buffer.from(got.text, 'utf8')
+                                     : Buffer.from(got.bytes);
+  const to = rest[1] || (asText ? '-' : got.name);
   if (to === '-') process.stdout.write(out);
   else {
     fs.writeFileSync(to, out);
     console.log('"' + e.name + '" (' + e.typeLetter + ', ' +
-                Math.ceil(stream.length / 256) + ' sectors) -> ' + to +
+                Math.ceil(dos.read(e).length / 256) + ' sectors) -> ' + to +
                 ', ' + out.length + ' bytes');
   }
 }
@@ -369,46 +336,28 @@ function get(dos, asText) {
 async function put(dos, asText) {
   const from = rest.shift();
   if (!from) throw new Error(cmd + ': need a file');
-  const raw = new ctx.Uint8Array(fs.readFileSync(from));
-  let name = rest.shift() || '';
-  let type = -1, data = null, locked = !!flags.lock;
-
+  let type = -1;
   if (flags.type) {
     type = A.Dos33.typeByte(flags.type);
     if (type < 0) throw new Error('--type=' + flags.type + ': one of ' + A.Dos33.TYPES);
   }
+  if (flags.raw && type < 0) throw new Error('--raw needs --type');
 
-  if (asText) {
-    if (type < 0) type = 0x00;
-    data = fromUtf8(fs.readFileSync(from, 'utf8'));
-  } else if (!flags.raw && A.fil.looks(raw)) {
-    const f = A.fil.parse(raw);
-    if (!name) name = f.name;
-    if (type < 0) type = f.type;
-    if (!flags.lock) locked = f.locked;
-    data = f.data;
-  } else if (flags.raw) {
-    if (type < 0) throw new Error('--raw needs --type');
-    data = raw;
-  } else {
-    if (type < 0) type = 0x04;
-    if (type === 0x04) {
-      const addr = parseAddr(flags.addr);
-      if (addr < 0) throw new Error('a B file needs --addr=$XXXX');
-      data = new ctx.Uint8Array(4 + raw.length);
-      data[0] = addr & 0xff; data[1] = addr >> 8;
-      data[2] = raw.length & 0xff; data[3] = (raw.length >> 8) & 0xff;
-      data.set(raw, 4);
-    } else if (type === 0x02 || type === 0x01) {
-      data = new ctx.Uint8Array(2 + raw.length);
-      data[0] = raw.length & 0xff; data[1] = (raw.length >> 8) & 0xff;
-      data.set(raw, 2);
-    } else {
-      data = raw;
-    }
-  }
+  const got = F.pack(asText ? fs.readFileSync(from, 'utf8')
+                            : new ctx.Uint8Array(fs.readFileSync(from)), {
+    name: rest.shift() || '',
+    type: type,
+    addr: flags.addr,
+    addrLabel: flags.addr === undefined ? undefined : '--addr=' + flags.addr,
+    locked: !!flags.lock,
+    text: asText,
+    raw: !!flags.raw,
+  });
+  const data = got.data, locked = got.locked;
+  let name = got.name;
+  type = got.type;
 
-  if (!name) name = path.basename(from).replace(/\.[^.]*$/, '').toUpperCase();
+  if (!name) name = F.defaultName(from);
   const clash = dos.match(name);
   if (clash.length) {
     if (!flags.force) {

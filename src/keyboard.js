@@ -532,6 +532,22 @@
            keyName(r.scan, r.mod) + hint;
   }
 
+  // Is this keystroke somebody typing into the page rather than into the
+  // machine? The listener goes on `window`, so it sees every key on the page —
+  // including the ones meant for a rename field or a text editor in a panel,
+  // and `preventDefault` below would swallow them.
+  //
+  // Every `input` counts, not only a text one: a focused checkbox owns Space
+  // and a focused `select` owns the arrows, the same way a text field owns the
+  // letters. A `button` does not — clicking one leaves it focused, and the
+  // machine has to go on taking keys after a button has been pressed.
+  function typingInto(t) {
+    if (!t) return false;
+    if (t.isContentEditable) return true;
+    var tag = t.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  }
+
   // Attach to a DOM element. `target` gets the listeners, `machine` receives
   // the decoded byte. Returns a detach function.
   //
@@ -549,7 +565,7 @@
     }
     function onKeyDown(e) {
       mods(e);
-      if (e.metaKey || e.altKey) return;
+      if (e.metaKey || e.altKey || typingInto(e.target)) return;
       var m = machine.machine || machine;      // accept an App or a Machine
       var s = scanOf(e);
       if (!s) return;
@@ -584,6 +600,7 @@
 
   AGAT.keyboard = {
     decode: decode, codeFor: codeFor, scanOf: scanOf, planeFor: planeFor,
+    typingInto: typingInto,
     routesTo: routesTo, routeName: routeName, keyName: keyName,
     setRemap: setRemap, remap: remap, resolveCode: resolveCode,
     keyCount: keyCount, usedCodes: usedCodes, codeName: codeName,

@@ -77,6 +77,8 @@ Load order matters only in that a module's dependencies must already be on
 | `info.js` | the card under the controls: what the container says it is |
 | `audio.js` | `$C030` edges → PCM |
 | `fil.js` | `.fil` loading |
+| `dosfile.js` | what a DOS file is on the way in and out: the type prefixes, the `.fil`, the `$8D` line endings |
+| `dosui.js` | the file manager as a panel, mounted by `edit-dos.html` and by the emulator page |
 | `state.js` | the machine as a snapshot: the `.agc` `state` block, both ways |
 | `app.js` | browser glue: run loop, media routing, diagnostics |
 
@@ -452,8 +454,70 @@ including the two things about the 840K disk that are not Apple's and cost the
 most to find: the free map's bit order, and the fact that the map does not fit
 in the VTOC and continues in a sector of its own. Between them,
 `chars.js`, `sectors.js` and `dos33.js` are the whole of the file system, with
-no Node in any of them: `tools/dos.js` is a command-line front end over the
-three, and a page can be another.
+no Node in any of them.
+
+### The file manager, twice over
+
+`dos33.js` says where a file lives. What a file *is* — a `B` file's four bytes
+of address and length, an `A` file's two of length, a `T` file's `$8D` line
+endings, a `.fil`'s catalog entry glued in front — is one layer up, in
+`dosfile.js`, and it is there rather than in the tool because two things need
+it. `tools/dos.js` is the command line, `dosui.js` is the panel, and neither
+implements any of it: `describe` is what `ls -l` prints and what the panel's
+dim column draws, `pack` is what `put` and **Add file…** both hand to
+`Dos33.create`, `unpack` is `get` and the download buttons. Nothing in it
+touches `fs` or the DOM.
+
+`dosui.js` draws the catalog into whatever element it is handed and is told,
+per disk, whether writing is allowed. Two pages mount it:
+
+- **`edit-dos.html`** opens an image file. Thirteen of the modules and no ROMs
+  — no CPU, no video, no machine — which is why the page loads instantly and why
+  `check.js modules` asserts its script list is a *subsequence* of the module
+  list rather than equal to it. It saves through the File System Access API
+  where there is one, so Save writes over the file that was opened, and
+  downloads where there is not.
+- **the emulator page**, on the `⋯` beside a drive lamp, over the disk in that
+  drive.
+
+The second is what the `opts.media` arm of the `Sectors` constructor is for. A
+mounted disk has no image file behind it — the `Media` *is* the disk — so
+`data` is null, `pack()` returns null, and a write goes straight into the
+stream the controller is reading. It also calls `media.markWritten(t)`, which
+is what makes `App.writeBack` and the lit **Save AGC** button see the change:
+a file deleted from the panel and a file deleted by a program running on the
+machine are the same event by the time they reach a save.
+
+The write lock is `setWritable` rather than part of `mount`, because it changes
+while the panel is up: the drive's own RO/RW button is right beside the `⋯`
+that opened it. `syncLamps` compares the two every tick and pushes the drive's
+answer in, so the panel says the same thing as the button whichever end was
+used — and setting it redraws without shutting the row that is open, since
+unlocking a disk to delete the file you are looking at should leave you looking
+at it.
+
+**A running DOS does not need rebooting to see the edit.** Measured rather than
+assumed, and the assumption was wrong: Agat DOS 3.3 reads the VTOC and the
+catalog fresh for every command rather than holding them from boot. With
+`TESTKOM9_840` booted to a `]` prompt, deleting `APTEST2` through a `Sectors`
+over the live `Media` moved `CATALOG` from `3076 СВОБОДНО` to `3110` and took
+the file off the listing, and a following `SAVE X` allocated two sectors from
+the *new* free map — 3109 to 3107 — leaving a coherent disk. So the panel does
+not have to warn about a stale catalog. What was not measured is a program with
+a file already open, which holds its own T/S list in a file buffer; deleting
+that file underneath it is a different question.
+
+The per-file actions expand under the row rather than dropping out of a `⋯`
+menu. A menu would be the page's first popup — positioning, outside-click,
+keyboard dismissal, a layer over everything — and the strip has somewhere to
+put the rename field and the text editor, which a menu would have needed a
+second surface for.
+
+`check.js dosui` is how it is tested: the real `DosUI` drawn into a stub
+document and clicked on, with the assertions against the `Dos33` underneath. It
+is the only way to test a module whose every operation is a click on something
+it drew, and it catches the gap that matters — a delete that leaves the row on
+the screen, a rename that reaches the wrong entry.
 
 ---
 
@@ -576,6 +640,13 @@ consequences fall straight out and are the point of the thing:
 - **Caps gray out per layout.** A legend is `near` if some host key reaches it
   now, `far` if only the other layout does, `dead` if none ever does. РУС
   cannot type `' , / ;`; ЛАТ cannot type `Ю`, `Ч` or `Ъ`.
+
+`attachKeyboard` goes on `window`, so it sees every key on the page and
+`preventDefault`s the ones the machine takes. `typingInto` is what keeps that
+from eating a panel's rename field or its text editor: an `input`, a
+`textarea`, a `select` or anything `contenteditable` owns its own keys. A
+`button` does not — clicking one leaves it focused, and the machine has to go
+on taking keys after somebody has pressed Pause.
 
 ### The remap is a layer, not an edit
 
@@ -883,9 +954,10 @@ Everything runs headlessly against the shipping source.
 ```sh
 node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/vectors.js               # pure-function tests, about a second
-node tools/check.js modules         # index.html vs tools/modules.js
+node tools/check.js modules         # the pages vs tools/modules.js
 node tools/check.js kbdmenu         # the page's keyboard menu, load order and all
 node tools/check.js urlkeys         # the page's address, around the whole loop
+node tools/check.js dosui           # the file manager, over a stub document
 node tools/painters.js              # each video mode from a synthetic pattern
 
 node tools/check.js boot   <image>  # boot and report where it got to

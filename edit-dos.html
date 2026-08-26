@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="agat.css">
+<title>Agat DOS 3.3 disk files</title>
+<style>
+  /* The page is one panel, so it is a little narrower than the emulator's
+     790px of canvas — this is a list of names, and a long measure makes the
+     columns at either end hard to read against each other. */
+  :root { --page: 720px; }
+  .bar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    width: min(94vw, var(--page)); margin-bottom: 8px;
+  }
+  .bar .sp { margin-left: auto; }
+  #status { width: min(94vw, var(--page)); margin-top: 8px; min-height: 22px; }
+  /* Nothing open yet: the panel is the drop target, so it says so. */
+  #empty { color: var(--dim); text-align: center; padding: 22px 10px; }
+  .help {
+    width: min(94vw, var(--page)); margin-top: 16px; color: var(--dim);
+    font-size: 12.5px; border-top: 1px solid var(--edge); padding-top: 12px;
+  }
+  .help b { color: var(--ink); font-weight: 600; }
+  .help table { border-collapse: collapse; margin: 8px 0; }
+  .help td { padding: 1px 14px 1px 0; vertical-align: top; }
+</style>
+</head>
+<body>
+
+<h1>Agat DOS 3.3 disk files</h1>
+
+<div class="bar">
+  <label class="file" id="openlab">Open… <input type="file" id="file"></label>
+  <button id="save" disabled title="Write the disk back">Save</button>
+  <button id="saveas" title="Write the disk to a file of your choosing">Save as…</button>
+  <select id="medium" title="Which medium of the container to work on" hidden></select>
+  <span class="sp"><a href="index.html">Emulator</a></span>
+</div>
+
+<div class="panel" id="panel">
+  <div id="empty">drop a <code>.dsk</code>, <code>.nib</code>, <code>.aim</code> or
+  <code>.agc</code> disk here, or <b>Open…</b> one</div>
+</div>
+
+<div id="status" class="status">ready</div>
+
+<div class="help">
+  <table>
+    <tr><td><b>Takes</b></td><td>
+      Any disk the emulator takes — <code>.dsk</code>, <code>.nib</code> and
+      <code>.aim</code>, 140K and 840K — and <code>.agc</code> containers,
+      whichever medium of one you pick. Format is detected by size, not by
+      extension.
+    </td></tr>
+    <tr><td><b>A file</b></td><td>
+      Click one for what can be done with it. <b>.fil</b> is the file with its
+      catalog entry in front, which is what the emulator loads, so a program
+      taken off a disk can be dropped straight onto it; <b>raw</b> is the data
+      stream as DOS stores it and <b>body</b> the contents alone.
+    </td></tr>
+    <tr><td><b>Adding</b></td><td>
+      Drop a file on the page, or <b>Add file…</b>. A <code>.fil</code> carries
+      its own name, type and lock mark and needs no questions; anything else is
+      asked what type it is, and a <code>B</code> file where it loads. A disk
+      dropped on the page opens instead.
+    </td></tr>
+    <tr><td><b>Text</b></td><td>
+      A <code>T</code> file reads as UTF-8 and writes back in the Agat
+      character set, with the <code>$8D</code> line endings DOS wants.
+    </td></tr>
+    <tr><td><b>Saving</b></td><td>
+      Only the sectors that changed are touched: a <code>.nib</code> or an
+      <code>.aim</code> keeps every gap, sync field and index mark where it
+      was. Saving a container rewrites it, with the change as a patch on the
+      medium and the image it carries left as it was found.
+    </td></tr>
+    <tr><td><b>The same thing</b></td><td>
+      on a command line is <code>node tools/dos.js</code>, which does all of
+      this and globs names as well.
+    </td></tr>
+  </table>
+  <p>
+    Part of <a href="https://github.com/amaltsev/agat-web">agat-web</a>.
+  </p>
+</div>
+
+<script src="src/chars.js"></script>
+<script src="src/videopal.js"></script>
+<script src="src/drive.js"></script>
+<script src="src/aim840.js"></script>
+<script src="src/gcr140.js"></script>
+<script src="src/unpack.js"></script>
+<script src="src/agc.js"></script>
+<script src="src/image.js"></script>
+<script src="src/sectors.js"></script>
+<script src="src/dos33.js"></script>
+<script src="src/fil.js"></script>
+<script src="src/dosfile.js"></script>
+<script src="src/dosui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var A = AGAT;
+  var statusEl = document.getElementById('status');
+  var saveEl = document.getElementById('save');
+  var saveAsEl = document.getElementById('saveas');
+  var mediumEl = document.getElementById('medium');
+  var panelEl = document.getElementById('panel');
+  var emptyEl = document.getElementById('empty');
+
+  // The file being edited, and enough of where it came from to write it out
+  // again — the same two things tools/dos.js keeps. A container is unwrapped to
+  // one of its media; a bare file keeps its header and any trailing epilogue,
+  // which are spliced back around the payload on the way out.
+  var img = null;
+  var dirty = false;
+
+  // The picker keeps a handle, so Save can write over the file that was opened
+  // instead of dropping a second copy in Downloads. It needs a served page:
+  // on file:// there is no origin to grant the permission to, and the call
+  // fails in a way that cannot be recovered inside the same gesture.
+  var CAN_PICK = !!window.showOpenFilePicker && location.protocol !== 'file:';
+
+  function say(msg, isError) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (isError ? ' err' : '');
+  }
+
+  var ui = new A.DosUI(panelEl, {
+    onStatus: say,
+    onChange: function () {
+      dirty = true;
+      saveEl.disabled = false;
+      syncTitle();
+    },
+    // A disk dropped on the panel is one to open, not one to put on the disk —
+    // and the panel is empty when the first one arrives, so this is set here
+    // rather than per disk.
+    onImage: function (file) { return openFile(file, null); },
+  });
+
+  function syncTitle() {
+    saveEl.title = !img ? 'Nothing open' :
+      img.handle ? 'Write the disk back to ' + img.name :
+      'Download the disk as ' + img.name;
+  }
+
+  // ---- opening ------------------------------------------------------------
+
+  // Whatever arrived, wherever it was dropped. A disk is opened; anything else
+  // is a file for the disk that is open, and goes to the panel — so the page
+  // is one target rather than two, and a .fil dropped an inch below the list
+  // lands on the disk instead of being told it is not a disk image.
+  function openFile(file, handle) {
+    return file.arrayBuffer().then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      var s = A.sniff(bytes, file.name);
+      if (s.kind !== 'agc' && !A.Sectors.KINDS[s.kind]) return ui.take([file]);
+      if (dirty &&
+          !window.confirm('The disk has been changed and not saved. Open another anyway?')) {
+        return undefined;
+      }
+      return openBytes(bytes, file.name, handle);
+    }).catch(function (e) { say(e.message, true); });
+  }
+
+  function openBytes(bytes, name, handle) {
+    var s = A.sniff(bytes, name);
+    if (s.kind === 'agc') {
+      return A.agc.parse(bytes, s.name).then(function (c) {
+        img = { name: name, handle: handle || null, agc: c };
+        buildMediumMenu(c);
+        // The first medium that is a disk: a container may lead with a .fil,
+        // and picking it would open with an error for no reason.
+        var i = 0;
+        for (i = 0; i < c.media.length; i++) {
+          if (A.Sectors.KINDS[A.sniff(c.media[i].payload, c.media[i].name).kind]) break;
+        }
+        mountMedium(i < c.media.length ? i : 0);
+      });
+    }
+    if (!A.Sectors.KINDS[s.kind]) {
+      throw new Error(name + ': not a disk image' +
+                      (s.kind ? ' (' + s.kind + ')' : ' (' + bytes.length + ' bytes)'));
+    }
+    img = { name: name, handle: handle || null, file: bytes, inner: s,
+            kind: s.kind, data: new Uint8Array(s.payload) };
+    mediumEl.hidden = true;                // a bare image is the only one there is
+    mountDisk(name);
+    return Promise.resolve();
+  }
+
+  function buildMediumMenu(c) {
+    mediumEl.textContent = '';
+    c.media.forEach(function (m, i) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = m.name || ('medium ' + i);
+      mediumEl.appendChild(o);
+    });
+    mediumEl.hidden = c.media.length < 2;
+  }
+
+  function mountMedium(i) {
+    var c = img.agc, m = c.media[i];
+    if (!m) throw new Error('no medium ' + i);
+    var inner = A.sniff(m.payload, m.name);
+    img.index = i;
+    img.base = m.payload;
+    img.inner = inner;
+    img.kind = inner.kind;
+    mediumEl.value = String(i);
+    if (!A.Sectors.KINDS[inner.kind]) {
+      img.data = null;
+      ui.mount(null, {});
+      throw new Error(m.name + ' is not a disk image');
+    }
+    img.data = new Uint8Array(inner.payload);
+    mountDisk(img.name + ' [' + (m.name || i) + ']');
+  }
+
+  // The image, as sectors and then as a file system. A disk that is not a DOS
+  // 3.3 disk says so here and the panel stays empty — which is a fact about
+  // the disk, not a failure to open it.
+  function mountDisk(label) {
+    img.sec = new A.Sectors(img.kind, img.data,
+                            { prodos: img.inner.prodos, name: img.inner.name });
+    try {
+      img.dos = new A.Dos33(img.sec);
+    } catch (e) {
+      // Nothing is shown rather than the last disk's catalog: what is open is
+      // this disk, and it has no file system on it.
+      img.dos = null;
+      ui.mount(null, {});
+      throw e;
+    }
+    emptyEl.hidden = true;
+    dirty = false;
+    saveEl.disabled = true;
+    syncTitle();
+    ui.mount(img.dos, { label: label, writable: true });
+    say(label + ' — ' + img.dos.list().length + ' files');
+  }
+
+  document.getElementById('file').addEventListener('change', function (e) {
+    if (e.target.files.length) openFile(e.target.files[0], null);
+    e.target.value = '';
+  });
+
+  // Open… through the picker where there is one, so that Save has somewhere to
+  // write back to. The label's own input is the fallback, and is what the
+  // click reaches when the picker is not there.
+  document.getElementById('openlab').addEventListener('click', function (e) {
+    if (!CAN_PICK) return;
+    e.preventDefault();
+    window.showOpenFilePicker({ multiple: false }).then(function (handles) {
+      var h = handles[0];
+      return h.getFile().then(function (f) { return openFile(f, h); });
+    }).catch(function (err) {
+      if (err.name !== 'AbortError') say(err.message, true);
+    });
+  });
+
+  mediumEl.addEventListener('change', function () {
+    if (!img || !img.agc) return;
+    if (dirty && !window.confirm('The disk has been changed and not saved. Switch anyway?')) {
+      mediumEl.value = String(img.index);
+      return;
+    }
+    try {
+      mountMedium(Number(mediumEl.value));
+    } catch (e) { say(e.message, true); }
+  });
+
+  // A file dropped anywhere but on the list — the list takes files onto the
+  // disk, and the rest of the page opens them.
+  ['dragenter', 'dragover'].forEach(function (t) {
+    document.addEventListener(t, function (e) { e.preventDefault(); });
+  });
+  document.addEventListener('drop', function (e) {
+    e.preventDefault();
+    if (e.target.closest && e.target.closest('.dos')) return;
+    if (e.dataTransfer && e.dataTransfer.files.length) {
+      openFile(e.dataTransfer.files[0], null);
+    }
+  });
+
+  // ---- saving -------------------------------------------------------------
+
+  // The changed image, as the file it arrived as. Only the sectors that were
+  // written have moved: `pack()` puts a stream image's working copy back, and
+  // everything around the payload — a header, a trailing epilogue — is spliced
+  // back the way it was found.
+  function build() {
+    if (!img || !img.dos) return Promise.reject(new Error('nothing open'));
+    img.sec.pack();
+    if (!img.agc) {
+      var whole = new Uint8Array(img.file);
+      whole.set(img.data, img.inner.offset);
+      return Promise.resolve(new Blob([whole], { type: 'application/octet-stream' }));
+    }
+    var patched = new Uint8Array(img.base);
+    patched.set(img.data, img.inner.offset);
+    var c = img.agc;
+    // Only the medium that was edited is repatched. The others are handed back
+    // the list they arrived with, so working on one disk of a container does
+    // not quietly rewrite the record of another.
+    var media = c.media.map(function (m, i) {
+      return {
+        name: m.name, bytes: m.bytes,
+        patches: i === img.index ? A.agc.repatch(m.bytes, m.patches, patched)
+                                 : m.patches,
+      };
+    });
+    return A.agc.build({
+      title: c.title, author: c.author, date: c.date, url: c.url,
+      notes: c.notes, info: c.info, hint: c.hint,
+      model: c.machine.model, ram: c.machine.ram, monitor: c.machine.monitor,
+      boot: c.machine.boot, slots: c.machine.slots,
+      keys: c.keys, controls: c.controls, state: c.state,
+      media: media,
+    }).then(function (text) {
+      return new Blob([text], { type: 'application/json' });
+    });
+  }
+
+  function wrote(blob) {
+    dirty = false;
+    saveEl.disabled = true;
+    say('saved ' + img.name + ' — ' + Math.round(blob.size / 1024) + 'K');
+  }
+
+  saveEl.addEventListener('click', function () {
+    build().then(function (blob) {
+      if (!img.handle) {
+        download(img.name, blob);
+        wrote(blob);
+        return;
+      }
+      return img.handle.createWritable().then(function (w) {
+        return w.write(blob).then(function () { return w.close(); });
+      }).then(function () { wrote(blob); });
+    }).catch(function (e) { say(e.message, true); });
+  });
+
+  saveAsEl.addEventListener('click', function () {
+    build().then(function (blob) {
+      if (!CAN_PICK || !window.showSaveFilePicker) {
+        download(img.name, blob);
+        wrote(blob);
+        return;
+      }
+      return window.showSaveFilePicker({ suggestedName: img.name })
+        .then(function (h) {
+          return h.createWritable().then(function (w) {
+            return w.write(blob).then(function () { return w.close(); });
+          }).then(function () {
+            // Saved somewhere else, so that is the file this page is editing
+            // now: a second Save should not go back to the first one.
+            img.handle = h;
+            img.name = h.name;
+            wrote(blob);
+            syncTitle();
+          });
+        });
+    }).catch(function (e) {
+      if (e.name !== 'AbortError') say(e.message, true);
+    });
+  });
+
+  function download(name, blob) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+  }
+
+  // The one thing here that cannot be got back.
+  window.addEventListener('beforeunload', function (e) {
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  if (!CAN_PICK && window.showOpenFilePicker) {
+    say('ready — served from a file:// address, so Save downloads');
+  }
+})();
+</script>
+</body></html>

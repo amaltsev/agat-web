@@ -2641,6 +2641,131 @@ async function dosTests() {
        o.dos.match('ЗАПИСЬ').length, 0);
   }
 
+    // A keystroke meant for the page, not for the machine. The listener is on
+  // `window` and calls preventDefault, so without this a rename field or a
+  // text editor in a panel gets nothing typed into it.
+  {
+    const into = A.keyboard.typingInto;
+    eq('a focused field, a box and a menu keep their own keys',
+       ['INPUT', 'TEXTAREA', 'SELECT'].map((tagName) => into({ tagName })),
+       [true, true, true]);
+    eq('and so does anything editable in place',
+       into({ tagName: 'DIV', isContentEditable: true }), true);
+    // A button stays focused after it is clicked, and the machine has to go on
+    // taking keys after somebody has pressed Pause.
+    eq('a button does not, nor the page itself',
+       [into({ tagName: 'BUTTON' }), into({ tagName: 'CANVAS' }),
+        into({ tagName: 'BODY' }), into(null)],
+       [false, false, false, false]);
+  }
+
+// --- dosfile: what a file is on the way in and on the way out -------------
+  //
+  // The layer `tools/dos.js` and the page's panel both go through, so a slip
+  // here is a slip in two places at once.
+  {
+    const o = await open('examples/Alice_v3_840.agc');
+    const F = A.dosfile;
+
+    // The long view's fields, against what the catalog and the file itself say.
+    const b = o.dos.find('RUS_ALICE_GAME');
+    eq('describe reads the B file\'s own address and length',
+       F.describe(o.dos, b),
+       { tsTrack: 20, tsSector: 20, sectors: 162, len: 41280, addr: 0x1097 });
+    // The catalog's count is one byte and saturates; the chain is what is real.
+    const big = o.dos.find('A.ROOM');
+    eq('and the chain, where the catalog byte has run out',
+       [big.sectors, F.describe(o.dos, big).sectors], [255, 256]);
+    // A D file declares neither, so there is nothing to declare.
+    eq('a type that says nothing about itself says nothing',
+       Object.keys(F.describe(o.dos, o.dos.find('A.SAVE'))).join(),
+       'tsTrack,tsSector,sectors');
+
+    // Out: the four ways, each the length its type implies.
+    const raw = F.unpack(o.dos, b, 'raw'), body = F.unpack(o.dos, b, 'body');
+    const fil = F.unpack(o.dos, b, 'fil');
+    eq('raw is whole sectors, body is the length the file declares, and a .fil'
+       + ' is the stream with 40 bytes in front',
+       [raw.bytes.length % 256, body.bytes.length,
+        fil.bytes.length - raw.bytes.length, fil.name],
+       [0, 41280, A.fil.HEADER, 'RUS_ALICE_GAME.fil']);
+    // The address prefix is the first four bytes of a B file's stream, and
+    // `body` is what is left when they come off.
+    eq('and body starts four bytes into the stream',
+       Buffer.compare(Buffer.from(body.bytes),
+                      Buffer.from(raw.bytes.subarray(4, 4 + 41280))), 0);
+
+    // Text, both ways. `$8D` is the terminator DOS writes and the one it wants
+    // back — the round trip has to survive being read as a string.
+    const t = F.unpack(o.dos, o.dos.find('ALICE_RUN'), 'text');
+    eq('a T file decodes to lines',
+       t.text.split('\n').slice(0, 2), ['[RAM2', '[RUN RUS_ALICE_GAME']);
+    eq('and the terminator is not a character in it', /[\r\x8d]/.test(t.text), false);
+    const there = F.fromText('ЗАПУСK\nBRUN X\n');
+    eq('text goes back with bit 7 on and $8D at the ends of the lines',
+       [there[0] & 0x80, there[6], there[there.length - 1]], [0x80, 0x8d, 0x8d]);
+    eq('and comes back the same', F.toText(there), 'ЗАПУСK\nBRUN X\n');
+    eq('a Windows line ending is one line ending',
+       F.fromText('A\r\nB').length, F.fromText('A\nB').length);
+
+    // In: what `put` and the page's Add both hand to `create`.
+    eq('a .fil arrives knowing its own name, type and lock mark',
+       (() => { const g = F.pack(fil.bytes, {});
+                return [g.name, g.type, g.locked,
+                        Buffer.compare(Buffer.from(g.data),
+                                       Buffer.from(raw.bytes))]; })(),
+       ['RUS_ALICE_GAME', 4, false, 0]);
+    eq('a plain file is a B file, and gets the address and length prefix',
+       (() => { const g = F.pack(new ctx.Uint8Array([1, 2, 3]), { addr: '$2000' });
+                return [g.type, Array.from(g.data)]; })(),
+       [4, [0x00, 0x20, 3, 0, 1, 2, 3]]);
+    eq('a B file with nowhere to load says so',
+       (() => { try { F.pack(new ctx.Uint8Array([1]), {}); return 'no throw'; }
+                catch (e) { return e.message; } })(),
+       'a B file needs a load address');
+    eq('an A or an I file gets the length prefix BASIC keeps there',
+       Array.from(F.pack(new ctx.Uint8Array([9, 9]), { type: 2 }).data),
+       [2, 0, 9, 9]);
+    eq('and a type that prefixes nothing is handed over as it is',
+       Array.from(F.pack(new ctx.Uint8Array([9, 9]), { type: 0x20 }).data), [9, 9]);
+    eq('a raw stream needs to be told what it is',
+       (() => { try { F.pack(new ctx.Uint8Array([1]), { raw: true }); return 'no throw'; }
+                catch (e) { return e.message; } })(),
+       'a raw stream needs a type');
+    eq('text packs as a T file', F.pack('A', { text: true }).type, 0);
+
+    // An address is written the way an Agat address is written.
+    eq('addresses parse as hexadecimal, however they are spelled',
+       ['$2000', '0x2000', '2000', '', undefined].map((v) => F.parseAddr(v)),
+       [0x2000, 0x2000, 0x2000, -1, -1]);
+    eq('and one that is not an address is named in the message',
+       (() => { try { F.parseAddr('zz', '--addr=zz'); return 'no throw'; }
+                catch (e) { return e.message; } })(),
+       '--addr=zz: not an address');
+
+    // The names files get when they arrive from and leave for a file system.
+    eq('a name for the host loses what a directory would not take',
+       F.outName({ name: 'A/B\u0001C' }, '.fil'), 'A_B_C.fil');
+    eq('and a name from one loses its directory and its extension',
+       ['/tmp/snake.fil', 'Snake.FIL', 'snake'].map(F.defaultName),
+       ['SNAKE', 'SNAKE', 'SNAKE']);
+  }
+
+  // The lock mark, which is one bit of the type byte and is written back
+  // through the whole entry.
+  {
+    const o = await open('examples/TESTCOM7_840.agc');
+    const e = o.dos.find('TEST.DATA');
+    o.dos.setLocked(e, true);
+    const again = o.dos.find('TEST.DATA');
+    eq('locking a file keeps everything else about it',
+       [again.locked, again.typeLetter, again.tsTrack, again.tsSector,
+        again.sectors, again.name],
+       [true, 'B', e.tsTrack, e.tsSector, e.sectors, 'TEST.DATA']);
+    o.dos.setLocked(again, false);
+    eq('and unlocking it puts it back', o.dos.find('TEST.DATA').locked, false);
+  }
+
   // What a disk that is not a DOS disk says.
   {
     const s = A.sniff(new ctx.Uint8Array(

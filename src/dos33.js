@@ -422,6 +422,20 @@
     return entry;
   };
 
+  // The lock bit, which is bit 7 of the type byte. Written the same way a
+  // rename is: the whole entry back, with the one field changed.
+  Dos33.prototype.setLocked = function (entry, locked) {
+    this.putEntry(entry.at, {
+      tsTrack: entry.deleted ? DELETED : entry.tsTrack,
+      tsSector: entry.tsSector,
+      type: entry.type, locked: !!locked,
+      raw: entry.raw, sectors: entry.sectors,
+    });
+    if (entry.deleted) this.markDeleted(entry.at, entry.tsTrack);
+    entry.locked = !!locked;
+    return entry;
+  };
+
   // DOS's tombstone: $FF in the first byte, and the track it used to point at
   // parked in the last byte of the name.
   Dos33.prototype.markDeleted = function (at, tsTrack) {

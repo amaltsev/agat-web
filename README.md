@@ -109,6 +109,10 @@ the tab loses them; **Save AGC** lights up while there are any, and keeps them
 as patches on the image they came from. It can also keep the machine itself, if
 you tick the box it puts up — see [`.agc`](#agc--the-agat-container) below.
 
+The **⋯** beside the lock opens the disk's own catalog, and what a file can be
+taken off or put onto it with — see
+[Files on a DOS disk](#files-on-a-dos-disk) below.
+
 The **⚙** holds the settings a machine is run under rather than driven by: the
 volume, the machine's memory sizes, which monitor it is plugged into, and
 whether it has a mouse. The video interrupt is not among them — it comes off
@@ -315,9 +319,31 @@ drive writes; unlock the drive (`RO` → `RW`) before you run it, and it answers
 
 ## Files on a DOS disk
 
-`tools/dos.js` is a file manager for Agat DOS 3.3 disks. It takes whatever the
-page takes — `.dsk`, `.nib`, `.aim`, 140K or 840K, and `.agc` containers — and
-edits the image in place.
+There is a file manager for Agat DOS 3.3 disks, in two front ends over one
+implementation: **[edit-dos.html](edit-dos.html)** in the browser, and
+`tools/dos.js` on a command line. Both take whatever the emulator takes —
+`.dsk`, `.nib`, `.aim`, 140K or 840K, and `.agc` containers — and edit the
+image in place.
+
+Open `edit-dos.html` and drop a disk on it for the catalog. Clicking a file
+opens what can be done with it: take it off as a `.fil`, as the raw data
+stream or as the contents alone, read and write a `T` file's text, rename it,
+lock it, delete it. Files are added by dropping them anywhere on the page or
+with **Add file…** — a `.fil` carries its own name, type and lock mark, and anything
+else is asked what type it is and, for a `B` file, where it loads. **Save**
+writes the disk back over the file that was opened where the browser allows
+that, and downloads it where it does not.
+
+The same panel is on the emulator page, on the `⋯` beside each drive lamp: it
+edits the disk that is *in the drive*, so what is written there is what the
+machine reads, and **Save AGC** keeps it as a patch like any other write. The
+machine is held while the panel is up, because what you are looking at should
+stop long enough to look at.
+
+A DOS already at a `]` prompt does not need rebooting to see the change: it
+reads the VTOC and the catalog fresh for each command, so the next `CATALOG`
+lists what the panel wrote and the next `SAVE` allocates from the free map the
+panel left.
 
 ```sh
 node tools/dos.js ls   examples/Alice_v3_840.agc
@@ -328,6 +354,7 @@ node tools/dos.js tget disk.dsk ALICE_RUN               # Agat text as UTF-8
 node tools/dos.js tput disk.dsk hello.txt ЗАПУСК        # and UTF-8 as Agat text
 node tools/dos.js rm   disk.dsk 'OLD.*'
 node tools/dos.js mv   disk.dsk KLAWA КЛАВА
+node tools/dos.js lock disk.dsk КЛАВА
 ```
 
 `ls` prints what DOS's own `CATALOG` prints — the lock mark, the type letter,
@@ -353,6 +380,8 @@ can be dropped straight onto the emulator. `--raw` gives the data stream alone
 and `--body` the contents with the type's own address-and-length prefix
 removed. `put` reads a `.fil` back, or takes a plain file with `--type=` and,
 for a `B` file, `--addr=`.
+
+`lock` and `unlock` set and clear the mark `CATALOG` draws as a star.
 
 Writing changes only the sectors it has to: deleting a file from `Klondike.aim`
 moves 0.99% of the 2 MB image and leaves every gap, sync field and index mark

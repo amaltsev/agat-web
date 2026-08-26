@@ -1,0 +1,138 @@
+/* What both pages are made of: the palette, the page, and the controls.
+   index.html keeps the emulator's own chrome — the screen, the lamps, the
+   keyboard — and edit-dos.html keeps the catalog's; this is what they share,
+   and it is linked rather than copied so that one of them cannot quietly stop
+   looking like the other. */
+
+:root {
+  color-scheme: dark;
+  --bg: #14161a; --panel: #1d2026; --edge: #2c313a;
+  --ink: #d7dbe2; --dim: #8b93a1; --accent: #79c0ff;
+  /* The status line's two colors: something to be told, and something that
+     is going right. Nowhere else on the page — a lamp is red because a drive
+     LED is, and a keycap is red because the machine's own is. */
+  --warn: #ff9c8a; --ok: #6fd08c;
+  /* 768 of canvas — three 256-pixel columns — plus the panel's padding and
+     border, so the picture lands on a whole multiple of its own raster. */
+  --page: 790px;
+  --mono: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column; align-items: center;
+  min-height: 100vh; padding: 12px 12px 32px;
+}
+h1 { font-size: 17px; font-weight: 600; margin: 0 0 10px; }
+/* A masthead, not a link to somewhere: it takes the page back to a bare
+   machine, which is worth a hover and not worth the page's link color above
+   the picture. */
+h1 a { color: inherit; text-decoration: none; }
+h1 a:hover { color: var(--accent); }
+a { color: var(--accent); }
+
+select, button, label.file {
+  font: inherit; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--edge); border-radius: 5px; padding: 5px 10px;
+  cursor: pointer;
+}
+button:hover, select:hover, label.file:hover { border-color: var(--accent); }
+button:active { transform: translateY(1px); }
+select:disabled, button:disabled, label.file:has(input:disabled) {
+  opacity: .45; cursor: default;
+}
+button:disabled:hover { border-color: var(--edge); }
+input[type=file] { display: none; }
+label.dim { color: var(--dim); font-size: 12.5px; cursor: default; }
+input[type=text] {
+  font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--edge); border-radius: 5px; padding: 4px 8px;
+}
+input[type=text]:focus { outline: 1px solid var(--accent); }
+
+/* A panel: a card under the bar, holding rows of controls with a dim word at
+   the head of each. Under the bar rather than over it — on the emulator page
+   the screen is above, so opening one moves the keyboard and the help and
+   never the picture. */
+.panel {
+  width: min(94vw, var(--page)); margin-top: 8px;
+  background: var(--panel); border: 1px solid var(--edge);
+  border-radius: 6px; padding: 8px 10px;
+}
+.panel .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.panel .row + .row { margin-top: 8px; }
+.panel .key { color: var(--dim); font-size: 12.5px; min-width: 8ch; }
+/* A note is something the panel says about itself, not a control. */
+.panel .note { color: var(--dim); font-size: 12.5px; }
+/* The far end of a row: a Close that belongs to the panel rather than
+   to the controls beside it. */
+.panel .sp { margin-left: auto; }
+
+/* The status line: what just happened, in the font the machine's own bytes are
+   written in. One row, cut rather than wrapped. */
+.status {
+  color: var(--dim); font: var(--mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.status.err { color: var(--warn); }
+
+/* ---- the DOS file manager, in whatever page mounts it ------------------- */
+
+.dos { font-size: 12.5px; }
+.dos.drag { outline: 1px dashed var(--accent); outline-offset: 5px; }
+.dos-head { display: flex; gap: .5em; align-items: baseline; flex-wrap: wrap; }
+.dos .dim { color: var(--dim); }
+.dos .key { color: var(--dim); min-width: 8ch; }
+.dos-note {
+  display: flex; gap: 8px; align-items: center;
+  color: var(--dim); margin-top: 4px;
+}
+/* The catalog scrolls inside the panel rather than the page: the footer's
+   Add file… and the disk's own free count are what a long list is read
+   against, and both are worth keeping in view. */
+.dos-list { margin-top: 6px; max-height: 52vh; overflow-y: auto; }
+.dos-file { border-top: 1px solid var(--edge); }
+/* Monospace, and the columns in the order DOS prints them: the lock mark, the
+   type letter, the sector count, the name. */
+.dos-row {
+  display: flex; gap: .75em; align-items: baseline; padding: 2px 2px;
+  font: var(--mono); cursor: pointer;
+}
+.dos-row:hover { background: #ffffff0a; }
+.dos-file.open > .dos-row { background: #ffffff12; }
+.dos-row.gone { opacity: .45; cursor: default; }
+.dos-row.gone:hover { background: none; }
+.dos-mark { width: 1ch; color: var(--dim); }
+.dos-type { width: 1ch; }
+.dos-sect { color: var(--dim); font-variant-numeric: tabular-nums; }
+.dos-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* What the file says about itself, off at the right where it can be ignored:
+   where the T/S list is, how long the file claims to be, where it loads. */
+.dos-dim {
+  color: var(--dim); margin-left: auto; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.dos-more { color: var(--dim); }
+/* The actions, under the row they belong to. */
+.dos-strip { padding: 2px 0 8px 2.5ch; }
+.dos-acts {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 5px;
+}
+.dos-acts button { padding: 2px 9px; font-size: 12px; }
+.dos-sum {
+  color: var(--dim); border-top: 1px solid var(--edge);
+  margin-top: 4px; padding-top: 5px;
+}
+.dos-foot { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+.dos-foot button, .dos-foot label.file { padding: 3px 9px; font-size: 12px; }
+.dos-foot label { color: var(--dim); }
+.dos-form { margin-top: 8px; border-top: 1px solid var(--edge); }
+.dos-text textarea {
+  display: block; width: 100%; min-height: 14em; margin-top: 6px;
+  font: var(--mono); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--edge); border-radius: 5px; padding: 6px 8px;
+  resize: vertical;
+}
+.dos-nm { width: 22ch; }
+.dos-ad { width: 9ch; }

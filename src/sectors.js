@@ -39,19 +39,27 @@
   // `data` is the image payload — what `sniff` calls `payload`, minus any
   // header, and owned by the caller. It is written in place, and `pack()` is
   // what puts a stream image's working copy back into it.
+  //
+  // `opts.media` is the other way in: a `Media` that is already mounted — the
+  // disk in a drive — in which case there is no image file behind it and
+  // `data` is null. Writes then land in the stream the controller is reading,
+  // which is the point: the machine sees the change, and the track is marked
+  // written so a save keeps it.
   function Sectors(kind, data, opts) {
     opts = opts || {};
     var k = KINDS[kind];
     if (!k) throw new Error('not a disk image: ' + kind);
     this.kind = kind;
-    this.data = data;
+    this.data = data || null;
     this.tracks = k.tracks;
     this.perTrack = k.perTrack;
     this.stream = k.stream;
     this.prodos = !!opts.prodos;
     this.dirty = false;
     this.cache = {};                       // track -> decoded sectors + offsets
-    if (this.stream) {
+    if (opts.media) {
+      this.media = opts.media;
+    } else if (this.stream) {
       // The controller's own view, built by the same code the emulator mounts
       // an image with — so there is one definition of what a .nib or an .aim
       // holds, and no second transcription of it to drift.
@@ -112,6 +120,9 @@
                                     r.at[s], bytes);
     }
     r.bytes.set(bytes, s * SECSIZE);       // the cache, kept in step
+    // What `App.writeBack` and the drive lamp read. Nothing looks at it on a
+    // Media mounted here for an image file, and setting it costs nothing.
+    m.markWritten(t);
     this.dirty = true;
     return true;
   };
@@ -121,6 +132,9 @@
   // above, and an untouched image comes back byte for byte.
   Sectors.prototype.pack = function () {
     var m = this.media, t, i, o, base;
+    // A disk that came out of a drive has no image file behind it: the Media
+    // is the disk, and the writes are already in it.
+    if (!this.data) return null;
     if (!this.stream) return this.data;
     if (this.kind === 'nib140') {
       this.data.set(m.bytes.subarray(0, this.tracks * AGAT.Media.NIB140_TRACK));

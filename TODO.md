@@ -18,3 +18,5 @@
   top-level or `media` field is dropped on load and gone from the next
   Save. AGC.md's implementer note asks a reader to carry through what it
   does not understand; only patch records do.
+* AGC structure editor CLI & Web UI (merge patches into media, add/remove media, reorder, set meta). Or should that all just be a part of "Save AGC" prompt?
+* Add `"writable":true` option to media entries (default is locked, same as now).

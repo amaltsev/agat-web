@@ -17,10 +17,12 @@
 //                                                the whole machine's board
 //   node tools/check.js kbdmenu                  the page's keyboard menu, run
 //                                                against a stub <select>
+//   node tools/check.js dosui                    the file manager, over a stub
+//                                                document and a real disk
 //   node tools/check.js urlkeys                  the page's address: a machine
 //                                                built from a fragment, and the
 //                                                fragment written back out
-//   node tools/check.js modules                  index.html vs tools/modules.js
+//   node tools/check.js modules                  the pages vs tools/modules.js
 //   node tools/check.js state  <image> [cycles]  save the machine mid-run,
 //                                                restore it into a fresh one,
 //                                                and run both on: the two have
@@ -56,17 +58,48 @@ const die = (e) => { console.error(e.message || e); process.exit(1); };
 // --- subcommands that need no machine ---------------------------------------
 
 if (cmd === 'modules') {
-  const html = fs.readFileSync(path.join(H.ROOT, 'index.html'), 'utf8');
-  const inHtml = [];
-  const re = /<script src="(src\/[^"]+)"/g;
-  let mm;
-  while ((mm = re.exec(html))) inHtml.push(mm[1]);
+  const scripts = (page) => {
+    const html = fs.readFileSync(path.join(H.ROOT, page), 'utf8');
+    const out = [], re = /<script src="(src\/[^"]+)"/g;
+    let mm;
+    while ((mm = re.exec(html))) out.push(mm[1]);
+    return { html: html, list: out };
+  };
   const want = H.MODULES;
-  const same = inHtml.length === want.length && inHtml.every((v, i) => v === want[i]);
-  console.log('index.html : ' + inHtml.join(' '));
+  let bad = false;
+
+  // index.html runs the whole machine, so its list is the module list exactly.
+  const main = scripts('index.html');
+  const same = main.list.length === want.length && main.list.every((v, i) => v === want[i]);
+  console.log('index.html : ' + main.list.join(' '));
   console.log('modules.js : ' + want.join(' '));
   console.log(same ? 'OK - in step' : 'MISMATCH');
-  process.exit(same ? 0 : 1);
+  if (!same) bad = true;
+
+  // The tool pages take a subset — no CPU, no video, no ROMs — but it has to
+  // be a subset in the same order, because load order is what the one list is
+  // for. A module inserted before one of these and not before it here is the
+  // "works in Node, blank page in the browser" bug on a page nobody looks at
+  // as often.
+  for (const page of ['edit-dos.html']) {
+    const p = scripts(page);
+    let i = 0;
+    const ok = p.list.every((f) => {
+      while (i < want.length && want[i] !== f) i++;
+      return i++ < want.length;
+    });
+    console.log(page + ' : ' + p.list.join(' '));
+    console.log(ok ? 'OK - a subsequence' : 'MISMATCH - not in the module list, or out of order');
+    if (!ok) bad = true;
+  }
+
+  // And the sheet they share, which is linked rather than copied.
+  for (const page of ['index.html', 'edit-dos.html']) {
+    const has = /<link rel="stylesheet" href="agat.css">/.test(scripts(page).html);
+    console.log(page + ' : agat.css ' + (has ? 'linked' : 'MISSING'));
+    if (!has) bad = true;
+  }
+  process.exit(bad ? 1 : 0);
 }
 
 const ctx = H.loadModules();
@@ -513,6 +546,319 @@ function kbdmenuCmd(loaded) {
   process.exit(fail ? 1 : 0);
 }
 
+// The file manager, driven against a stub document. `src/dosui.js` is shipping
+// code with no pure half — every one of its operations is a click on something
+// it drew — so the only way to test it at all is to draw it somewhere and click
+// on it, and the only way to test it cheaply is here. What this catches is the
+// gap between what the panel shows and what the disk holds: a delete that
+// leaves the row, a rename that renames the wrong entry, an Add that puts the
+// bytes down under the wrong type.
+if (cmd === 'dosui') {
+  dosuiCmd().catch(die);
+  return;
+}
+
+async function dosuiCmd() {
+  const A = ctx.AGAT;
+
+  // ---- a document, to the extent one is needed ----------------------------
+  const el = (tag) => ({
+    tag, children: [], style: {}, className: '', title: '',
+    hidden: false, disabled: false, value: '', checked: false, type: '',
+    parentNode: null, _l: [], _text: '',
+    // Assigning textContent replaces everything in the element, which is how
+    // the panel empties its list before redrawing it. A stub that only kept
+    // the string would grow a second copy of the catalog on every refresh.
+    set textContent(v) { this.children = []; this._text = String(v); },
+    get textContent() { return this._text; },
+    classList: {
+      _s: new Set(),
+      add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
+      contains(c) { return this._s.has(c); },
+    },
+    appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+    removeChild(c) { this.children = this.children.filter((x) => x !== c); },
+    addEventListener(t, f) { this._l.push([t, f]); },
+    removeEventListener(t, f) { this._l = this._l.filter((x) => x[1] !== f); },
+    fire(t, ev) { for (const [tt, f] of this._l) if (tt === t) f(ev || {}); },
+    focus() {}, select() {}, click() { this.fire('click'); },
+  });
+  const blobs = [];
+  // A text node is an element with nothing but its text, which is all the
+  // panel ever does with one.
+  ctx.document = {
+    createElement: el,
+    createTextNode: (t) => { const n = el('#text'); n.textContent = t; return n; },
+  };
+  ctx.Blob = class Blob {
+    constructor(parts, opts) {
+      this.parts = parts;
+      this.type = (opts && opts.type) || '';
+      this.size = parts.reduce((n, p) =>
+        n + (typeof p === 'string' ? Buffer.byteLength(p) : p.length), 0);
+    }
+  };
+  ctx.URL = {
+    createObjectURL(b) { blobs.push(b); return 'blob:' + blobs.length; },
+    revokeObjectURL() {},
+  };
+  let answer = true;                       // what confirm() says this time
+  ctx.confirm = () => answer;
+
+  // Everything drawn, so a row or a button can be found by what it says.
+  const all = (n, out) => {
+    out = out || [];
+    out.push(n);
+    (n.children || []).forEach((c) => all(c, out));
+    return out;
+  };
+  const byClass = (root, c) =>
+    all(root).filter((n) => String(n.className).split(' ').indexOf(c) >= 0);
+  const face = (root, text) => {
+    const b = all(root).find((n) => n.tag === 'button' && n.textContent === text);
+    if (!b) throw new Error('no button says "' + text + '"');
+    return b;
+  };
+  const cells = (row) => row.children.map((c) => c.textContent);
+  const rows = (root) => byClass(root, 'dos-row').map((r) => cells(r).slice(0, 4).join(' '));
+  const named = (root, name) => {
+    const r = byClass(root, 'dos-row').find((x) => cells(x)[3] === name);
+    if (!r) throw new Error('no row for "' + name + '" among ' + rows(root).join(' | '));
+    return r;
+  };
+
+  let pass = 0, fail = 0;
+  const eq = (what, got, want) => {
+    const g = JSON.stringify(got), w = JSON.stringify(want);
+    if (g === w) { pass++; return; }
+    fail++;
+    console.log('FAIL ' + what + '\n  got  ' + g + '\n  want ' + w);
+  };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  // A File, to the extent the panel asks for one.
+  const file = (name, bytes) => ({
+    name,
+    arrayBuffer: () => Promise.resolve(bytes.buffer.slice(bytes.byteOffset,
+                                                          bytes.byteOffset + bytes.length)),
+  });
+
+  const open = async (p) => {
+    const s = await H.sniffFile(ctx, path.join(H.ROOT, p));
+    const data = new ctx.Uint8Array(s.payload);
+    const sec = new A.Sectors(s.kind, data, { prodos: s.prodos, name: s.name });
+    return { s, data, sec, dos: new A.Dos33(sec) };
+  };
+
+  // ---- a disk, in a panel -------------------------------------------------
+  const o = await open('examples/TESTCOM7_840.agc');
+  const host = el('div');
+  const said = [];
+  const opened = [];
+  let changes = 0;
+  const ui = new A.DosUI(host, {
+    onStatus: (m, bad) => said.push((bad ? '! ' : '') + m),
+    onChange: () => { changes++; },
+    onImage: (f) => { opened.push(f.name); },
+  });
+
+  // Before anything is mounted — which is when the first disk is dropped on a
+  // page that opens files, and where `onImage` living on the mount rather than
+  // on the panel used to answer "that is a disk image".
+  const agc = new ctx.Uint8Array(
+    fs.readFileSync(path.join(H.ROOT, 'examples/TESTOZU7_140.agc')));
+  await ui.take([file('TESTOZU7_140.agc', agc)]);
+  eq('a disk dropped on an empty panel is one to open', opened, ['TESTOZU7_140.agc']);
+  await ui.take([file('x.fil', new ctx.Uint8Array(40 + 256))]);
+  eq('and a file dropped on one has nowhere to go',
+     said[said.length - 1], '! no disk open to put x.fil on');
+
+  ui.mount(o.dos, { label: 'TestCom7_840.dsk', writable: true });
+
+  eq('the catalog draws the columns DOS prints', rows(host),
+     [' A 041 TEST', ' B 011 TEST.DATA']);
+  eq('and the head says what the disk is',
+     byClass(host, 'dos-head')[0].children.map((c) => c.textContent),
+     ['TestCom7_840.dsk', ' 840K, 160 tracks of 21, ДИСК N 254']);
+  eq('with the free count under it', byClass(host, 'dos-sum')[0].textContent,
+     '2 files, 3117 free sectors of 3360');
+  eq('a B file says where it loads',
+     byClass(host, 'dos-dim')[1].textContent,
+     'ts=20/20 sectors=10 len=2325 addr=$4C00');
+
+  // ---- a row opens ---------------------------------------------------------
+  eq('nothing is open to begin with', byClass(host, 'dos-strip').length, 0);
+  named(host, 'TEST.DATA').fire('click');
+  eq('a click opens that row and only it', byClass(host, 'dos-strip').length, 1);
+  eq('and the row it opened is still the one it was',
+     rows(host), [' A 041 TEST', ' B 011 TEST.DATA']);
+  named(host, 'TEST.DATA').fire('click');
+  eq('a second click shuts it', byClass(host, 'dos-strip').length, 0);
+
+  // ---- out of the disk -----------------------------------------------------
+  named(host, 'TEST.DATA').fire('click');
+  const stream = o.dos.read(o.dos.find('TEST.DATA'));
+  face(host, '.fil').fire('click');
+  eq('the .fil is the stream with its catalog entry in front',
+     blobs[blobs.length - 1].parts[0].length - stream.length, A.fil.HEADER);
+  face(host, 'body').fire('click');
+  eq('and the body is the length the file declares',
+     blobs[blobs.length - 1].parts[0].length, 2325);
+  const fil = blobs[blobs.length - 2].parts[0];
+
+  // ---- lock, rename, delete ------------------------------------------------
+  face(host, 'Lock').fire('click');
+  eq('Lock sets the mark DOS draws as a star',
+     [o.dos.find('TEST.DATA').locked, named(host, 'TEST.DATA').children[0].textContent],
+     [true, '*']);
+  face(host, 'Unlock').fire('click');
+  eq('and Unlock clears it', o.dos.find('TEST.DATA').locked, false);
+
+  face(host, 'Rename…').fire('click');
+  byClass(host, 'dos-nm')[0].value = 'ДАННЫЕ';
+  face(host, 'Rename').fire('click');
+  eq('a rename reaches the entry it was opened on',
+     [rows(host), o.dos.match('TEST.DATA').length], [[' A 041 TEST', ' B 011 ДАННЫЕ'], 0]);
+
+  const free = o.dos.freeCount();
+  eq('and the strip stays open on it, being the same entry',
+     byClass(host, 'dos-strip').length, 1);
+  answer = false;
+  face(host, 'Delete').fire('click');
+  eq('a delete that is refused deletes nothing',
+     [rows(host).length, o.dos.freeCount()], [2, free]);
+  answer = true;
+  face(host, 'Delete').fire('click');
+  eq('and one that is not gives the sectors back',
+     [rows(host), o.dos.freeCount() - free], [[' A 041 TEST'], 11]);
+  eq('the strip shuts with the file that was in it',
+     byClass(host, 'dos-strip').length, 0);
+
+  // ---- and back onto it ----------------------------------------------------
+  // Downloaded before the rename, so the name it carries is the one it had
+  // then — a .fil is a catalog entry and its stream, not a pointer at a disk.
+  await ui.take([file('anything.fil', fil)]);
+  eq('a .fil arrives knowing its own name and type', rows(host),
+     [' A 041 TEST', ' B 011 TEST.DATA']);
+  eq('and byte for byte',
+     Buffer.compare(Buffer.from(o.dos.read(o.dos.find('TEST.DATA'))),
+                    Buffer.from(stream)), 0);
+
+  // A plain file stops and asks what it is.
+  const adding = ui.take([file('blob.bin', new ctx.Uint8Array([1, 2, 3]))]);
+  await tick();
+  eq('a file that is not a .fil is asked about',
+     byClass(host, 'dos-form-in').length, 1);
+  const nm = byClass(host, 'dos-nm')[0];
+  eq('with a name off the file and B for a type',
+     [nm.value, all(host).find((n) => n.tag === 'select').value], ['BLOB', 'B']);
+  face(host, 'Add').fire('click');
+  eq('and a B file with no address will not go down',
+     said[said.length - 1], '! a B file needs a load address');
+  byClass(host, 'dos-ad')[0].value = '$2000';
+  face(host, 'Add').fire('click');
+  await adding;
+  eq('with one, it does, prefix and all',
+     Array.from(o.dos.read(o.dos.find('BLOB')).subarray(0, 7)),
+     [0x00, 0x20, 3, 0, 1, 2, 3]);
+  eq('and the form is put away', byClass(host, 'dos-form-in').length, 0);
+
+  // A disk is not a file to put on a disk. This panel hands it back to the
+  // page; one with nowhere to send it — the emulator page's, which edits the
+  // disk in the drive — says so.
+  await ui.take([file('d.dsk', new ctx.Uint8Array(143360))]);
+  eq('a disk image dropped on the list goes to whoever can open it',
+     opened[opened.length - 1], 'd.dsk');
+  {
+    const bare = new A.DosUI(el('div'), {
+      onStatus: (m, bad) => said.push((bad ? '! ' : '') + m),
+    });
+    bare.mount(o.dos, { label: 'in a drive', writable: true });
+    await bare.take([file('d.dsk', new ctx.Uint8Array(143360))]);
+    eq('and one nobody can open says where it belongs', said[said.length - 1],
+       '! d.dsk is a disk image — drop it on the screen to run it');
+  }
+
+  // ---- text ----------------------------------------------------------------
+  const t = await open('examples/Alice_v3_840.agc');
+  ui.mount(t.dos, { label: 'Alice_v3_840.dsk', writable: true });
+  named(host, 'ALICE_RUN').fire('click');
+  face(host, 'Edit text…').fire('click');
+  const area = all(host).find((n) => n.tag === 'textarea');
+  eq('a T file opens decoded', area.value.split('\n')[0], '[RAM2');
+  area.value = 'ЗАПУСK\nBRUN X\n';
+  face(host, 'Save').fire('click');
+  eq('and writes back in the Agat character set',
+     A.dosfile.unpack(t.dos, t.dos.find('ALICE_RUN'), 'text').text,
+     'ЗАПУСK\nBRUN X\n');
+  eq('as one file, not two', t.dos.match('ALICE_RUN').length, 1);
+  // Saving the file that is open is not "replacing a file already on the
+  // disk", and is not asked about: with confirm() saying no, it still writes.
+  named(host, 'ALICE_RUN').fire('click');
+  face(host, 'Edit text…').fire('click');
+  all(host).find((n) => n.tag === 'textarea').value = 'ОДНА\n';
+  answer = false;
+  face(host, 'Save').fire('click');
+  answer = true;
+  eq('and saving it again asks nothing about itself',
+     [A.dosfile.unpack(t.dos, t.dos.find('ALICE_RUN'), 'text').text,
+      t.dos.match('ALICE_RUN').length],
+     ['ОДНА\n', 1]);
+
+  // ---- a T file typed from nothing -----------------------------------------
+  face(host, 'New text file…').fire('click');
+  face(host, 'Save').fire('click');
+  eq('a new file with no name does not go down',
+     said[said.length - 1], '! the file needs a name');
+  byClass(host, 'dos-nm')[0].value = 'ЗАПИСКА';
+  all(host).find((n) => n.tag === 'textarea').value = 'ДВЕ\nСТРОКИ\n';
+  face(host, 'Save').fire('click');
+  eq('and one with a name is a T file, in the Agat character set',
+     [t.dos.find('ЗАПИСКА').typeLetter,
+      A.dosfile.unpack(t.dos, t.dos.find('ЗАПИСКА'), 'text').text],
+     ['T', 'ДВЕ\nСТРОКИ\n']);
+  eq('the form goes away with it', byClass(host, 'dos-form')[0].hidden, true);
+  named(host, 'ЗАПИСКА').fire('click');
+  face(host, 'text').fire('click');
+  eq('and downloads as UTF-8 text',
+     [blobs[blobs.length - 1].parts[0], blobs[blobs.length - 1].type],
+     ['ДВЕ\nСТРОКИ\n', 'text/plain;charset=utf-8']);
+  t.dos.remove(t.dos.find('ЗАПИСКА'));
+
+  // ---- a disk that will not be written -------------------------------------
+  let unlocked = 0;
+  ui.mount(t.dos, { label: 'Alice_v3_840.dsk', writable: false,
+                    onUnlock: () => { unlocked++; } });
+  eq('a locked disk says so and offers the way out',
+     [byClass(host, 'dos-note')[0].hidden,
+      byClass(host, 'dos-note')[0].children.map((c) => c.textContent)],
+     [false, ['Read-only.', 'Allow writing']]);
+  named(host, 'ALICE_RUN').fire('click');
+  face(host, 'Delete').fire('click');
+  eq('and nothing on it can be deleted',
+     [said[said.length - 1], t.dos.match('ALICE_RUN').length],
+     ['! the disk is read-only', 1]);
+  await ui.take([file('anything.fil', fil)]);
+  eq('nor anything added to it', said[said.length - 1], '! the disk is read-only');
+  face(host, 'Allow writing').fire('click');
+  eq('and the way out of it is the host\'s to answer', unlocked, 1);
+
+  // The lock turns while the panel is up — the drive's own RO/RW button is
+  // next to the one that opened it — and the panel is drawn from the lock.
+  // ALICE_RUN's row is still the one open, from the delete that was refused.
+  ui.setWritable(true, null);
+  eq('unlocking redraws the panel without shutting the row that is open',
+     [byClass(host, 'dos-note')[0].hidden, byClass(host, 'dos-strip').length],
+     [true, 1]);
+  face(host, 'Delete').fire('click');
+  eq('and what it refused a moment ago now goes through',
+     t.dos.match('ALICE_RUN').length, 0);
+  ui.setWritable(false, () => {});
+  eq('and locking it again says so', byClass(host, 'dos-note')[0].hidden, false);
+
+  console.log(pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+}
+
 // The page's address, lifted out of index.html the way `kbdmenu` lifts the
 // keyboard menu, and run around the loop it is really used in: a fragment into
 // the menus, the menus into a machine, the machine back into a fragment. What
@@ -563,6 +909,9 @@ async function urlkeysCmd(roms) {
   const document = { title: '' };
   const syncLayout = () => {};
   const syncMachineUI = () => { syncMenus(); };
+  // A rebuild empties the drives, so the files panel goes with them. There are
+  // no drives here.
+  const closeFiles = () => {};
   for (const f of ['pick', 'readUrl', 'cardKeys', 'stockKb', 'syncMemEnabled',
                    'menuCards', 'readCard', 'urlCards', 'baseline', 'cardKey',
                    'saveUrl', 'readSettings', 'syncMenus', 'urlOverrides',

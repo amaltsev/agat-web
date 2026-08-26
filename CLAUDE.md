@@ -32,14 +32,18 @@ terms interspersed freely where they are the thing's own name (ЭмПЗУ, ЛА�
 
 ```sh
 node tools/vectors.js          # pure-function tests, ~1s
-node tools/check.js modules    # index.html vs the module list
+node tools/check.js modules    # the pages vs the module list
 node tools/check.js kbdmenu    # the page's keyboard menu, load order and all
 node tools/check.js urlkeys    # the page's address, around the whole loop
+node tools/check.js dosui      # the file manager, over a stub document
 node tools/cputest.js          # Klaus Dormann; slow, run on CPU changes
 ```
 
 `node tools/dos.js ls <image>` is the quick check that a disk change did not
-break the file system; the write path is exercised by `vectors.js` and, for the
+break the file system, and `check.js dosui` is the same for the panel the page
+puts it behind — the panel is drawn against a stub document and clicked on, so
+a delete that leaves the row on the screen fails there rather than in a
+browser. The write path is exercised by `vectors.js` and, for the
 one oracle that is not ours, by booting the disk — delete the greeting file from
 `TESTKOM9_840.agc` and the emulator's own DOS answers «ФАЙЛ НЕ НАЙДЕН» at a `]`
 prompt, where `CATALOG` will then say what it makes of the catalog you wrote.
@@ -84,6 +88,11 @@ Settled, with evidence, and expensive to relearn:
   so it is never what a program finds at `$8000-$BFFF` at reset. Software that
   simply expects RAM there wants base RAM, which is why 32K of it is the wrong
   default and not a card-selection bug to be papered over.
+- **Whatever the CLI and the page both do goes in `src/`.** `src/dosfile.js` is
+  what a DOS file *is* on the way in and on the way out — the type prefixes, the
+  `.fil`, the `$8D` line endings — and `tools/dos.js` and `src/dosui.js` are two
+  front ends over it. `node tools/dos.js ls -l` and the panel's dim column print
+  the same fields because they are the same call.
 - `Machine.PROFILES` is the single definition of what each machine is.
   `App.build()` and `tools/harness.js` both go through it; do not spell a card
   list out anywhere else.
