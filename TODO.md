@@ -12,7 +12,6 @@
   check the fetched copy against, would let a container dropped on the page put
   itself back into the address: today a dropped one cannot be named there at
   all, so the address carries its machine in full and not the program.
-* What does "Boot" do exactly? Fix or document better.
 * Sound card: https://agatcomp.ru/agat/Hardware/SoundNCL.shtml
 * Configurable char gen: https://gsqsoft.atlassian.net/browse/AGT-1
 * `agc.js`'s `readJson` keeps only the fields it knows, so an unknown
