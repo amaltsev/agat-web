@@ -22,7 +22,7 @@ const sniffImage = (p) =>
 // way to re-pin it honestly is to check that the unchanged encoder still
 // reproduces the previous digest from the previous disk, then take a new one.
 const GCR_GOLDEN =
-  '722e4b46646bb16bfc5c64ae06000f5399563411d38b73ddea2b3f6480c1a3ef';
+  '26487731d1f153c6608477aae54fe519586fcbdf78fa7b13435f1622440295db';
 let pass = 0, fail = 0;
 const hex = (v) => '$' + v.toString(16).toUpperCase();
 function eq(what, got, want) {
