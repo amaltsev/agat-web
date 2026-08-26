@@ -61,5 +61,68 @@
     return { addr: addr, length: len, type: type };
   }
 
+  // ---- the container, for any type ------------------------------------------
+  //
+  // A .fil is the file's DOS data stream with a 40-byte header glued in front,
+  // and the stream is what DOS keeps in the file's data sectors, byte for byte:
+  // `bytes.subarray(0x28)` written into a fresh file and `bytes` read back out
+  // of one are the same thing, padding included. Which is why `get` and `put`
+  // can round-trip through it without knowing what the file *is*.
+  //
+  //   0x00  30  name, high-bit KOI-7, $A0 padded
+  //   0x1E   5  zero
+  //   0x23   2  the stream's length in bytes, load-address prefix included
+  //   0x25   2  the load address
+  //   0x27   1  DOS file type, $80 for locked
+  //   0x28   …  the stream, padded out to whole 256-byte sectors
+  //
+  // The two fields at 0x23 and 0x25 restate what a `B` file's own first four
+  // bytes already say, and 123 of the 156 .fil files in the archive leave them
+  // zero — so they are written but never believed. `loadFil` above reads the
+  // stream's own copy, as the emulator has always done.
+  var FIL_HEADER = 0x28;
+
+  function looks(bytes) {
+    return bytes.length >= FIL_HEADER + 256 &&
+           (bytes.length - FIL_HEADER) % 256 === 0 &&
+           AGAT.Dos33.typeLetter(bytes[0x27]) !== '?';
+  }
+
+  function parse(bytes) {
+    if (!looks(bytes)) throw new Error('not a .fil: ' + bytes.length + ' bytes');
+    var raw = bytes.subarray(0, 30);
+    return {
+      raw: raw,
+      name: AGAT.chars.decode(raw).replace(/\s+$/, ''),
+      type: bytes[0x27] & 0x7f,
+      locked: (bytes[0x27] & 0x80) !== 0,
+      addr: bytes[0x25] | (bytes[0x26] << 8),
+      data: bytes.subarray(FIL_HEADER),
+    };
+  }
+
+  // `f.data` is the stream as DOS holds it; the padding to a whole sector is
+  // added here, so a caller hands over exactly what it read off the disk.
+  function build(f) {
+    var data = f.data;
+    var n = Math.ceil(data.length / 256) * 256 || 256;
+    var out = new Uint8Array(FIL_HEADER + n), i;
+    for (i = 0; i < 30; i++) out[i] = f.raw ? f.raw[i] : 0xa0;
+    // The length written is the file's own, not the padded one: a `B` file
+    // says how long it is in its third and fourth bytes, and four for the
+    // prefix itself is what `CSI.FIL` and `SNAKE.FIL` both carry here.
+    if (f.type === 4) {
+      var len = 4 + (data[2] | (data[3] << 8));
+      out[0x23] = len & 0xff;
+      out[0x24] = (len >> 8) & 0xff;
+      out[0x25] = data[0];
+      out[0x26] = data[1];
+    }
+    out[0x27] = (f.type & 0x7f) | (f.locked ? 0x80 : 0);
+    out.set(data, FIL_HEADER);
+    return out;
+  }
+
   AGAT.loadFil = loadFil;
+  AGAT.fil = { HEADER: FIL_HEADER, looks: looks, parse: parse, build: build };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

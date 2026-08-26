@@ -170,13 +170,18 @@
   // was nibblized from.
   //
   // Returns the sectors and how many were recovered; a caller that cannot use a
-  // partial track compares `got` with SECTORS.
+  // partial track compares `got` with SECTORS. `at[k]` is where sector k's
+  // 6-and-2 field starts, as an offset from `base` that may run past `len` —
+  // it is what lets a sector be written back into the stream it was read out
+  // of, leaving every gap and every other sector exactly where it was.
   function denibblizeTrack(bytes, base, len, track, prodos) {
     var order = prodos ? PREN1 : REN1;
     var out = new Uint8Array(SECTORS * 256);
     var seen = new Uint8Array(SECTORS);
+    var at = new Int32Array(SECTORS);
     var field = new Uint8Array(0x157), sector = new Uint8Array(256);
     var p, q, n, i, vol, trk, sec, k, got = 0;
+    for (i = 0; i < SECTORS; i++) at[i] = -1;
 
     function g(x) { return bytes[base + (x % len)]; }
 
@@ -203,9 +208,19 @@
       if (!decode62(field, 0, sector, 0)) continue;
       out.set(sector, k * 256);
       seen[k] = 1;
+      at[k] = q + 3;
       got++;
     }
-    return { bytes: out, seen: seen, got: got };
+    return { bytes: out, seen: seen, at: at, got: got };
+  }
+
+  // The inverse of the read above: one sector back into the stream it came out
+  // of, at the offset `denibblizeTrack` reported for it. The field is a ring
+  // like the read is, so a sector the index splits is written in two pieces.
+  function renibblizeSector(bytes, base, len, at, data) {
+    var field = new Uint8Array(0x157), i;
+    code62(data, 0, field, 0);
+    for (i = 0; i < 0x157; i++) bytes[base + ((at + i) % len)] = field[i];
   }
 
   function media(bytes, s) {
@@ -234,6 +249,7 @@
     fromNib: fromNib, fromSectors: fromSectors, nibblizeTrack: nibblizeTrack,
     code44: code44, code62: code62,
     decode44: decode44, decode62: decode62, denibblizeTrack: denibblizeTrack,
+    renibblizeSector: renibblizeSector,
     TRACKS: TRACKS, SECTORS: SECTORS, TRACK_LEN: TRACK_LEN, VOLUME: VOLUME,
     REN1: REN1, PREN1: PREN1, CODE: CODE, DECODE: DECODE,
   };

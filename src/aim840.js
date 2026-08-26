@@ -166,11 +166,15 @@
   // data, and a checksum that has to agree. `got` counts the distinct sectors
   // found, and only a track with all 21 has a sector image to be saved as.
   // The mark carries either attribute value, and the walk wraps at `len` so a
-  // field the index splits still counts.
+  // field the index splits still counts. `at[sec]` is where that sector's 256
+  // data bytes start, as an offset from `base` that may run past `len` — what
+  // `resectorizeSector` writes one back at.
   function desectorizeTrack(bytes, attrs, base, len, t) {
     var out = new Uint8Array(SECTORS * SECSIZE);
     var seen = new Uint8Array(SECTORS);
+    var at = new Int32Array(SECTORS);
     var got = 0;
+    for (var z = 0; z < SECTORS; z++) at[z] = -1;
     var b = function (i) { return bytes[base + (i % len)]; };
     var marked = function (i) { return (attrs[base + (i % len)] & 0x81) !== 0; };
     var i = 0, want = -1;
@@ -194,6 +198,7 @@
         if ((cs & 0xff) === b(i + 3 + SECSIZE) && !seen[want]) {
           for (k = 0; k < SECSIZE; k++) out[want * SECSIZE + k] = b(i + 3 + k);
           seen[want] = 1;
+          at[want] = i + 3;
           got++;
         }
         i += 3 + SECSIZE + 1;
@@ -202,7 +207,15 @@
       }
       i++;
     }
-    return { got: got, bytes: out };
+    return { got: got, bytes: out, at: at };
+  }
+
+  // One sector's data and its checksum written back where the read found them.
+  // A ring, as the read is: the field may straddle the index.
+  function resectorizeSector(bytes, base, len, at, data) {
+    var i;
+    for (i = 0; i < SECSIZE; i++) bytes[base + ((at + i) % len)] = data[i];
+    bytes[base + ((at + SECSIZE) % len)] = checksum(data, 0);
   }
 
   // A medium as a .aim payload again: the two planes interleaved back into
@@ -223,7 +236,8 @@
 
   AGAT.aim840 = {
     fromAim: fromAim, fromSectors: fromSectors, fromNib: fromNib,
-    desectorizeTrack: desectorizeTrack, nibRecord: nibRecord, toAim: toAim,
+    desectorizeTrack: desectorizeTrack, resectorizeSector: resectorizeSector,
+    nibRecord: nibRecord, toAim: toAim,
     checksum: checksum,
     TRACKS: TRACKS, SECTORS: SECTORS, SECSIZE: SECSIZE,
     AIM_TRACK: AIM_TRACK, PHYS_TRACK: PHYS_TRACK, SEC_WORDS: SEC_WORDS,

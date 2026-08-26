@@ -2372,6 +2372,7 @@ async function agcTests() {
     await diskWriteTests();
     await disk840WriteTests();
     await agcTests();
+    await dosTests();
     done();
   }).catch((e) => { console.error(e); process.exit(1); });
 }
@@ -2379,4 +2380,222 @@ async function agcTests() {
 function done() {
   console.log('\n%d passed, %d failed', pass, fail);
   process.exit(fail ? 1 : 0);
+}
+
+
+// --- the character set ------------------------------------------------------
+{
+  const C = A.chars;
+  eq('$24 is the currency sign, not a dollar', C.glyph(0x24), '¤');
+  eq('the Cyrillic band is KOI-7 N2',
+     [C.glyph(0x60), C.glyph(0x61), C.glyph(0x7f), C.glyph(0xe1), C.glyph(0xff)],
+     ['Ю', 'А', 'Ъ', 'А', 'Ъ']);
+  eq('a control code has no glyph', C.glyph(0x0d), '.');
+  eq('bit 7 is video, not part of the code',
+     [...Array(128).keys()].filter((i) => C.glyph(i) !== C.glyph(i | 0x80)).length, 0);
+  // Every code in the set, out and back. The escapes are what makes it total:
+  // a control code and a backslash both have to survive the trip.
+  {
+    const all = new ctx.Uint8Array(128);
+    for (let i = 0; i < 128; i++) all[i] = i | 0x80;
+    eq('every code round-trips through text', [...C.encode(C.decode(all))], [...all]);
+  }
+  eq('encode sets bit 7', [...C.encode('AБ')], [0xc1, 0xe2]);
+  eq('lower case folds up', [...C.encode('ab')], [0xc1, 0xc2]);
+  eq('a character the machine cannot draw is refused',
+     (() => { try { C.encode('Ж…'); return 'no throw'; } catch (e) { return e.message; } })(),
+     '"…" is not in the Agat character set');
+  // What name matching is done on: `MAШИHИCT` on the ИКП7 disk is Latin M A H
+  // C T around Cyrillic Ш И, and somebody looking for it will type all of it in
+  // Cyrillic.
+  eq('look-alikes fold together',
+     C.fold('МАШИНИСТ') === C.fold('MAШИHИCT'), true);
+  eq('folding does not run letters together', C.fold('ЮЖ') === C.fold('AB'), false);
+}
+
+// --- Agat DOS 3.3 -----------------------------------------------------------
+
+// The free map, cross-examined: every sector every file on the disk actually
+// occupies has to be marked allocated. It is one assertion over the whole of
+// the layout — the bitmap's bit order, the map sectors past the VTOC, the
+// catalog chain and the T/S lists all have to be right for it to come out at
+// zero, and getting any of them wrong moves it a long way.
+function mapAgreesWithFiles(dos) {
+  const files = dos.list();
+  let checked = 0, wrong = 0;
+  for (const e of files) {
+    const c = dos.chain(e);
+    for (const ts of c.data.concat(c.lists)) {
+      if (!ts) continue;
+      checked++;
+      if (dos.isFree(ts[0], ts[1])) wrong++;
+    }
+  }
+  return { files: files.length, checked: checked, wrong: wrong };
+}
+
+async function dosTests() {
+  const open = async (p) => {
+    const s = await H.sniffFile(ctx, path.join(H.ROOT, p));
+    const data = new ctx.Uint8Array(s.payload);
+    const sec = new A.Sectors(s.kind, data, { prodos: s.prodos, name: s.name });
+    return { s: s, data: data, sec: sec, dos: new A.Dos33(sec) };
+  };
+
+  // Type letters, off the disk rather than out of Apple's table: `TIABSRKD` is
+  // at track 2 sector 9 of TESTKOM9, and the emulator's own DOS prints `K` for
+  // $20 when it catalogs a disk with one on it.
+  eq('the type letters are Agat\'s',
+     [0, 1, 2, 4, 8, 0x10, 0x20, 0x40].map(A.Dos33.typeLetter).join(''), 'TIABSRKD');
+  eq('a locked file keeps its letter', A.Dos33.typeLetter(0x84), 'B');
+  eq('the letters go back to bytes',
+     'TIABSRKD'.split('').map(A.Dos33.typeByte), [0, 1, 2, 4, 8, 0x10, 0x20, 0x40]);
+  eq('a letter that is not one', A.Dos33.typeByte('Z'), -1);
+
+  // The three encodings, each read the same way. A 140K disk needs no map
+  // sectors past the VTOC; the two 840K ones do, and one of them is an .aim,
+  // which is decoded rather than indexed.
+  {
+    const a = await open('examples/Alice_v3_840.agc');
+    eq('an 840K disk\'s geometry comes off its VTOC',
+       [a.dos.tracks, a.dos.perTrack, a.dos.volume, a.dos.tsMax],
+       [160, 21, 254, 122]);
+    eq('the disk\'s own title', a.dos.title(), 'ALICE_GAME_DISK_V3');
+    eq('sector 20 is the top bit of a 21-sector map word', a.dos.bit(20), 31);
+    eq('the map for track 50 is not in the VTOC',
+       a.dos.mapAt(50), { track: 50, sector: 0, off: 0, vtoc: false });
+    eq('the map for track 113 is in the same sector',
+       a.dos.mapAt(113), { track: 50, sector: 0, off: 252, vtoc: false });
+    eq('and track 114 starts the next one',
+       a.dos.mapAt(114), { track: 114, sector: 0, off: 0, vtoc: false });
+    eq('the map agrees with what the files hold',
+       mapAgreesWithFiles(a.dos), { files: 10, checked: 657, wrong: 0 });
+    eq('the catalog chain is followed through its interleave',
+       a.dos.catalogSectors().length, 20);
+    eq('a B file says where it loads and how long it is',
+       (() => { const e = a.dos.find('АЛИСА');
+                return a.dos.length(e, a.dos.read(e)); })(),
+       { addr: 0x5800, at: 4, len: 2048 });
+    eq('a T file ends at its first $00',
+       (() => { const e = a.dos.find('ALICE_RUN');
+                return a.dos.length(e, a.dos.read(e)).len; })(), 26);
+    eq('a name matches on what it draws',
+       a.dos.match('алиса').map((e) => e.name), ['АЛИСА']);
+    eq('a glob reaches every file it should',
+       a.dos.match('A.*').map((e) => e.name),
+       ['A.SAVE', 'A.NPC_', 'A.ROOM', 'A.TEXT']);
+  }
+  {
+    const k = await open('examples/Klondike.agc');
+    eq('an .aim is read as sectors like anything else',
+       [k.s.kind, k.dos.tracks, k.dos.perTrack], ['aim840', 160, 21]);
+    eq('the map agrees with what the files hold, through the .aim decoder',
+       mapAgreesWithFiles(k.dos), { files: 3, checked: 510, wrong: 0 });
+  }
+  {
+    const n = await open('examples/asm-89.agc');
+    eq('a 140K nibble image is read as sectors too',
+       [n.s.kind, n.dos.tracks, n.dos.perTrack, n.dos.list().length],
+       ['nib140', 35, 16, 0]);
+    eq('35 tracks need no map sector past the VTOC',
+       n.dos.mapAt(34), { track: 17, sector: 0, off: 0x38 + 4 * 34, vtoc: true });
+  }
+
+  // Packing an image nobody wrote to gives back the file it came from. Which is
+  // the whole promise of the surgical write: what is not touched does not move.
+  for (const p of ['examples/Klondike.agc', 'examples/asm-89.agc',
+                   'examples/Alice_v3_840.agc']) {
+    const o = await open(p);
+    o.dos.list();
+    eq('an unwritten ' + o.s.kind + ' packs back byte for byte',
+       Buffer.compare(Buffer.from(o.sec.pack()), Buffer.from(o.s.payload)), 0);
+  }
+
+  // A write, on each of the three encodings: the sector comes back, its
+  // neighbours on the track do not move, and the free map and the catalog say
+  // what they should.
+  for (const p of ['examples/Alice_v3_840.agc', 'examples/Klondike.agc',
+                   'examples/asm-89.agc']) {
+    const o = await open(p);
+    const before = new ctx.Uint8Array(o.s.payload);
+    const wrote = new ctx.Uint8Array(256);
+    for (let i = 0; i < 256; i++) wrote[i] = (i * 5 + 3) & 0xff;
+    const t = 30, s = 4;
+    const neighbours = [];
+    for (let k = 0; k < o.dos.perTrack; k++) {
+      if (k !== s) neighbours.push([...o.sec.read(t, k)]);
+    }
+    eq('a sector can be written on ' + o.s.kind, o.sec.write(t, s, wrote), true);
+    eq('and reads back on ' + o.s.kind, [...o.sec.read(t, s)], [...wrote]);
+    const after = [];
+    for (let k = 0; k < o.dos.perTrack; k++) {
+      if (k !== s) after.push([...o.sec.read(t, k)]);
+    }
+    eq('the rest of the track does not move on ' + o.s.kind, after, neighbours);
+    // Fresh eyes on the packed image: mounted again from scratch, the written
+    // sector is there and nothing else changed.
+    o.sec.pack();
+    const again = new A.Sectors(o.s.kind, o.sec.data,
+                                { prodos: o.s.prodos, name: o.s.name });
+    eq('the written sector survives a remount of the ' + o.s.kind,
+       [...again.read(t, s)], [...wrote]);
+    let moved = 0;
+    for (let tt = 0; tt < again.tracks; tt++) {
+      for (let ss = 0; ss < again.perTrack; ss++) {
+        if (tt === t && ss === s) continue;
+        const a = o.sec.read(tt, ss);
+        if (!a) continue;
+        const b = new A.Sectors(o.s.kind, new ctx.Uint8Array(before),
+                                { prodos: o.s.prodos }).read(tt, ss);
+        if (b && Buffer.compare(Buffer.from(a), Buffer.from(b))) moved++;
+      }
+      if (tt > 31) break;                    // enough of the disk to prove it
+    }
+    eq('no other sector on the ' + o.s.kind + ' moved', moved, 0);
+  }
+
+  // The whole of a file, out and back in, on each encoding. `.fil` is the
+  // carrier: 40 bytes of header and then the file's data stream, which is what
+  // DOS keeps in its sectors byte for byte.
+  for (const p of ['examples/Alice_v3_840.agc', 'examples/Klondike.agc']) {
+    const o = await open(p);
+    const e = o.dos.list().filter((f) => f.type === 4)[0];
+    const stream = o.dos.read(e);
+    const fil = A.fil.build({ raw: e.raw, type: e.type, locked: e.locked, data: stream });
+    eq('a .fil reads back as what went into it on ' + o.s.kind,
+       (() => { const f = A.fil.parse(fil);
+                return [f.name, f.type, f.locked,
+                        Buffer.compare(Buffer.from(f.data), Buffer.from(stream))]; })(),
+       [e.name, e.type, e.locked, 0]);
+    const free = o.dos.freeCount();
+    const put = o.dos.create('ЗАПИСЬ', e.type, stream, {});
+    const back = o.dos.find('ЗАПИСЬ');
+    eq('a written file comes back byte for byte on ' + o.s.kind,
+       Buffer.compare(Buffer.from(o.dos.read(back)), Buffer.from(stream)), 0);
+    eq('and it is accounted for in the free map on ' + o.s.kind,
+       [o.dos.freeCount(), free - put.sectors,
+        mapAgreesWithFiles(o.dos).wrong],
+       [free - put.sectors, free - put.sectors, 0]);
+    const gone = o.dos.remove(back);
+    eq('deleting it gives the sectors back on ' + o.s.kind,
+       [gone, o.dos.freeCount()], [put.sectors, free]);
+    eq('and leaves a tombstone that remembers the track on ' + o.s.kind,
+       (() => { const d = o.dos.list({ deleted: true })
+                            .filter((f) => f.deleted && f.name === 'ЗАПИСЬ')[0];
+                return d ? d.tsTrack : null; })(), put.track);
+    eq('a deleted file is not in the plain listing on ' + o.s.kind,
+       o.dos.match('ЗАПИСЬ').length, 0);
+  }
+
+  // What a disk that is not a DOS disk says.
+  {
+    const s = A.sniff(new ctx.Uint8Array(
+      fs.readFileSync(path.join(H.ROOT, 'examples/rise-out.dsk'))), 'rise-out.dsk');
+    eq('a disk with no VTOC says so',
+       (() => {
+         try { new A.Dos33(new A.Sectors(s.kind, new ctx.Uint8Array(s.payload), {}));
+               return 'no throw'; } catch (e) { return e.message; }
+       })(),
+       'track 17 sector 0 is not a DOS 3.3 VTOC');
+  }
 }

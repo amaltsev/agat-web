@@ -3,6 +3,7 @@
 // two agree — otherwise it is entirely possible to have something that works
 // headlessly and renders a blank page in the browser.
 const MODULES = [
+  'src/chars.js',
   'src/cpu6502.js',
   'src/mem7.js',
   'src/psrom7.js',
@@ -17,6 +18,8 @@ const MODULES = [
   'src/unpack.js',
   'src/agc.js',
   'src/image.js',
+  'src/sectors.js',
+  'src/dos33.js',
   'src/disk840.js',
   'src/disk140.js',
   'src/video.js',

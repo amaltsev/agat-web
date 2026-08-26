@@ -50,6 +50,7 @@ Load order matters only in that a module's dependencies must already be on
 
 | | |
 |---|---|
+| `chars.js` | the Agat character set, both ways, and the fold two names are matched on |
 | `cpu6502.js` | NMOS 6502. Passes the Klaus Dormann functional test. |
 | `mem7.js` | Agat-7 16K window decode |
 | `psrom7.js` | Agat-7 ЭмПЗУ card |
@@ -64,6 +65,8 @@ Load order matters only in that a module's dependencies must already be on
 | `unpack.js` | gzip both ways, and the embedded ROM blobs |
 | `agc.js` | the `.agc` container: read, write, base64, gzip, patches |
 | `image.js` | sniff and normalize any dropped file |
+| `sectors.js` | any of the five encodings as numbered 256-byte sectors, read *and* written |
+| `dos33.js` | Agat DOS 3.3: the VTOC, the catalog, the free map, files in and out |
 | `disk840.js` | 840K Teac controller |
 | `disk140.js` | 140K Shugart controller |
 | `video.js` | painters and `render()` |
@@ -407,6 +410,39 @@ loop control, backwards, so the two cannot drift apart.
 
 Track synthesis uses a seeded xorshift, not `Math.random`, so headless runs
 reproduce.
+
+### Sectors, and the surgical write
+
+`sectors.js` is the other view of a disk: `read(track, sector)` and
+`write(track, sector, bytes)` over any of the five encodings. A controller reads
+tracks and a file system reads sectors, and this is the one place that knows
+they are the same disk.
+
+The write is the part worth understanding. A `.dsk` is patched in place; a
+`.nib` or an `.aim` has **that one sector's data field re-encoded where the
+decoder found it**, and nothing else in the track is touched. So the decoders
+now report positions as well as bytes — `denibblizeTrack` returns `at[k]`, the
+offset of sector `k`'s 6-and-2 field, and `desectorizeTrack` the offset of its
+256 data bytes — and `renibblizeSector` and `resectorizeSector` write one back
+there, as a ring, since a field may straddle the index.
+
+The alternative — rebuild the track from its sectors — is what `App.writeBack`
+does for a drive that has been written to, and it is right there, because the
+machine really did rewrite those tracks. Here nothing rewrote them: a file
+manager that reformatted a track to delete a file would throw away the gaps, the
+sync fields, the index marks and the physical layout of every sector it did not
+mean to touch, and on a disk formatted by anything but the standard formatter it
+would throw away the disk. Writing an 82-sector file into `Klondike.aim` moves
+0.99% of the 2 MB file, all of it inside the sectors written, and the disk still
+boots to a pixel-identical screen.
+
+`dos33.js` sits on top of that, and the format it reads is in its own header —
+including the two things about the 840K disk that are not Apple's and cost the
+most to find: the free map's bit order, and the fact that the map does not fit
+in the VTOC and continues in a sector of its own. Between them,
+`chars.js`, `sectors.js` and `dos33.js` are the whole of the file system, with
+no Node in any of them: `tools/dos.js` is a command-line front end over the
+three, and a page can be another.
 
 ---
 
@@ -856,6 +892,12 @@ node tools/debug.js …               # dump / trace / run-to-PC
 
 node tools/mkagc.js <image> …       # pack an image and its settings into an .agc
 node tools/mkagc.js a.dsk --diff=b.dsk    # ...with the difference as patches
+
+node tools/dos.js ls    <image>     # the catalog of a DOS 3.3 disk
+node tools/dos.js get   <image> NAME [out]     # a file off it, as a .fil
+node tools/dos.js put   <image> FILE [NAME]    # a file onto it
+node tools/dos.js tget  <image> NAME           # ...as UTF-8 text
+node tools/dos.js rm|mv <image> …   # delete, rename
 
 node tools/tone.js "3,12,0" 16      # RISE OUT's PLAY500 handler on a bare machine
 python3 tools/mkirqtest.py [out]    # the cross-emulator interrupt & sound test

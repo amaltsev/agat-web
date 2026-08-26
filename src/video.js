@@ -329,14 +329,7 @@
 
   // ---- text dump for the headless tools ------------------------------------
 
-  var KOI7 = 'ЮАБЦДЕФГХИЙКЛМНОПЯРСТУЖВЬЫЗШЭЩЧЪ';
-
-  Video.charOf = function (c) {
-    c &= 0x7f;
-    if (c >= 0x20 && c < 0x60) return String.fromCharCode(c);
-    if (c >= 0x60) return KOI7[c - 0x60];
-    return '.';
-  };
+  Video.charOf = AGAT.chars.glyph;
 
   // Reads the live text page for whatever mode is currently selected.
   Video.dumpText = function (m) {

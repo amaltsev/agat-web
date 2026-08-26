@@ -129,19 +129,10 @@
     Insert: 0x52, Delete: 0x53, NumpadEnter: 0x1c, NumpadDivide: 0x35,
   };
 
-  // Code -> the glyph the Agat-7 draws for it. $20-$5F is ASCII apart from the
-  // currency sign; $60-$7F is the Cyrillic band, in KOI-7 N2 order. Lives here
-  // rather than with the on-screen board because it is what a code *is*, and
-  // both the board and the remap's `"^"` have to read it.
-  var CHAR = (function () {
-    var t = [], i;
-    for (i = 0; i < 128; i++) t.push('');
-    for (i = 0x20; i < 0x60; i++) t[i] = String.fromCharCode(i);
-    t[0x24] = '¤';
-    var KOI = 'ЮАБЦДЕФГХИЙКЛМНОПЯРСТУЖВЬЫЗШЭЩЧЪ';
-    for (i = 0; i < 32; i++) t[0x60 + i] = KOI.charAt(i);
-    return t;
-  })();
+  // Code -> the glyph the Agat-7 draws for it, from `chars.js`. Re-exported
+  // here because the on-screen board and the remap's `"^"` both read it off
+  // `AGAT.keyboard`, which is the object they already have.
+  var CHAR = AGAT.chars.CHAR;
 
   // The codes with no glyph to name them by. These are the machine's own caps —
   // the arrow cluster, ↵, ПРОБЕЛ and F1-F3 — and the values are the ones

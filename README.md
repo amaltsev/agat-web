@@ -313,6 +313,53 @@ drive writes; unlock the drive (`RO` → `RW`) before you run it, and it answers
 
 ---
 
+## Files on a DOS disk
+
+`tools/dos.js` is a file manager for Agat DOS 3.3 disks. It takes whatever the
+page takes — `.dsk`, `.nib`, `.aim`, 140K or 840K, and `.agc` containers — and
+edits the image in place.
+
+```sh
+node tools/dos.js ls   examples/Alice_v3_840.agc
+node tools/dos.js ls   examples/MouseGraf-16.agc 'MGR.ШРФ.*' -l
+node tools/dos.js get  disk.dsk RUS_ALICE_GAME          # out as a .fil
+node tools/dos.js put  disk.dsk snake.fil               # and back again
+node tools/dos.js tget disk.dsk ALICE_RUN               # Agat text as UTF-8
+node tools/dos.js tput disk.dsk hello.txt ЗАПУСК        # and UTF-8 as Agat text
+node tools/dos.js rm   disk.dsk 'OLD.*'
+node tools/dos.js mv   disk.dsk KLAWA КЛАВА
+```
+
+`ls` prints what DOS's own `CATALOG` prints — the lock mark, the type letter,
+the sector count and the name — and the free count under it:
+
+```
+Alice_v3_840.agc [Alice_v3_840.dsk] - 840K dsk840, 160 tracks of 21, ДИСК N 254, "ALICE_GAME_DISK_V3"
+ D 017 A.SAVE
+ B 164 RUS_ALICE_GAME
+ T 002 MAKE_EMPTY_A.SAVE
+ B 010 АЛИСА
+10 files, 2077 free sectors of 3360
+```
+
+**Names are matched on what they draw.** `МАШИНИСТ` finds the file whose name is
+Cyrillic `Ш И` between Latin `M A H C T` — which is how it was really typed, and
+not something anybody remembers afterwards. `*` and `?` glob, and a name that
+reaches two files is refused rather than guessed at.
+
+`get` writes a `.fil` — the file's DOS data stream with its catalog entry in
+front, which is what the page already loads — so a `B` file taken off a disk
+can be dropped straight onto the emulator. `--raw` gives the data stream alone
+and `--body` the contents with the type's own address-and-length prefix
+removed. `put` reads a `.fil` back, or takes a plain file with `--type=` and,
+for a `B` file, `--addr=`.
+
+Writing changes only the sectors it has to: deleting a file from `Klondike.aim`
+moves 0.99% of the 2 MB image and leaves every gap, sync field and index mark
+where it was.
+
+---
+
 ## Documentation
 
 | | |
@@ -338,6 +385,7 @@ node tools/check.js boot <image>    # boot and report where it got to
 node tools/check.js write <image> --keys=…   # boot unlocked, say what was written
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
 node tools/mkagc.js <image> …       # pack an image and its settings into an .agc
+node tools/dos.js ls <image>        # the catalog of a DOS 3.3 disk
 ```
 
 Every tool takes an `.agc` wherever it takes an image, and runs it on the

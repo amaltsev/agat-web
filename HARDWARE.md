@@ -550,9 +550,16 @@ scancode table settles several things that are not obvious from the table alone:
   KOI-7 N2 order at `$60-$7F`. **РЕГ adds exactly `$20`** across the whole
   letter block, which is what lets both legends live on one cap. Away from the
   letters the shift is `$10`: `;`/`+`, `-`/`=`, `:`/`*`, `,`/`<`.
-- The Agat-9's font puts lower-case Latin at `$60-$7F` and its Cyrillic at
-  `$C0-$DF`, so the *same* keypress draws a different glyph on the two
-  machines.
+- **The two fonts agree above `$80` and differ below it.** `$80-$FF` is one
+  128-character set on both machines — `$A0-$BF` punctuation and digits,
+  `$C0-$DF` Latin `@A-Z[\]^_`, `$E0-$FF` upper-case Cyrillic in KOI-7 N2 order
+  — and the Agat-7's lower half is a byte-for-byte mirror of it, so bit 7 is the
+  video attribute and nothing else. The Agat-9's lower half is a *different* set:
+  lower-case Latin at `$40-$5F` and lower-case Cyrillic at `$60-$7F`. So the
+  same keypress draws a different glyph on the two machines, and a DOS catalog
+  name or a `T` file — everything in which carries bit 7 — reads the same on
+  both. Measured against `agathe7.fnt` and `agathe9.fnt` glyph by glyph:
+  `chars.js` is that shared set, and `tools/dos.js` reads names through it.
 - **The board has F1, F2 and F3 and no more**, and the table has codes at
   exactly scancodes `$3B $3C $3D` (`$84 $85 $86`) and nothing for F4-F12.
 - **There is no Tab or Backspace cap.** `←` is the backspace, and both the
@@ -958,9 +965,29 @@ virtual disk\x0D\x0A\x1A""AD`; header byte 48 ≠ 0 means write-protected.
 
 ### `.fil`
 
-A DOS 3.3 file plus its catalog entry: 30-byte name, type at `0x27` (must
-satisfy `(type & 0x7F) == 4`), load address at `0x28`, length at `0x2A`, payload
-at `0x2C`, padded so that `(size - 40) % 256 == 0`.
+A DOS 3.3 file with a 40-byte header glued in front, padded so that
+`(size - 40) % 256 == 0`. Everything from `0x28` on is the file's DOS data
+stream — what DOS keeps in its data sectors, byte for byte, which is what lets
+`tools/dos.js` take a file off a disk and put it back unchanged.
+
+| | |
+|---|---|
+| `0x00` | 30-byte name, high-bit KOI-7, `$A0` padded |
+| `0x1E` | five zero bytes |
+| `0x23` | the stream's length in bytes, address prefix included |
+| `0x25` | the load address |
+| `0x27` | DOS file type, `$80` for locked |
+| `0x28` | the stream |
+
+The two fields at `0x23` and `0x25` restate what a `B` file's own first four
+bytes already say, and 123 of the 156 `.fil` files in the archive leave them
+zero, so nothing reads them. A `B` file's stream begins with load address at
+`0x28` and length at `0x2A`, which is where `fil.js` reads them.
+
+**The page loads `B` files only** — `(type & 0x7F) == 4`, which is what
+`AGAT.sniff` tests for. `AGAT.fil.parse` reads any type, because a `T` or `A`
+file is a perfectly good thing to carry between disks even though nothing can
+poke it into memory and run it.
 
 Loading is not a jump. Fill RAM with `$60` (`RTS`, so a stray jump lands
 somewhere harmless), poke the program in through the bank windows, then forge

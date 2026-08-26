@@ -38,6 +38,12 @@ node tools/check.js urlkeys    # the page's address, around the whole loop
 node tools/cputest.js          # Klaus Dormann; slow, run on CPU changes
 ```
 
+`node tools/dos.js ls <image>` is the quick check that a disk change did not
+break the file system; the write path is exercised by `vectors.js` and, for the
+one oracle that is not ours, by booting the disk — delete the greeting file from
+`TESTKOM9_840.agc` and the emulator's own DOS answers «ФАЙЛ НЕ НАЙДЕН» at a `]`
+prompt, where `CATALOG` will then say what it makes of the catalog you wrote.
+
 The two page commands belong in that list even for a change that is not about
 the page, because of how they work: each lifts functions out of `index.html` and
 runs them against stubs it builds itself, so a control added to the page and
@@ -116,6 +122,23 @@ Settled, with evidence, and expensive to relearn:
   mode; do not carry the 140K's write-driven head over.
 - Every sound in RISE OUT proper goes through `PLAY500` on the interrupt, never
   the busy-wait `PLAY`.
+- **Agat DOS 3.3 is Apple DOS 3.3** — VTOC at track 17 sector 0, seven 35-byte
+  entries to a catalog sector, T/S lists of 122 pairs — with three departures,
+  each measured against the eight DOS disks in `examples/` and against the
+  emulator running the disk. The free map's bit for sector `s` is
+  `32 - perTrack + s` of the big-endian word, which is Apple's `16 + s` at 16
+  sectors and `11 + s` at 21. The map does not fit in an 840K VTOC and continues
+  64 tracks to a sector, in sector 0 of the first track each one describes —
+  tracks 50-113 in track 50, 114-159 in track 114. And the type letters are
+  `T I A B S R K D`, not Apple's `…A B`: the table is on disk at track 2 sector 9
+  of `TESTKOM9_840.agc`, and DOS's own `CATALOG` prints `K` for `$20`.
+  `src/dos33.js` is the whole of it, with the evidence in its header.
+- **DOS's «СВОБОДНО» is one more than the free sector count.** A disk `dos.js`
+  says has 0 free catalogs as `001 СВОБОДНО`. The off-by-one is DOS's.
+- The two fonts carry the **same 128 characters above `$80`**, so a catalog name
+  and a `T` file read the same on both machines; below `$80` the Agat-7 mirrors
+  its high half and the Agat-9 does not. `src/chars.js` is that set, and it is
+  the only copy of it — `video.js` and `keyboard.js` read it from there.
 
 **Not settled:** whether more of the Agat-9's interrupt PROM should be modeled.
 D63's address carries three mode bits above the line number, so the pattern is
