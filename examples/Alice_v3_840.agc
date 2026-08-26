@@ -5,7 +5,6 @@
   "author": "Windham Classics / AgatComp.ru",
   "date": "1985, 1992-93, 2018",
   "info": "Карты уровней и подробности адаптации по ссылке",
-  "hint": "Используйте версию 256k (в загрузке два раза вверх и Enter)",
   "controls": {
     "Play": {
       "Up Down Left Right": "Движение",
