@@ -429,6 +429,20 @@ bytes hex, above that whichever of base64 and gzip is smaller.
 Any other key on a patch record is left alone — a container is hand-edited, and
 a `"why"` beside the bytes should survive being loaded and saved.
 
+**That key is also what decides whether a record survives a save.** A save does
+not add its difference to the list it found; it keeps every *annotated* record
+verbatim, throws the plain ones away, and works the difference out again against
+the finished image. So a change and its undo — rename a file on a disk and
+rename it back — leave nothing behind rather than two records at one address
+that cancel out, two writes to the same bytes come back as one, and saving twice
+gives the same file.
+
+What it costs is that two plain records close enough together come back as one,
+`diff`'s eight-byte gap being what decides. A hand-written patch that wants to
+stay a patch of its own needs a word on it saying what it is for — which is
+worth writing down anyway, and is the only thing that tells a reader the bytes
+were somebody's decision rather than a disk's arithmetic.
+
 The payload stays **the image exactly as it was found**, and changes live here.
 That is the whole point of the split: a container carries a pristine copy of
 what it came from, the change is legible to anyone reading the file, and saving

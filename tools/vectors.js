@@ -1462,6 +1462,60 @@ async function agcTests() {
     eq('and reads back as the version it was written as', back.version, 1);
   }
 
+  // What a save writes back. Appending each save's difference to the list is
+  // what a container carrying a change *and its undo* comes from — two records
+  // at one address that cancel — so the plain part of the list is recomputed
+  // against the finished image instead, and only an annotated record is kept.
+  {
+    const orig = new ctx.Uint8Array(64);
+    for (let i = 0; i < orig.length; i++) orig[i] = i;
+    const at = (a, hex, extra) =>
+      Object.assign({ at: a, bytes: A.agc.fromHex(hex) }, extra || {});
+    const shape = (list) => list.map((p) =>
+      [p.at, A.agc.toHex(p.bytes), p.why || ''].join(' ').trim());
+    // A change and its undo: the image is back where it started, so there is
+    // nothing left to say about it.
+    eq('a plain patch and its undo come to nothing',
+       A.agc.repatch(orig, [at(8, 'FF FF'), at(8, '08 09')], orig), []);
+    eq('one change is one record',
+       shape(A.agc.repatch(orig, [], A.agc.applyPatches(orig, [at(8, 'FF FF')]))),
+       ['8 FF FF']);
+    // Two plain records at one address are one record afterwards, whatever
+    // order they went on in.
+    eq('overlapping plain patches merge to the last write',
+       shape(A.agc.repatch(orig, [at(8, 'FF FF'), at(8, 'AA BB')],
+                           A.agc.applyPatches(orig, [at(8, 'FF FF'), at(8, 'AA BB')]))),
+       ['8 AA BB']);
+    // An annotated record is documentation. It is kept exactly, and the
+    // difference is taken against an image with it already applied.
+    {
+      const notes = [at(8, 'FF FF', { why: 'the check' }), at(20, 'AA BB')];
+      const final = A.agc.applyPatches(orig, notes);
+      const got = A.agc.repatch(orig, notes, final);
+      eq('an annotated patch survives a save and a plain one is recomputed',
+         shape(got), ['8 FF FF the check', '20 AA BB']);
+      eq('and the list still rebuilds the image',
+         [...A.agc.applyPatches(orig, got)], [...final]);
+      eq('saving again changes nothing',
+         shape(A.agc.repatch(orig, got, final)), shape(got));
+    }
+    // The kept records move to the front, so the case that has to hold is a
+    // written byte landing on top of an annotated one: the note stays, and the
+    // recomputed difference carries what the disk now says.
+    {
+      const list = [at(8, 'FF FF', { why: 'the check' }), at(8, '11 22')];
+      const final = A.agc.applyPatches(orig, list);
+      const got = A.agc.repatch(orig, list, final);
+      eq('a write over an annotated patch keeps the note and wins',
+         shape(got), ['8 FF FF the check', '8 11 22']);
+      eq('and that list rebuilds the image too',
+         [...A.agc.applyPatches(orig, got)], [...final]);
+    }
+    eq('an annotated record is the one with a key of its own',
+       [A.agc.isAnnotated(at(0, 'AA')), A.agc.isAnnotated(at(0, 'AA', { why: 'x' }))],
+       [false, true]);
+  }
+
   // A container is hand-edited, so a reader that drops what it does not
   // understand will eventually eat somebody's note about a patch.
   {

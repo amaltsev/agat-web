@@ -387,9 +387,20 @@ back — through `gcr140.denibblizeTrack` to 16 sectors, or
 `aim840.desectorizeTrack` to 21 — and the difference comes out as patches; a
 `.nib` or `.aim` source is its own baseline and the patches are simply what
 moved (`aim840.toAim` interleaves the two planes back). It reads `this.sources`
-and the card's media and touches neither, which is what makes saving twice
-produce the same file and what lets the tests call it with a two-field stand-in
-for an `App`.
+and the card's media and touches neither, which is what lets the tests call it
+with a two-field stand-in for an `App`.
+
+The patch list is recomputed rather than added to, and `agc.repatch` is the one
+rule for it: an **annotated** record — anything carrying a key beyond its
+address and bytes — is somebody's writing and is kept verbatim at the front; a
+plain one is a machine's arithmetic and is thrown away, the difference being
+taken again against a baseline with the annotated records applied. Appending
+instead is what leaves a change and its undo both in the file, two records at
+one address that cancel. Moving the kept records to the front is safe in every
+order they could have been in, because the recomputed difference is measured
+against them and its target is the finished image, so a written byte that lands
+on an annotated one still wins and still lands after it. `tools/dos.js` saves
+through the same function.
 
 Its one give-up is a track that will not decode. There is then no sector image
 for a patch to be a difference from, so the whole stream is saved instead and

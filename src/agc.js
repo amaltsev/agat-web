@@ -256,6 +256,42 @@
     return out;
   }
 
+  // Does this record carry anything but its bytes? `readPatch` keeps every key
+  // it does not understand, so a note, a `why`, a date — anything a person put
+  // there — shows up as a key beside `at` and `bytes`.
+  function isAnnotated(p) {
+    for (var k in p) if (k !== 'at' && k !== 'bytes') return true;
+    return false;
+  }
+
+  // The patch list a save should write, given the payload as it was packed, the
+  // list the container arrived with, and the image as it now stands.
+  //
+  // Appending each save's difference to the list is the obvious thing and it is
+  // wrong in one visible way: rename a file on a disk and rename it back, and
+  // the container grows two records at the same address that cancel out. So the
+  // list is recomputed instead — but only the part of it that is nobody's
+  // writing. **An annotated record is documentation and is kept verbatim**; a
+  // plain one is a machine's arithmetic and is thrown away and worked out
+  // again. A rename and a rename back then come to nothing at all, an overlap
+  // merges, and saving twice gives the same file.
+  //
+  // The kept records move to the front. That is safe whatever order they were
+  // in, because the recomputed difference is taken against a baseline with them
+  // already applied and its target is the finished image: wherever an annotated
+  // patch and a written byte disagree, the difference carries the written byte
+  // and lands after. What it costs is that two *plain* records close enough
+  // together will come back as one, `diff`'s eight-byte gap being what decides
+  // — a hand-written patch that wants to stay a patch of its own needs a word
+  // on it saying what it is for, which is a thing worth writing down anyway.
+  function repatch(orig, patches, final) {
+    var keep = [], i;
+    for (i = 0; i < (patches || []).length; i++) {
+      if (isAnnotated(patches[i])) keep.push(patches[i]);
+    }
+    return keep.concat(diff(applyPatches(orig, keep), final));
+  }
+
   // Is this text at all, and does it start like an object? A container is UTF-8
   // JSON and every other format here is binary, so this rejects a 2 MB .aim on
   // its first byte rather than trying to decode it.
@@ -525,7 +561,8 @@
     encode64: encode64, decode64: decode64,
     fromHex: fromHex, toHex: toHex,
     decodeBytes: decodeBytes, encodeBytes: encodeBytes,
-    applyPatches: applyPatches, diff: diff,
+    applyPatches: applyPatches, diff: diff, repatch: repatch,
+    isAnnotated: isAnnotated,
     VERSION: VERSION, LINE: LINE, HEX_MAX: HEX_MAX, GAIN: GAIN,
   };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

@@ -155,12 +155,14 @@ async function save(img, sec) {
     const patched = new ctx.Uint8Array(img.base);
     patched.set(img.data, img.inner.offset);
     const c = img.agc;
+    // Only the medium that was edited is repatched. The others are handed back
+    // the list they arrived with, so working on one disk of a container does
+    // not quietly rewrite the record of another.
     const media = c.media.map((m, i) => ({
       name: m.name,
       bytes: m.bytes,
-      patches: i === img.index
-        ? m.patches.concat(A.agc.diff(img.base, patched))
-        : m.patches,
+      patches: i === img.index ? A.agc.repatch(m.bytes, m.patches, patched)
+                               : m.patches,
     }));
     const text = await A.agc.build({
       title: c.title, author: c.author, date: c.date, url: c.url,

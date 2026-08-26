@@ -853,10 +853,11 @@
   // A written track is decoded back to the sectors it was built from — 16 on
   // the 140K, 21 on the 840K — and the difference comes out as patches, so a
   // container still carries the image as it was found and what changed stays
-  // legible. `this.sources` is left alone and the baseline is the patched image
-  // the machine actually mounted, so saving twice gives the same file rather
-  // than the same patch twice. A stream image (.nib, .aim) is its own baseline
-  // and the patches are simply what moved.
+  // legible. `this.sources` is left alone, and the whole plain part of the
+  // patch list is recomputed against the finished image rather than added to —
+  // see `agc.repatch`, which is what keeps a change and its undo from both
+  // ending up in the file. A stream image (.nib, .aim) is its own baseline and
+  // the patches are simply what moved.
   //
   // A track that will not decode — a disk formatted some other way, a write
   // caught half done — has no sector image to be the difference from. Then the
@@ -913,7 +914,7 @@
     return {
       name: src.name,
       bytes: src.bytes,
-      patches: src.patches.concat(AGAT.agc.diff(base, out)),
+      patches: AGAT.agc.repatch(src.bytes, src.patches, out),
     };
   };
 
