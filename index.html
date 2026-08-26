@@ -508,7 +508,7 @@
       clock stops, and goes on from where it was. <b>Boot</b>, <b>Reset</b>
       and dropping a file all mean <i>run this</i>, so any of them starts a
       paused machine again. <b>Save AGC</b> pauses for as long as its panel is
-      up, so what a snapshot carries is the moment the button was pressed.
+      up.
     </td></tr>
     <tr><td><b>Keyboard</b></td><td>
       The Agat's own board, or the PC keys the table maps. The cap your
@@ -519,14 +519,12 @@
       JCUKEN layout.
     </td></tr>
     <tr><td><b>Mouse</b></td><td>
-      Off by default.  The three mice speak different protocols.  If a
-      program does not answer, try another: the mouse goes red in the
-      status line while nothing is reading the card, and green while the
-      machine has the pointer.  Click the screen to hand the pointer over
-      and <b>Esc</b> to take it back. The host left button is A, right
-      is B. On a touchscreen the screen is a trackpad instead: strokes
-      steer, a tap is A, a second finger is B, and a touch right after a
-      tap drags — the <b>trackpad</b> box in the gear popup gives the
+      Off by default. The mouse goes red in the status line while
+      nothing is reading the card, and green while the machine has the
+      pointer.  Click the screen to hand the pointer over and <b>Esc</b>
+      to take it back. The host left button is A, right is B. On a
+      touchscreen the screen is a trackpad instead: strokes steer, a tap
+      is A, a second finger is B. The <b>trackpad</b> option gives the
       desktop pointer the same behavior. The two buttons are also drawn
       over the screen's lower corners.
     </td></tr>
@@ -550,11 +548,11 @@
       <a href="https://amaltsev.github.io/agat-web/AGC.html">AGC.md</a>.
     </td></tr>
     <tr><td><b>Drives</b></td><td>
-      840K in slot 5 on both machines; 140K in slot 6 on the Agat-9 and slot 3
-      on the Agat-7. A dropped image goes to whichever drive can read it. Each
-      drive's lamp is dim while its motor is running and bright while bytes are
-      reaching the CPU — a boot of ten seconds is normal, and looks like one —
-      and <code>T</code> beside it is the track its head is on.
+      By default 840K is in slot 5 on both machines; 140K is in slot
+      6 on the Agat-9 and slot 3 on the Agat-7. A dropped image goes
+      to whichever drive can read it. Each drive's lamp is dim while
+      its motor is running and bright while bytes are reaching the CPU;
+      <code>T</code> beside it is the track its head is on.
     </td></tr>
     <tr><td><b>RO / RW</b></td><td>
       Disks are read-only by default. Click <code>RO</code> to allow
@@ -564,17 +562,14 @@
     <tr><td><b>⚙</b></td><td>
       Which Agat this is, its memory sizes, the mouse, the monitor and the
       volume, with <b>Boot</b> and <b>Reset</b>.
-      The monitor matters for color: the machine outputs 4-bit color codes
-      and the monitor decides what they look like, so a program drawn on an
-      8-color monitor wants one here too.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
-      The Agat-9 is 128K in 8K banks on the motherboard, which is
-      fixed, plus a 128K ОЗУ expansion in slot 2. The standard Agat-7
-      is three separate devices — 64K of base RAM in 16K banks, a 32K
-      ЭмПЗУ card in slot 2, and a 32K ОЗУ expansion in slot 4. A filename containing
-      <code>7a</code> or <code>9a</code> picks the machine for you until
-      you choose one yourself.
+      The Agat-9 is 128K in 8K banks on the motherboard, plus a 128K
+      ОЗУ expansion in slot 2. The standard Agat-7 is three separate
+      devices — 64K of base RAM in 16K banks, a 32K ЭмПЗУ card
+      in slot 2, and a 32K ОЗУ expansion in slot 4. A filename
+      containing <code>7a</code> or <code>9a</code> picks the machine
+      for you until you choose one yourself.
     </td></tr>
     <tr><td><b>Bookmarks</b></td><td>
       The machine, its memory sizes, the monitor and which keyboard is up ride
