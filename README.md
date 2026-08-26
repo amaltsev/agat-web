@@ -334,6 +334,15 @@ else is asked what type it is and, for a `B` file, where it loads. **Save**
 writes the disk back over the file that was opened where the browser allows
 that, and downloads it where it does not.
 
+A `T` file's text reads as UTF-8 and writes back in the Agat character set with
+`$8D` at the end of every line, the last one included. The **leading CR** box is
+the `$8D` that some editors put in front of the *first* line as well — asm-89's
+does, and so does whatever wrote the ИКП disks, where 117 of 144 text files
+start with one, while Alice's three do not. It is a convention of the tool
+rather than of the format, and a reader that expects it eats the first character
+of a file without one, so it is shown as a setting rather than guessed at:
+ticked for a file that already has one, and carried over to the next file typed.
+
 The same panel is on the emulator page, on the `⋯` beside each drive lamp: it
 edits the disk that is *in the drive*, so what is written there is what the
 machine reads, and **Save AGC** keeps it as a patch like any other write. The

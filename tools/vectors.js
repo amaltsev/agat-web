@@ -2707,6 +2707,25 @@ async function dosTests() {
     eq('and comes back the same', F.toText(there), 'ЗАПУСK\nBRUN X\n');
     eq('a Windows line ending is one line ending',
        F.fromText('A\r\nB').length, F.fromText('A\nB').length);
+    // The last line is a line: 136 of the 151 T files in examples/ end with
+    // $8D, and a text box does not make the reader press Return at the end.
+    eq('a last line with no newline is terminated anyway',
+       Array.from(F.fromText('AB')), [0xc1, 0xc2, 0x8d]);
+    eq('and one that has one is not terminated twice',
+       Array.from(F.fromText('AB\n')), [0xc1, 0xc2, 0x8d]);
+    eq('nothing at all is nothing', F.fromText('').length, 0);
+    // The $8D some editors put in front of the first line — asm-89's does, and
+    // its reader eats the first character of a file without one.
+    eq('a leading CR is what the file says about itself',
+       ['\nAB', 'AB'].map(F.hasLead), [true, false]);
+    eq('and it is taken off the text rather than shown as a blank line',
+       [F.dropLead('\nAB'), F.dropLead('AB')], ['AB', 'AB']);
+    eq('packing one back on gives what asm-89 writes',
+       Array.from(F.pack('ABCDE', { text: true, lead: true }).data),
+       [0x8d, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0x8d]);
+    eq('and packing without it gives what DOS alone needs',
+       Array.from(F.pack('ABCDE', { text: true }).data),
+       [0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0x8d]);
 
     // In: what `put` and the page's Add both hand to `create`.
     eq('a .fil arrives knowing its own name, type and lock mark',

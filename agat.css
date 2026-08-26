@@ -128,8 +128,11 @@ input[type=text]:focus { outline: 1px solid var(--accent); }
 .dos-foot button, .dos-foot label.file { padding: 3px 9px; font-size: 12px; }
 .dos-foot label { color: var(--dim); }
 .dos-form { margin-top: 8px; border-top: 1px solid var(--edge); }
+/* Seven lines to start with, dragged taller by the corner when a file needs
+   it. The editor opens inside the scrolling list, so a box tall enough to push
+   its own Save past the fold is a box whose Save is not there. */
 .dos-text textarea {
-  display: block; width: 100%; min-height: 14em; margin-top: 6px;
+  display: block; width: 100%; min-height: 7em; margin-top: 6px;
   font: var(--mono); color: var(--ink); background: var(--bg);
   border: 1px solid var(--edge); border-radius: 5px; padding: 6px 8px;
   resize: vertical;

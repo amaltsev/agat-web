@@ -142,6 +142,14 @@ Settled, with evidence, and expensive to relearn:
   `T I A B S R K D`, not Apple's `…A B`: the table is on disk at track 2 sector 9
   of `TESTKOM9_840.agc`, and DOS's own `CATALOG` prints `K` for `$20`.
   `src/dos33.js` is the whole of it, with the evidence in its header.
+- **A DOS text file is CR-terminated records, and the last line is a line.**
+  136 of the 151 `T` files in `examples/` end with `$8D`, including every one on
+  the two disks a single tool wrote, so `dosfile.fromText` terminates whatever
+  it is given. The `$8D` some editors put in front of the *first* line is a
+  different thing and **not** a property of the format: asm-89's editor writes
+  one and eats the first character of a file without one, ИКП's disks have 117
+  of 144, Alice's have 0 of 3. It is a checkbox in the editor and `--lead` on
+  `tput`, never a guess.
 - **DOS's «СВОБОДНО» is one more than the free sector count.** A disk `dos.js`
   says has 0 free catalogs as `001 СВОБОДНО`. The off-by-one is DOS's.
 - The two fonts carry the **same 128 characters above `$80`**, so a catalog name

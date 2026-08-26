@@ -620,6 +620,12 @@ async function dosuiCmd() {
     return b;
   };
   const cells = (row) => row.children.map((c) => c.textContent);
+  const boxed = (root, word) => {
+    const l = all(root).find((n) => n.tag === 'label' &&
+      n.children.some((c) => c.textContent === ' ' + word));
+    if (!l) throw new Error('no checkbox says "' + word + '"');
+    return l;
+  };
   const rows = (root) => byClass(root, 'dos-row').map((r) => cells(r).slice(0, 4).join(' '));
   const named = (root, name) => {
     const r = byClass(root, 'dos-row').find((x) => cells(x)[3] === name);
@@ -785,6 +791,8 @@ async function dosuiCmd() {
   face(host, 'Edit text…').fire('click');
   const area = all(host).find((n) => n.tag === 'textarea');
   eq('a T file opens decoded', area.value.split('\n')[0], '[RAM2');
+  eq('and a file with no leading CR opens with the box clear',
+     [boxed(host, 'leading CR').box.checked, area.value.charAt(0)], [false, '[']);
   area.value = 'ЗАПУСK\nBRUN X\n';
   face(host, 'Save').fire('click');
   eq('and writes back in the Agat character set',
@@ -803,6 +811,36 @@ async function dosuiCmd() {
      [A.dosfile.unpack(t.dos, t.dos.find('ALICE_RUN'), 'text').text,
       t.dos.match('ALICE_RUN').length],
      ['ОДНА\n', 1]);
+
+  // A file written the way asm-89 and the ИКП disks write one: the $8D in
+  // front shows as the box ticked, and saving puts back one, not two.
+  t.dos.create('ЛИД', 0x00, A.dosfile.pack('ABCDE', { text: true, lead: true }).data, {});
+  ui.refresh();
+  named(host, 'ЛИД').fire('click');
+  face(host, 'Edit text…').fire('click');
+  {
+    const box = boxed(host, 'leading CR').box;
+    const ta = all(host).find((n) => n.tag === 'textarea');
+    eq('a file with a leading CR opens with the box ticked and the text plain',
+       [box.checked, ta.value], [true, 'ABCDE\n']);
+    face(host, 'Save').fire('click');
+    eq('and saving it writes the same bytes back',
+       Array.from(A.dosfile.body(t.dos, t.dos.find('ЛИД'),
+                                 t.dos.read(t.dos.find('ЛИД')))).slice(0, 7),
+       [0x8d, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0x8d]);
+  }
+  named(host, 'ЛИД').fire('click');
+  face(host, 'Edit text…').fire('click');
+  {
+    // Untick it and the file becomes what DOS alone needs.
+    boxed(host, 'leading CR').box.checked = false;
+    face(host, 'Save').fire('click');
+    eq('unticking it takes the leading CR off',
+       Array.from(A.dosfile.body(t.dos, t.dos.find('ЛИД'),
+                                 t.dos.read(t.dos.find('ЛИД')))).slice(0, 6),
+       [0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0x8d]);
+  }
+  t.dos.remove(t.dos.find('ЛИД'));
 
   // ---- a T file typed from nothing -----------------------------------------
   face(host, 'New text file…').fire('click');

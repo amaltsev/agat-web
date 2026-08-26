@@ -56,8 +56,15 @@
     return AGAT.chars.decode(bytes).replace(/\\x0D/g, '\n');
   }
 
+  // **The last line is terminated too.** A DOS text file is a sequence of
+  // CR-terminated records, not lines with separators between them: 136 of the
+  // 151 T files on the disks in `examples/` end with `$8D`, including every one
+  // on the two disks a single tool wrote. A text box whose last line has no
+  // newline is still a line, and this is where it gets its terminator.
   function fromText(text) {
-    return AGAT.chars.encode(String(text).replace(/\r\n/g, '\n').replace(/\n/g, '\\x0D'));
+    var s = String(text).replace(/\r\n/g, '\n');
+    if (s && s.charAt(s.length - 1) !== '\n') s += '\n';
+    return AGAT.chars.encode(s.replace(/\n/g, '\\x0D'));
   }
 
   // `$2000`, `0x2000` or `2000` — hexadecimal either way, because an Agat
@@ -73,6 +80,24 @@
       throw new Error((label === undefined ? v : label) + ': not an address');
     }
     return n;
+  }
+
+  // Some editors write a `$8D` before the *first* line as well, treating the
+  // carriage return as what separates records rather than what ends them —
+  // asm-89's own editor does, and so does whatever wrote the ИКП disks, where
+  // 117 of the 144 T files start with one. Alice's three do not. So it is a
+  // convention of the tool rather than of the format, and a reader that expects
+  // it eats the first character of a file that has none.
+  //
+  // Which makes it something to be *shown* and set, not guessed at: `hasLead`
+  // is what a file says about itself, and `pack`'s `lead` is what to write.
+  // Both work on the decoded text, where a `$8D` is a newline.
+  function hasLead(text) {
+    return text.charAt(0) === '\n';
+  }
+
+  function dropLead(text) {
+    return hasLead(text) ? text.slice(1) : text;
   }
 
   // A file name for the host's file system. The catalog allows characters a
@@ -131,6 +156,7 @@
   // CLI's flags by another name:
   //
   //   text    the input is text, to be written as a `T` file
+  //   lead    put a `$8D` in front of it as well — see `hasLead` below
   //   raw     the input is already a DOS data stream; needs `type`
   //   type    the type byte, or -1 for "work it out"
   //   addr    the load address for a `B` file, and `addrLabel` what to call
@@ -150,7 +176,7 @@
 
     if (opts.text) {
       if (type < 0) type = 0x00;
-      data = fromText(input);
+      data = fromText(opts.lead ? '\n' + input : input);
     } else if (!opts.raw && AGAT.fil.looks(input)) {
       var f = AGAT.fil.parse(input);
       if (!name) name = f.name;
@@ -185,6 +211,7 @@
     describe: describe, body: body,
     toText: toText, fromText: fromText,
     parseAddr: parseAddr, outName: outName, defaultName: defaultName,
+    hasLead: hasLead, dropLead: dropLead,
     unpack: unpack, pack: pack,
   };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

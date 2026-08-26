@@ -39,6 +39,9 @@
 //   --addr=$2000   the load address for a `B` file
 //   --force        overwrite a name that is already on the disk
 //   --lock         put the new file down locked
+//   --lead         `tput` writes a $8D in front of the first line as well,
+//                  which is what asm-89's editor and the ИКП disks' expect;
+//                  without it a reader that does eats the first character
 //   --medium=N     which medium of an .agc to work on; the first by default
 //   --vtoc=T/S     where the VTOC is, if it is not track 17 sector 0
 //
@@ -64,6 +67,7 @@
 //   node tools/dos.js put  disk.dsk snake.fil
 //   node tools/dos.js tget disk.dsk ALICE_RUN
 //   node tools/dos.js tput disk.dsk hello.txt ЗАПУСК
+//   node tools/dos.js tput disk.dsk src.txt ИCXOД --lead
 //   node tools/dos.js rm   disk.dsk 'OLD.*'
 //   node tools/dos.js mv   disk.dsk KLAWA КЛАВА
 const fs = require('fs');
@@ -351,6 +355,7 @@ async function put(dos, asText) {
     addrLabel: flags.addr === undefined ? undefined : '--addr=' + flags.addr,
     locked: !!flags.lock,
     text: asText,
+    lead: !!flags.lead,
     raw: !!flags.raw,
   });
   const data = got.data, locked = got.locked;

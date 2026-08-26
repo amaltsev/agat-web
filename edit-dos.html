@@ -68,7 +68,11 @@
     </td></tr>
     <tr><td><b>Text</b></td><td>
       A <code>T</code> file reads as UTF-8 and writes back in the Agat
-      character set, with the <code>$8D</code> line endings DOS wants.
+      character set, every line ending in the <code>$8D</code> DOS wants —
+      the last one too. <b>leading CR</b> is the <code>$8D</code> some editors
+      also put in front of the <i>first</i> line: asm-89's does, and its reader
+      eats the first character of a file without one. It is ticked for a file
+      that already has one.
     </td></tr>
     <tr><td><b>Saving</b></td><td>
       Only the sectors that changed are touched: a <code>.nib</code> or an

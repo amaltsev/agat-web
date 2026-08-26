@@ -40,6 +40,24 @@
     return b;
   }
 
+  // A checkbox with its word beside it, which is two elements everywhere it
+  // appears.
+  function check(label, title, on) {
+    var l = el('label', null), box = el('input');
+    box.type = 'checkbox';
+    box.checked = !!on;
+    l.title = title;
+    l.appendChild(box);
+    l.appendChild(document.createTextNode(' ' + label));
+    l.box = box;
+    return l;
+  }
+
+  var LEAD_LABEL = 'leading CR';
+  var LEAD_TITLE = 'A $8D before the first line. asm-89\'s editor and the one ' +
+                   'that wrote the ИКП disks put one there and expect it back; ' +
+                   'a reader that expects it eats the first character without it.';
+
   function pad3(n) {
     var s = String(n);
     while (s.length < 3) s = '0' + s;
@@ -81,6 +99,7 @@
     this.open = '';                        // which file's strip is open
     this.mode = '';                        // '', 'rename' or 'text', in that strip
     this.deleted = false;                  // are the tombstones shown
+    this.lead = false;                     // what a new T file gets in front
 
     this.root = el('div', 'dos');
     this.headEl = el('div', 'dos-head');
@@ -376,13 +395,18 @@
       // is what there is, and Cancel is the way out of it.
       box.appendChild(el('div', 'dim', err.message));
     }
+    var lead = null;
     if (text !== undefined) {
       if (e.type !== 0x00) {
         box.appendChild(el('div', 'dim', 'Type ' + e.typeLetter +
           ', not T — read as text anyway.'));
       }
+      // The leading CR is the box's, not the text's: shown as a setting rather
+      // than as a blank first line, so that saving writes back what the file
+      // already had instead of a second one.
+      lead = check(LEAD_LABEL, LEAD_TITLE, AGAT.dosfile.hasLead(text));
       area = el('textarea');
-      area.value = text;
+      area.value = AGAT.dosfile.dropLead(text);
       box.appendChild(area);
     }
     var r = el('div', 'dos-acts');
@@ -392,14 +416,24 @@
           // `put` replaces this very file, the new one written before the old
           // is removed — so a disk with no room says so and the file is still
           // there. The strip closes only once something has been written.
+          self.lead = lead.box.checked;
           var wrote = self.put(AGAT.dosfile.pack(area.value, {
-            text: true, name: e.name, locked: e.locked }), e.name, e);
+            text: true, lead: self.lead, name: e.name, locked: e.locked }),
+            e.name, e);
           if (wrote) { self.open = ''; self.mode = ''; self.refresh(); }
         });
       }));
     }
     r.appendChild(button('Cancel', null, shut));
+    if (lead) r.appendChild(lead);
     box.appendChild(r);
+    // The list scrolls, and the editor opens somewhere down it. Bring the row
+    // that saves into view — the box is no use without it — and put the cursor
+    // in the text, which is what the click asked for.
+    setTimeout(function () {
+      if (area) area.focus();
+      if (r.scrollIntoView) r.scrollIntoView({ block: 'nearest' });
+    }, 0);
     return box;
   };
 
@@ -419,17 +453,22 @@
     box.appendChild(top);
     var area = el('textarea');
     box.appendChild(area);
+    // Nothing to read the setting off for a file that does not exist yet, so
+    // it carries over from the last one edited in this panel.
+    var lead = check(LEAD_LABEL, LEAD_TITLE, this.lead);
     var r = el('div', 'dos-acts');
     r.appendChild(button('Save', null, function () {
       self.act(function () {
         if (!nm.value) throw new Error('the file needs a name');
+        self.lead = lead.box.checked;
         // Put away only once it is on the disk: a replace that was declined
         // must not take the text that was typed with it.
-        if (self.put(AGAT.dosfile.pack(area.value, { text: true, name: nm.value }),
-                     nm.value)) self.hideForm();
+        if (self.put(AGAT.dosfile.pack(area.value, {
+          text: true, lead: self.lead, name: nm.value }), nm.value)) self.hideForm();
       });
     }));
     r.appendChild(button('Cancel', null, function () { self.hideForm(); }));
+    r.appendChild(lead);
     box.appendChild(r);
     this.showForm(box);
     setTimeout(function () { nm.focus(); }, 0);
@@ -505,19 +544,18 @@
     ad.title = 'Where a B file loads';
     r1.appendChild(ad);
 
-    var tx = el('label', null);
-    var txb = el('input');
-    txb.type = 'checkbox';
-    txb.checked = isText;
-    tx.title = 'Re-encode UTF-8 into the Agat character set, with $8D line endings';
-    tx.appendChild(txb);
-    tx.appendChild(document.createTextNode(' UTF-8 text'));
+    var tx = check('UTF-8 text',
+      'Re-encode UTF-8 into the Agat character set, with $8D line endings', isText);
     r1.appendChild(tx);
+    var lead = check(LEAD_LABEL, LEAD_TITLE, this.lead);
+    r1.appendChild(lead);
 
     var sync = function () {
       ad.hidden = ty.value !== 'B';
       tx.hidden = ty.value !== 'T';
+      lead.hidden = ty.value !== 'T' || !tx.box.checked;
     };
+    tx.box.addEventListener('change', sync);
     ty.addEventListener('change', sync);
     sync();
 
@@ -530,15 +568,16 @@
       r2.appendChild(el('span', 'key', ''));
       r2.appendChild(button('Add', null, function () {
         self.act(function () {
-          var text = ty.value === 'T' && txb.checked;
+          var text = ty.value === 'T' && tx.box.checked;
           var input = text ? new TextDecoder().decode(bytes) : bytes;
+          if (text) self.lead = lead.box.checked;
           // Put away only once the file is on the disk: a replace that was
           // declined leaves the question standing rather than dropping it.
           if (self.put(AGAT.dosfile.pack(input, {
             name: nm.value,
             type: AGAT.Dos33.typeByte(ty.value),
             addr: ad.value, addrLabel: ad.value,
-            text: text,
+            text: text, lead: text && self.lead,
           }), nm.value)) done();
         });
       }));
