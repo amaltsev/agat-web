@@ -71,9 +71,13 @@
   }
 
   function hex(n) {
+    return '$' + hexAt(n, 4);
+  }
+
+  function hexAt(n, wide) {
     var s = (n >>> 0).toString(16).toUpperCase();
-    while (s.length < 4) s = '0' + s;
-    return '$' + s;
+    while (s.length < wide) s = '0' + s;
+    return s;
   }
 
   // A file the browser hands to the person, which is the only way out of a
@@ -463,13 +467,15 @@
   //
   // `Memory` is `Body` with the offsets counted from where the file loads,
   // which is the only way a dump of a `B` file lines up with a listing or with
-  // the monitor. A disassembly, if one ever comes, belongs behind it.
+  // the monitor. `Code` is the same bytes as instructions, and sits behind it.
   var VIEWS = [
     { how: 'text', face: 'Text', title: 'The contents as Agat text' },
     { how: 'basic', face: 'BASIC',
       title: 'The program, listed the way the machine lists it' },
     { how: 'mem', face: 'Memory',
       title: 'The contents in hex, at the address the file loads at' },
+    { how: 'code', face: 'Code',
+      title: 'The contents as 6502 instructions, from the first byte forward' },
     { how: 'body', face: 'Body',
       title: "The contents in hex, without the type's own address and length" },
     { how: 'raw', face: 'Raw',
@@ -482,7 +488,7 @@
   function offers(e, how) {
     if (how === 'text') return e.type === 0x00;
     if (how === 'basic') return e.type === 0x02;
-    if (how === 'mem') return e.type === 0x04;
+    if (how === 'mem' || how === 'code') return e.type === 0x04;
     return true;
   }
 
@@ -531,6 +537,7 @@
   // regular expression would be both more code and less true.
   DosUI.prototype.viewEl = function (e, how) {
     if (how === 'basic') return this.basicEl(e);
+    if (how === 'code') return this.codeEl(e);
     var pre = el('pre');
     if (how === 'text') {
       pre.textContent = AGAT.dosfile.unpack(this.dos, e, 'text').text;
@@ -555,6 +562,30 @@
       pre.appendChild(row);
     });
     if (got.error) pre.appendChild(el('div', 'bad', got.error));
+    return pre;
+  };
+
+  // A `B` file as instructions, at the address it loads at. Four columns —
+  // address, the instruction's own bytes, the mnemonic, the operand — as spans
+  // rather than as text, because an undocumented opcode is worth coloring: a
+  // run of them is where the disassembler has fallen into data and is reading
+  // it as code, which is the one thing a linear disassembly cannot get right
+  // and the reader has to see.
+  DosUI.prototype.codeEl = function (e) {
+    var pre = el('pre', 'dos-dis');
+    var bytes = AGAT.dosfile.unpack(this.dos, e, 'body').bytes;
+    var base = AGAT.dosfile.describe(this.dos, e).addr || 0;
+    AGAT.disasm.lines(bytes, base).forEach(function (r) {
+      var row = el('div'), hx = '', i;
+      for (i = 0; i < r.len; i++) hx += (i ? ' ' : '') + hexAt(bytes[r.at + i], 2);
+      // The address column is bare, the way the dump beside it writes the same
+      // number: the two views of a `B` file scroll to the same place.
+      row.appendChild(el('span', 'a', hexAt(r.addr, 4)));
+      row.appendChild(el('span', 'b', hx));
+      row.appendChild(el('span', r.ill ? 'ill' : 'op', r.name));
+      row.appendChild(el('span', 'arg', r.arg));
+      pre.appendChild(row);
+    });
     return pre;
   };
 

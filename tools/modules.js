@@ -32,6 +32,7 @@ const MODULES = [
   'src/fil.js',
   'src/dosfile.js',
   'src/basic.js',
+  'src/disasm.js',
   'src/dosui.js',
   'src/state.js',
   'src/app.js',

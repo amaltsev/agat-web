@@ -194,5 +194,13 @@ input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); }
 .dos-bas .str { color: var(--ok); }
 .dos-bas .rem { color: var(--dim); font-style: italic; }
 .dos-bas .bad { color: var(--warn); padding-top: 6px; }
+/* A disassembly. Four columns of fixed width so the mnemonics line up down the
+   page, and the undocumented opcodes are marked: a run of them is a stretch of
+   data being read as code, which is what a linear disassembly cannot know. */
+.dos-dis span { display: inline-block; }
+.dos-dis .a { width: 6ch; color: var(--dim); }
+.dos-dis .b { width: 10ch; color: var(--dim); }
+.dos-dis .op { width: 5ch; color: var(--accent); }
+.dos-dis .ill { width: 5ch; color: var(--warn); }
 .dos-nm { width: 22ch; }
 .dos-ad { width: 9ch; }

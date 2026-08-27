@@ -1104,6 +1104,96 @@ async function disk840WriteTests() {
   }
 }
 
+// --- the disassembler -------------------------------------------------------
+// The table in `src/disasm.js` is a second copy of what `src/cpu6502.js` knows,
+// written out the other way round, so the thing worth checking is that the two
+// agree. Every one of the 256 lengths is measured against the core: the CPU is
+// stepped on the opcode and asked where its PC ended up, which is the number
+// of bytes it consumed.
+//
+// The instructions that move the PC somewhere else are the exceptions, and are
+// spelled out. A branch is not one of them: with the flags set so it is not
+// taken, it consumes its two bytes and stops there.
+{
+  const D = A.disasm;
+  const step = (bytes, setup) => {
+    const ram = new Uint8Array(0x10000);
+    const cpu = new A.CPU({
+      read: (a) => ram[a & 0xffff],
+      write: (a, v) => { ram[a & 0xffff] = v & 0xff; },
+    });
+    ram[0xfffc] = 0x00; ram[0xfffd] = 0x02;
+    cpu.reset();
+    bytes.forEach((b, i) => { ram[0x0200 + i] = b; });
+    if (setup) setup(cpu, ram);
+    cpu.step();
+    return cpu;
+  };
+
+  // What each of these takes, since its PC ends up somewhere else entirely:
+  // JSR and the two JMPs go where they are told, RTS and RTI go back. `BRK` is
+  // the deliberate disagreement — the CPU eats the byte after it and the
+  // listing does not, for the reason `disasm.js` gives.
+  const JUMPS = { 0x20: 3, 0x4c: 3, 0x6c: 3, 0x40: 1, 0x60: 1 };
+  const BRK = 0x00;
+
+  {
+    const bad = [];
+    for (let op = 0; op < 256; op++) {
+      const want = D.OPS[op].len;
+      let got;
+      if (op === BRK) got = 1;
+      else if (JUMPS[op] !== undefined) got = JUMPS[op];
+      else {
+        // A branch falls through under one of these two sets of flags — the
+        // four that want a flag clear under the first, the four that want it
+        // set under the second — so the shorter of the two is the length.
+        // A JAM consumes nothing and halts where it stands.
+        const a = step([op, 0x10, 0x03], (c) => { c.p = 0x24; });
+        const b = step([op, 0x10, 0x03], (c) => { c.p = 0x24 | 0xc3; });
+        got = a.halted ? 1
+            : Math.min((a.pc - 0x200) & 0xffff, (b.pc - 0x200) & 0xffff);
+      }
+      if (got !== want) bad.push(hex(op) + ' ' + D.OPS[op].name + ' ' + got + '!=' + want);
+    }
+    eq('every opcode is as long as the CPU says it is', bad, []);
+  }
+
+  // The undocumented ones are marked, and only those: 151 official
+  // instructions, and $EA the only NOP and $E9 the only SBC among them.
+  {
+    const ok = [];
+    for (let op = 0; op < 256; op++) if (!D.OPS[op].ill) ok.push(op);
+    eq('151 opcodes are the documented set', ok.length, 151);
+    eq('and the NOPs and SBCs that are not documented are not in it',
+       [D.OPS[0xea].ill, D.OPS[0x1a].ill, D.OPS[0xe9].ill, D.OPS[0xeb].ill],
+       [false, true, false, true]);
+    eq('a JAM is one too', [D.OPS[0x02].name, D.OPS[0x02].ill], ['JAM', true]);
+  }
+
+  // The modes, as they are written. A branch carries its target rather than
+  // its displacement, and it is counted from the instruction after it — $10
+  // forward from $4C02 is $4C12, and $F0 is $10 back, which is $4BF2.
+  {
+    const at = (bytes, base) => D.text(new ctx.Uint8Array(bytes), base).trim();
+    eq('an instruction is its address, its own bytes and what it does',
+       at([0xbd, 0x00, 0x4c], 0x4c00), '4C00- BD 00 4C  LDA $4C00,X');
+    eq('the addressing modes, as an assembler writes them',
+       D.text(new ctx.Uint8Array(
+         [0xa9, 0x01, 0xa5, 0x02, 0xb5, 0x03, 0xb6, 0x04, 0xa1, 0x05, 0xb1, 0x06,
+          0x6c, 0x07, 0x08, 0x0a, 0xea]), 0).split('\n').map((l) => l.slice(16)),
+       ['LDA #$01', 'LDA $02', 'LDA $03,X', 'LDX $04,Y', 'LDA ($05,X)',
+        'LDA ($06),Y', 'JMP ($0807)', 'ASL A', 'NOP', '']);
+    eq('a branch is given the address it goes to',
+       [at([0x10, 0x10], 0x4c00), at([0x10, 0xf0], 0x4c00)],
+       ['4C00- 10 10     BPL $4C12', '4C00- 10 F0     BPL $4BF2']);
+    // A file does not have to end on an instruction boundary, and the bytes
+    // left over are still bytes.
+    eq('an operand past the end of the file is not an instruction',
+       at([0x60, 0xad], 0x4c00), '4C00- 60        RTS\n4C01- AD        ???');
+  }
+}
+
 // --- the keyboard, and the two boards that draw it --------------------------
 // The АГАТ board is a transcription of a photograph, and a transcription is
 // exactly the kind of thing that is wrong in one place and looks right. These

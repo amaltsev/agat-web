@@ -742,6 +742,22 @@ async function dosuiCmd() {
   face(host, 'Body').fire('click');
   eq('the same bytes as a body start at nought',
      [dump().length, dump()[0].slice(0, 4)], [Math.ceil(2325 / 16), '0000']);
+  // The same bytes as instructions, from the first byte forward. TEST.DATA is
+  // data rather than code, which is exactly what makes it worth clicking: the
+  // view has to draw whatever is there, undocumented opcodes and all.
+  face(host, 'Code').fire('click');
+  {
+    const bytes = A.dosfile.unpack(o.dos, o.dos.find('TEST.DATA'), 'body').bytes;
+    const dis = byClass(host, 'dos-dis')[0].children;
+    const cols = (i) => dis[i].children.map((c) => c.textContent);
+    eq('Code is one instruction to a row, at the address the file loads at',
+       [cols(0)[0], cols(0).slice(2).join(' ').trim()],
+       ['4C00', A.disasm.lines(bytes, 0x4c00)[0].name + ' ' +
+               A.disasm.lines(bytes, 0x4c00)[0].arg]);
+    eq('and every byte of the body is accounted for, once',
+       dis.length && A.disasm.lines(bytes, 0x4c00).reduce((n, r) => n + r.len, 0),
+       2325);
+  }
   face(host, 'Raw').fire('click');
   eq('and the raw stream is every sector DOS stores', dump().length, 2560 / 16);
   eq('16 bytes to a line, in hex and in the characters the machine draws',
@@ -764,7 +780,8 @@ async function dosuiCmd() {
        rows[1].children.map((c) => c.className + ':' + c.textContent).slice(0, 4),
        ['n:1010', 'txt:G¤', 'kw: = ', 'kw: CHR$ ']);
     eq('and the views a program is not offered',
-       [face(host, 'Text').disabled, face(host, 'Memory').disabled], [true, true]);
+       [face(host, 'Text').disabled, face(host, 'Memory').disabled,
+        face(host, 'Code').disabled], [true, true, true]);
   }
   face(host, 'Close').fire('click');
   // Back to the row the rest of this works on.

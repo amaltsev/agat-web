@@ -79,6 +79,7 @@ Load order matters only in that a module's dependencies must already be on
 | `fil.js` | `.fil` loading |
 | `dosfile.js` | what a DOS file is on the way in and out: the type prefixes, the `.fil`, the `$8D` line endings |
 | `basic.js` | an `A` file's tokens, back into the listing the machine prints |
+| `disasm.js` | a `B` file's bytes, back into 6502 instructions |
 | `dosui.js` | the file manager as a panel, mounted by `edit-dos.html` and by the emulator page |
 | `state.js` | the machine as a snapshot: the `.agc` `state` block, both ways |
 | `app.js` | browser glue: run loop, media routing, diagnostics |
@@ -514,16 +515,17 @@ menu: the strip is where they are, with room for the rename field beside them.
 is room — a hex dump is 70 columns wide, a text file is as long as it is, and
 the strip lives inside a list that scrolls. It draws into the panel's own root
 rather than into `document.body`, since `DosUI` is handed a host element and
-does not reach outside it, and it offers four readings of the same file: the
-text of a `T` one, and `dosfile.hexdump` over the body, over the whole stream,
-or over the body at the address a `B` file loads at. The editor is inside it,
+does not reach outside it, and it offers five readings of the same file: the
+text of a `T` one, the listing of an `A` one, `dosfile.hexdump` over the body,
+over the whole stream, or over the body at the address a `B` file loads at, and
+that last one disassembled. The editor is inside it,
 on **Edit**, for a `T` file.
 
 `hexdump` is in `dosfile.js` rather than in the panel because it is pure — 16
 bytes to a line, `chars.glyph` for the text column, so `$E0` reads as `Ю` and a
 `$8D` as a dot — which is what lets `vectors.js` test it without a document.
 
-`basic.js` is the fifth view: an `A` file is a tokenized program in
+`basic.js` is one of those views: an `A` file is a tokenized program in
 Applesoft's format, and this turns it back into the listing. Two things in it
 had to be found rather than assumed, and both were:
 
@@ -556,6 +558,23 @@ The listing is the one view drawn as pieces rather than as text, because
 `basic.list` has to know where a string starts and where a `REM` swallows the
 line in order to read the line at all. Handing those out is free; re-finding
 them with a regular expression afterwards would be neither.
+
+`disasm.js` is the sixth: a `B` file is usually code, and a hex dump of code is
+the view that says least about it. It is a linear disassembler — from the first
+byte forward, one instruction to a row, at the address the file loads at — and
+it says so, because nothing on the disk marks which bytes are code. A table, a
+message, the byte a routine picks up off its own return address: each is read as
+an instruction, and one of them shifts every row after it until the stream
+happens to fall back into step.
+
+Its table is the NMOS set, the undocumented opcodes included, since a program
+that uses one is exactly the program worth reading — and each of those carries
+`ill`, which the panel colors. A run of them is the tell that the disassembly
+has walked into data. It is a second copy of what `cpu6502.js` knows, written
+the other way round, so `vectors.js` steps the CPU on all 256 opcodes and checks
+that each consumed as many bytes as the table claims. `BRK` is the one
+deliberate disagreement — the CPU eats the byte after it, and the listing shows
+one byte, the way the monitor does.
 
 `check.js dosui` is how it is tested: the real `DosUI` drawn into a stub
 document and clicked on, with the assertions against the `Dos33` underneath. It
