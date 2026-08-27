@@ -729,7 +729,11 @@ Agat having only F1, F2 and F3.
 
 Clicking a cap puts its code straight into the latch rather than going back
 through the scancode table: a cap knows its own byte, and several caps have no
-host key at all. `tools/vectors.js` asserts the transcription both ways — no
+host key at all. РЕГ and УПР are one-shot latches, since a pointer cannot hold a
+modifier and press a key at once, and УПР is where the cap's byte is not its own:
+`ctrlCode` folds `$40-$5F` to `$00-$1F` — the encoder's own relation, and
+`capCode` backwards — so УПР+К sends `$0B` and УПР+Ш the `$9B` РЕД also sends.
+It takes precedence over РЕГ, as `planeFor` reads the modifiers on the host. `tools/vectors.js` asserts the transcription both ways — no
 code a host key sends is without a cap, no cap is unreachable, and every cap
 drawn dead really is.
 

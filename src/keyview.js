@@ -53,6 +53,14 @@
     return (code >= 0x01 && code <= 0x1f) ? 0x40 + code : code;
   }
 
+  // The other direction: what a cap sends with УПР held. The Agat keyboard is an
+  // encoder and УПР clears bits 6 and 5 of the letter block, so К is $4B and
+  // УПР+К is $0B. Only $40-$5F folds — the digits and punctuation send what they
+  // always send, as the ctrl plane of the scancode table does for their keys.
+  function ctrlCode(code) {
+    return (code & 0x7f) >= 0x40 && (code & 0x7f) <= 0x5f ? code & 0x1f : code;
+  }
+
   // ---- the АГАТ board ------------------------------------------------------
   //
   // `w` is a cap's width in units and `gap` the space before it; `pad` is the
@@ -673,7 +681,7 @@
         // The lit half is whichever legend the live register would send, which
         // is not always the top one: a letter cap paints its shifted, Cyrillic
         // half above and a digit cap paints its unshifted half above.
-        var now = this.shifted() ? d.s : d.u;
+        var now = this.ctrled() || !this.shifted() ? d.u : d.s;
         var upper = d.up === 'u' ? d.u : d.s;
         var lower = d.up === 'u' ? d.s : d.u;
         // The machine's order is the wrong one on the winnowed board when the
@@ -692,7 +700,8 @@
         cap.bot.className = 'kb-half ' + this.state(lower, lower === now) +
                             (this.marks(cap, lower) ? ' named' : '');
         cap.el.title = this.title(d.u) +
-          (d.s === undefined ? '' : '\nРЕГ ' + this.title(d.s));
+          (d.s === undefined ? '' : '\nРЕГ ' + this.title(d.s)) +
+          (ctrlCode(d.u) === d.u ? '' : '\nУПР ' + this.title(ctrlCode(d.u)));
       }
       // On the winnowed board the question is what this key does in *this*
       // program: every legend the container named, and the cap may be standing
@@ -917,8 +926,12 @@
                        K.planeFor(d.ext, this.ctrled(), this.shifted()));
       if (code < 0) return;
     } else {
-      code = d.code !== undefined ? d.code : this.shifted() ? d.s : d.u;
+      code = d.code !== undefined ? d.code
+           : this.ctrled() ? d.u : this.shifted() ? d.s : d.u;
       if (code === undefined) return;
+      // УПР over РЕГ, the order planeFor() reads the modifiers in: the control
+      // plane has one byte per cap and the register does not divide it.
+      if (this.ctrled() && d.code === undefined) code = ctrlCode(code);
     }
     this.app.machine.kbdLatch = (code | 0x80) & 0xff;
     // A latched modifier is a one-shot, as it has to be with one pointer.
@@ -1069,7 +1082,8 @@
   AGAT.KeyView = KeyView;
   AGAT.ControlPanel = ControlPanel;
   AGAT.keyview = {
-    CHAR: CHAR, VIEWS: VIEWS, capCode: capCode, SLIVER: SLIVER,
+    CHAR: CHAR, VIEWS: VIEWS, capCode: capCode, ctrlCode: ctrlCode,
+    SLIVER: SLIVER,
     keeps: keeps, kept: kept, capsUsed: capsUsed, CARRIED: CARRIED,
     AGAT_MAIN: AGAT_MAIN, AGAT_PAD: AGAT_PAD,
     PC_MAIN: PC_MAIN, PC_NAV: PC_NAV, PC_PAD: PC_PAD,

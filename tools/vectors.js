@@ -1162,6 +1162,33 @@ async function disk840WriteTests() {
   eq('the letter block is all 32 caps', letters, 32);
   eq('every letter cap is shifted by $20', badLetter, 0);
 
+  // What УПР does to a cap, checked against the plane the host reads rather
+  // than against the rule that produced it: for every cap the ЛАТ plane
+  // reaches, УПР's fold of $40-$5F is the byte Ctrl on that host key sends.
+  // Backquote is the one disagreement — the table gives its ctrl entry to `"`,
+  // where the cap is @ — and $5E and $5F have no unshifted ЛАТ key to compare
+  // with.
+  {
+    const back = {};
+    for (const n in K.SCAN) {
+      const v = K.codeFor(K.SCAN[n], K.LAT, K.NORMAL);
+      if (v >= 0 && back[v & 0x7f] === undefined) back[v & 0x7f] = K.SCAN[n];
+    }
+    const differ = [];
+    for (const c of caps) {
+      if (c < 0x40 || c > 0x5f || back[c] === undefined) continue;
+      const host = K.codeFor(back[c], K.LAT, K.CTRL) & 0xff;
+      if (host !== ((V.ctrlCode(c) | 0x80) & 0xff)) differ.push(hex(c));
+    }
+    eq('УПР folds a cap the way the host ctrl plane folds its key', differ, ['$40']);
+    // The two the board itself depends on: $8B has no cap and is drawn on K,
+    // and $9B is РЕД's own byte as well as УПР+Ш.
+    eq('УПР+К and УПР+Ш', [hex(V.ctrlCode(0x4b)), hex(V.ctrlCode(0x5b))],
+       ['$B', '$1B']);
+    eq('and capCode names the cap it came from',
+       [hex(V.capCode(0x0b)), hex(V.capCode(0x1b))], ['$4B', '$5B']);
+  }
+
   const produced = new Set();
   for (let layout = 0; layout < 2; layout++) {
     for (let mod = 0; mod < 4; mod++) {
