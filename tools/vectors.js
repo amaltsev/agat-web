@@ -172,6 +172,10 @@ function eq(what, got, want) {
   // somebody chose and stays.
   eq('agcName leaves a date that is not one of ours',
      named('game-1989.agc'), 'game-1989-20260825-143012.agc');
+  // Android's downloads append `.json` to a container, and the stamp is behind
+  // it: both extensions come off before a fresh one goes on.
+  eq('agcName strips an appended .json before the stamp',
+     named('game-20240101-000000.agc.json'), 'game-20260825-143012.agc');
   // A first save off a bare image is not a re-save: no stamp, and the
   // extension is swapped as before.
   eq('agcName leaves a bare image unstamped',

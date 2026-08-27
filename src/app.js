@@ -826,6 +826,14 @@
   // this a container saved three times is called `game-…-…-….agc`.
   var STAMPED = /-\d{8}-\d{6}$/;
 
+  // A name with its extension off. Android's downloads append `.json` to a
+  // container — it is JSON, and the phone believes the type over the name — so
+  // `game-20260827-000000.agc.json` comes back, and the stamp is only the last
+  // thing in the name once that is gone. Both extensions come off together.
+  function base(name) {
+    return name.replace(/\.json$/i, '').replace(/\.[^.\/]*$/, '');
+  }
+
   // What a saved container should be called: the one it came from with a fresh
   // timestamp, or the loaded image with its extension swapped. A title good
   // enough to publish is a decision for whoever renames the file afterwards.
@@ -838,11 +846,11 @@
   // no earlier container of that name to sit beside.
   App.prototype.agcName = function (now) {
     if (this.fromAgc) {
-      return this.fromAgc.replace(/\.[^.\/]*$/, '').replace(STAMPED, '') +
+      return base(this.fromAgc).replace(STAMPED, '') +
              '-' + stamp(now || new Date()) + '.agc';
     }
     for (var k in this.sources) {
-      return this.sources[k].name.replace(/\.[^.\/]*$/, '') + '.agc';
+      return base(this.sources[k].name) + '.agc';
     }
     return '';
   };
