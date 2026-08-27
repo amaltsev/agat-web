@@ -78,6 +78,7 @@ Load order matters only in that a module's dependencies must already be on
 | `audio.js` | `$C030` edges → PCM |
 | `fil.js` | `.fil` loading |
 | `dosfile.js` | what a DOS file is on the way in and out: the type prefixes, the `.fil`, the `$8D` line endings |
+| `basic.js` | an `A` file's tokens, back into the listing the machine prints |
 | `dosui.js` | the file manager as a panel, mounted by `edit-dos.html` and by the emulator page |
 | `state.js` | the machine as a snapshot: the `.agc` `state` block, both ways |
 | `app.js` | browser glue: run loop, media routing, diagnostics |
@@ -521,6 +522,40 @@ on **Edit**, for a `T` file.
 `hexdump` is in `dosfile.js` rather than in the panel because it is pure — 16
 bytes to a line, `chars.glyph` for the text column, so `$E0` reads as `Ю` and a
 `$8D` as a dot — which is what lets `vectors.js` test it without a document.
+
+`basic.js` is the fifth view: an `A` file is a tokenized program in
+Applesoft's format, and this turns it back into the listing. Two things in it
+had to be found rather than assumed, and both were:
+
+- **The keyword table is the Agat's.** It is transcribed out of the interpreter
+  — `B BASIC` at `$0F00` on `SysImages7a/basint.140.dsk`, keywords at `$10D0`,
+  Applesoft's own layout of 107 words from `$80` with bit 7 ending each. Eight
+  of the words are not Apple's: `GR=` `TEXT=` `!` `&` `MGR=` `HGR=` `RIBBON=`
+  `&`, where Apple has `GR` `TEXT` `HLIN` `VLIN` `HGR2` `HGR` `HCOLOR=`
+  `HPLOT`.
+- **A variable can be an index into a table saved after the program**, which
+  Applesoft has no equivalent of. `$01` and an index stand for a name; the
+  table follows the program's `$0000`, in the same bit-7 form as the keywords,
+  with `$00` padding in front and a four-byte trailer after. Not every version
+  writes one — the Agat-9 factory test does and the Agat-7 one does not — and
+  without it a listing shows dots where the variables should be. All thirteen
+  `A` files in `examples/` fit it, largest index against table length, and
+  `SEDIT` decodes to `CH = ¤24: CV = ¤25`, which are the monitor's own cursor
+  cells.
+
+The spelling was measured, not guessed. Both factory-test disks were copied,
+their greeting renamed with `dos.js mv` so the disk falls to a `]` prompt, and
+the program listed there: `node tools/shot.js c7.agc "LOAD_TESTX~LIST_1690,1720~"`.
+The line number takes one space, a token takes one on each side, and a name out
+of the table takes one in front — which is what makes
+`1690  IF  ST > 0 THEN 1720` come out with two spaces after the number and two
+before `ST`. An `!` statement gets a row of its own, as it does on the screen;
+its assembler's columns do not.
+
+The listing is the one view drawn as pieces rather than as text, because
+`basic.list` has to know where a string starts and where a `REM` swallows the
+line in order to read the line at all. Handing those out is free; re-finding
+them with a regular expression afterwards would be neither.
 
 `check.js dosui` is how it is tested: the real `DosUI` drawn into a stub
 document and clicked on, with the assertions against the `Dos33` underneath. It

@@ -750,6 +750,26 @@ async function dosuiCmd() {
   eq('Escape shuts it, and leaves the row it opened from open',
      [byClass(host, 'dos-pop').length, byClass(host, 'dos-strip').length], [0, 1]);
 
+  // An A file opens on its listing, which is the one view drawn as pieces
+  // rather than as a block of text — a row of spans, one to a colored thing.
+  named(host, 'TEST').fire('click');
+  face(host, 'View').fire('click');
+  {
+    const rows = byClass(host, 'dos-bas')[0].children;
+    const row = (i) => rows[i].children.map((c) => c.textContent).join('');
+    eq('a BASIC program opens listed, the way the machine lists it',
+       [face(host, 'BASIC').className, row(0)],
+       ['on', '1000 LOMEM: ¤8000: HIMEM: ¤9600']);
+    eq('with the keywords, strings and line number each their own piece',
+       rows[1].children.map((c) => c.className + ':' + c.textContent).slice(0, 4),
+       ['n:1010', 'txt:G¤', 'kw: = ', 'kw: CHR$ ']);
+    eq('and the views a program is not offered',
+       [face(host, 'Text').disabled, face(host, 'Memory').disabled], [true, true]);
+  }
+  face(host, 'Close').fire('click');
+  // Back to the row the rest of this works on.
+  named(host, 'TEST.DATA').fire('click');
+
   // ---- lock, rename, delete ------------------------------------------------
   face(host, 'Lock').fire('click');
   eq('Lock sets the mark DOS draws as a star',

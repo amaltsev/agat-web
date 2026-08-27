@@ -2663,6 +2663,62 @@ async function dosTests() {
        [false, false, false, false]);
   }
 
+// --- basic: an A file, back into a listing ---------------------------------
+  //
+  // The spelling is the machine's: both factory tests were listed at a `]`
+  // prompt and the lines below are what their screens said, character for
+  // character.
+  {
+    const B = A.basic;
+    // A program built by hand, so every part of the format is one place:
+    // pointer, number, tokens, a string, a name out of the table, a REM, and
+    // the `00 00` that ends it. The pointers are nonsense on purpose — nothing
+    // reads them but the zero.
+    const prog = [
+      0x11, 0x08, 0x0a, 0x00,                            // line 10
+      0xba, 0x22, 0xc1, 0xc2, 0x22, 0x3b, 0x01, 0x02, 0x00,  // PRINT "AB"; <2>
+      0x22, 0x08, 0x14, 0x00,                            // line 20
+      0xad, 0x01, 0x01, 0xcf, 0x30, 0xc4, 0x33, 0x30, 0x00,  // IF <1> > 0 THEN 30
+      0x33, 0x08, 0x1e, 0x00, 0xb2, 0xd4, 0xc1, 0xcb, 0x3a, 0xbf, 0x00,  // REM
+      0x00, 0x00,                                        // and that is the end
+      0x00, 0x53, 0xd4, 0x43, 0x4f, 0xcc, 0x00,          // pad, ST, COL, end
+      0x03, 0x00, 0x00, 0x00,                            // the four-byte tail
+    ];
+    const got = B.list(new ctx.Uint8Array(prog));
+    eq('the name table is read off the end of the program', got.names, ['ST', 'COL']);
+    eq('a token carries a space each side, a name one in front',
+       B.text(new ctx.Uint8Array(prog)).split('\n').slice(0, 3),
+       ['10  PRINT "AB"; COL', '20  IF  ST > 0 THEN 30', '30  REM TAK:?']);
+    eq('and a REM takes the rest of the line, colon and all',
+       got.rows[2].parts.map((p) => p.kind + ':' + p.text),
+       ['kw: REM ', 'rem:TAK:?']);
+    eq('a string is one piece, so a $8D inside it is not a token',
+       got.rows[0].parts.map((p) => p.kind), ['kw', 'str', 'txt', 'name']);
+    eq('a file that stops mid-program says so rather than stopping quietly',
+       B.list(new ctx.Uint8Array(prog.slice(0, 20))).error,
+       'the last line runs off the end of the file');
+
+    // And against the two disks that were listed on the machine.
+    {
+      const d7 = await open('examples/TESTCOM7_840.agc');
+      const e = d7.dos.find('TEST');
+      const rows = B.text(A.dosfile.body(d7.dos, e, d7.dos.read(e))).split('\n');
+      eq('the Agat-7 test lists the way the Agat-7 listed it',
+         rows.filter((l) => /^(1690|1710) /.test(l)),
+         ['1690  IF  ST > 0 THEN 1720', '1710  POKE ¤C010,0: RETURN ']);
+      const d9 = await open('examples/TESTKOM9_840.agc');
+      const e9 = d9.dos.find('TEST');
+      const r9 = B.text(A.dosfile.body(d9.dos, e9, d9.dos.read(e9))).split('\n');
+      eq('and the Agat-9 test the way the Agat-9 did, names and all',
+         [r9[5], r9[6]],
+         ['15  TEXT= 2: NORMAL : HOME ', '20  DIM  ERR¤(12), COL(15), RAND(15)']);
+      // The one place the two disagree: `!` gets a row of its own, which is
+      // what the machine does, without the assembler's columns.
+      eq('an ! statement is a row of its own, with no number on it',
+         r9.slice(2, 5), ['10  * ¤20:', ' ! ¤00400020', ' ! :']);
+    }
+  }
+
 // --- dosfile: what a file is on the way in and on the way out -------------
   //
   // The layer `tools/dos.js` and the page's panel both go through, so a slip

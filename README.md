@@ -328,9 +328,9 @@ image in place.
 Open `edit-dos.html` and drop a disk on it for the catalog. Clicking a file
 opens what can be done with it: look inside it, take it off as a `.fil`, as the
 raw data stream or as the contents alone, rename it, lock it, delete it.
-**View** shows a `T` file's text and everything else as hex — the body, the
-whole stream, or a `B` file at the address it loads at — and **Edit**, in the
-same window, writes a `T` file back. Files are added by dropping them anywhere on the page or
+**View** shows a `T` file's text, an `A` file's BASIC listing, and everything
+else as hex — the body, the whole stream, or a `B` file at the address it loads
+at — and **Edit**, in the same window, writes a `T` file back. Files are added by dropping them anywhere on the page or
 with **Add file…** — a `.fil` carries its own name, type and lock mark, and anything
 else is asked what type it is and, for a `B` file, where it loads. **Save**
 writes the disk back over the file that was opened where the browser allows

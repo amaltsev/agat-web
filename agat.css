@@ -182,5 +182,17 @@ input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); }
   padding: 6px 8px;
 }
 .dos-pop-view pre { margin: 0; font: inherit; }
+/* A BASIC listing. The line number sits in a column of its own so the program
+   reads down its left edge, and the three colors are the ones the page already
+   has: what the machine reserved a token for, what it will print as it stands,
+   and what it will not run at all. */
+.dos-bas .n {
+  display: inline-block; width: 6ch; color: var(--dim);
+  text-align: right; padding-right: 1ch;
+}
+.dos-bas .kw { color: var(--accent); }
+.dos-bas .str { color: var(--ok); }
+.dos-bas .rem { color: var(--dim); font-style: italic; }
+.dos-bas .bad { color: var(--warn); padding-top: 6px; }
 .dos-nm { width: 22ch; }
 .dos-ad { width: 9ch; }

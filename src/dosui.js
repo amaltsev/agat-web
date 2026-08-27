@@ -466,6 +466,8 @@
   // the monitor. A disassembly, if one ever comes, belongs behind it.
   var VIEWS = [
     { how: 'text', face: 'Text', title: 'The contents as Agat text' },
+    { how: 'basic', face: 'BASIC',
+      title: 'The program, listed the way the machine lists it' },
     { how: 'mem', face: 'Memory',
       title: 'The contents in hex, at the address the file loads at' },
     { how: 'body', face: 'Body',
@@ -479,12 +481,14 @@
   // Download row is where doing things to a file lives.
   function offers(e, how) {
     if (how === 'text') return e.type === 0x00;
+    if (how === 'basic') return e.type === 0x02;
     if (how === 'mem') return e.type === 0x04;
     return true;
   }
 
   function defaultHow(e) {
-    return e.type === 0x00 ? 'text' : e.type === 0x04 ? 'mem' : 'body';
+    return e.type === 0x00 ? 'text' : e.type === 0x02 ? 'basic' :
+           e.type === 0x04 ? 'mem' : 'body';
   }
 
   DosUI.prototype.setView = function (e, how) {
@@ -516,15 +520,42 @@
     this.refresh();
   };
 
-  // The bytes of one view, as the text to show. Throws what `unpack` throws:
-  // a file whose chain will not decode has no view, and the message is what
+  // One view, as the node to put in the popup. Throws what `unpack` throws: a
+  // file whose chain will not decode has no view, and the message is what
   // there is to show instead.
-  DosUI.prototype.viewText = function (e, how) {
-    if (how === 'text') return AGAT.dosfile.unpack(this.dos, e, 'text').text;
+  //
+  // Everything but the listing is one string in a `<pre>`. The listing is the
+  // same `<pre>` with a span to a piece, because `basic.list` has already
+  // worked out which piece is a keyword, a string and a comment — it has to,
+  // to read the line at all — and throwing that away to re-find it with a
+  // regular expression would be both more code and less true.
+  DosUI.prototype.viewEl = function (e, how) {
+    if (how === 'basic') return this.basicEl(e);
+    var pre = el('pre');
+    if (how === 'text') {
+      pre.textContent = AGAT.dosfile.unpack(this.dos, e, 'text').text;
+      return pre;
+    }
     var got = AGAT.dosfile.unpack(this.dos, e, how === 'raw' ? 'raw' : 'body');
     var base = 0;
     if (how === 'mem') base = AGAT.dosfile.describe(this.dos, e).addr || 0;
-    return AGAT.dosfile.hexdump(got.bytes, base);
+    pre.textContent = AGAT.dosfile.hexdump(got.bytes, base);
+    return pre;
+  };
+
+  DosUI.prototype.basicEl = function (e) {
+    var pre = el('pre', 'dos-bas');
+    var got = AGAT.basic.list(AGAT.dosfile.unpack(this.dos, e, 'body').bytes);
+    got.rows.forEach(function (r) {
+      var row = el('div');
+      // A statement continued onto a row of its own — an `!` — has no number,
+      // and the column it would have taken is left empty so the two line up.
+      row.appendChild(el('span', 'n', r.num === null ? '' : String(r.num)));
+      r.parts.forEach(function (p) { row.appendChild(el('span', p.kind, p.text)); });
+      pre.appendChild(row);
+    });
+    if (got.error) pre.appendChild(el('div', 'bad', got.error));
+    return pre;
   };
 
   DosUI.prototype.popEl = function (e) {
@@ -561,7 +592,7 @@
     } else {
       var body = el('div', 'dos-pop-view');
       try {
-        body.appendChild(el('pre', null, this.viewText(e, v.how)));
+        body.appendChild(this.viewEl(e, v.how));
       } catch (err) {
         body.appendChild(el('div', 'dim', err.message));
       }

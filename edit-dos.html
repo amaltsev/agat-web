@@ -56,9 +56,9 @@
     </td></tr>
     <tr><td><b>A file</b></td><td>
       Click one for what can be done with it. <b>View</b> shows what is inside:
-      the text of a <code>T</code> file, and otherwise a hex dump — of the body,
-      of the whole stream, or of a <code>B</code> file at the address it loads
-      at. <b>.fil</b> is the file with its
+      the text of a <code>T</code> file, the BASIC listing of an <code>A</code>
+      one, and otherwise a hex dump — of the body, of the whole stream, or of a
+      <code>B</code> file at the address it loads at. <b>.fil</b> is the file with its
       catalog entry in front, which is what the emulator loads, so a program
       taken off a disk can be dropped straight onto it; <b>raw</b> is the data
       stream as DOS stores it and <b>body</b> the contents alone.
@@ -106,6 +106,7 @@
 <script src="src/dos33.js"></script>
 <script src="src/fil.js"></script>
 <script src="src/dosfile.js"></script>
+<script src="src/basic.js"></script>
 <script src="src/dosui.js"></script>
 <script>
 (function () {
