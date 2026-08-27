@@ -91,7 +91,10 @@ input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); }
 /* The catalog scrolls inside the panel rather than the page: the footer's
    Add file… and the disk's own free count are what a long list is read
    against, and both are worth keeping in view. */
-.dos-list { margin-top: 6px; max-height: 52vh; overflow-y: auto; }
+.dos-list {
+  margin-top: 6px; max-height: 52vh; overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .dos-file { border-top: 1px solid var(--edge); }
 /* Monospace, and the columns in the order DOS prints them: the lock mark, the
    type letter, the sector count, the name. */
@@ -147,7 +150,7 @@ input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); }
   display: block; width: 100%; min-height: 7em; margin-top: 6px;
   font: var(--mono); color: var(--ink); background: var(--bg);
   border: 1px solid var(--edge); border-radius: 5px; padding: 6px 8px;
-  resize: vertical;
+  resize: vertical; overscroll-behavior: contain;
 }
 .dos-pop .dos-text textarea { min-height: 55vh; }
 
@@ -155,10 +158,14 @@ input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); }
    dump is 70 columns wide and the catalog it opens from is a list that
    scrolls. Fixed to the viewport rather than to the panel — on the emulator
    page the panel is somewhere down a page that is taller than the window. */
+/* A scroll port of its own, with nothing in it to scroll: a wheel over the
+   backdrop, or past the end of the list inside it, stops here instead of
+   moving the page behind the popup. */
 .dos-pop {
   position: fixed; inset: 0; z-index: 20; padding: 4vh 3vw;
   background: #00000099; display: flex; align-items: center;
   justify-content: center;
+  overflow: auto; overscroll-behavior: contain;
 }
 .dos-pop-box {
   display: flex; flex-direction: column; gap: 6px;
@@ -177,7 +184,7 @@ input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); }
 /* The dump scrolls both ways: a line is as wide as it is, and wrapping one
    would take the columns apart. */
 .dos-pop-view {
-  flex: 1 1 auto; overflow: auto; font: var(--mono);
+  flex: 1 1 auto; overflow: auto; overscroll-behavior: contain; font: var(--mono);
   background: var(--bg); border: 1px solid var(--edge); border-radius: 5px;
   padding: 6px 8px;
 }
