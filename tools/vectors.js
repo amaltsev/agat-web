@@ -2671,6 +2671,29 @@ async function dosTests() {
     const o = await open('examples/Alice_v3_840.agc');
     const F = A.dosfile;
 
+    // The dump the panel's popup shows. 16 bytes to a line, split in two
+    // eights, and the text column is what the machine draws for each byte —
+    // `$E0` is `Ю` on both fonts, and a `$8D` line ending is a dot, so the
+    // columns hold.
+    {
+      const b = new ctx.Uint8Array(20);
+      for (let i = 0; i < 20; i++) b[i] = 0xe0 + i;
+      b[3] = 0x8d;
+      eq('a dump is an offset, sixteen bytes and their characters',
+         F.hexdump(b, 0x4c00).split('\n'),
+         ['4C00  E0 E1 E2 8D E4 E5 E6 E7  E8 E9 EA EB EC ED EE EF  ЮАБ.ДЕФГХИЙКЛМНО',
+          '4C10  F0 F1 F2 F3                                       ПЯРС']);
+      eq('the short last line keeps its text column where the ones above it are',
+         F.hexdump(b, 0x4c00).split('\n').map((l) => l.indexOf(A.chars.glyph(b[0]))),
+         [6 + 16 * 3 + 2, -1]);
+      eq('and the offsets are the file\'s own where nobody says otherwise',
+         F.hexdump(b.subarray(0, 3), 0),
+         '0000  E0 E1 E2                                          ЮАБ');
+      eq('past 64K the offset takes the digits it needs, all the way down',
+         F.hexdump(new ctx.Uint8Array(17), 0xfff8).split('\n').map((l) => l.split(' ')[0]),
+         ['0FFF8', '10008']);
+    }
+
     // The long view's fields, against what the catalog and the file itself say.
     const b = o.dos.find('RUS_ALICE_GAME');
     eq('describe reads the B file\'s own address and length',

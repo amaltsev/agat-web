@@ -586,10 +586,19 @@ async function dosuiCmd() {
   const blobs = [];
   // A text node is an element with nothing but its text, which is all the
   // panel ever does with one.
+  // The document itself listens too: the popup's Escape is on it, being the
+  // one key that has to work wherever the focus is.
+  const docL = [];
   ctx.document = {
     createElement: el,
     createTextNode: (t) => { const n = el('#text'); n.textContent = t; return n; },
+    addEventListener(t, f) { docL.push([t, f]); },
+    removeEventListener(t, f) {
+      const i = docL.findIndex((x) => x[1] === f);
+      if (i >= 0) docL.splice(i, 1);
+    },
   };
+  const press = (key) => { for (const [t, f] of docL.slice()) if (t === 'keydown') f({ key }); };
   ctx.Blob = class Blob {
     constructor(parts, opts) {
       this.parts = parts;
@@ -717,6 +726,30 @@ async function dosuiCmd() {
      blobs[blobs.length - 1].parts[0].length, 2325);
   const fil = blobs[blobs.length - 2].parts[0];
 
+  // ---- looking inside it ---------------------------------------------------
+  // The popup, over the same B file. `dump` is the one <pre> in it, split into
+  // lines: what the panel actually put on the screen.
+  const dump = () => byClass(host, 'dos-pop-view')[0].children[0].textContent.split('\n');
+  face(host, 'View').fire('click');
+  eq('View opens a popup, on the view the type asks for',
+     [byClass(host, 'dos-pop').length, dump()[0].slice(0, 4)], [1, '4C00']);
+  eq('a B file dumped as memory is its body, at the address it loads at',
+     [dump().length, dump()[dump().length - 1].slice(0, 4)],
+     [Math.ceil(2325 / 16), (0x4c00 + 145 * 16).toString(16).toUpperCase()]);
+  eq('and Text is not offered for a type that is not text',
+     [face(host, 'Text').disabled, face(host, 'Memory').disabled], [true, false]);
+  eq('nor is the editor', face(host, 'Edit').disabled, true);
+  face(host, 'Body').fire('click');
+  eq('the same bytes as a body start at nought',
+     [dump().length, dump()[0].slice(0, 4)], [Math.ceil(2325 / 16), '0000']);
+  face(host, 'Raw').fire('click');
+  eq('and the raw stream is every sector DOS stores', dump().length, 2560 / 16);
+  eq('16 bytes to a line, in hex and in the characters the machine draws',
+     dump()[0], A.dosfile.hexdump(o.dos.read(o.dos.find('TEST.DATA')).subarray(0, 16), 0));
+  press('Escape');
+  eq('Escape shuts it, and leaves the row it opened from open',
+     [byClass(host, 'dos-pop').length, byClass(host, 'dos-strip').length], [0, 1]);
+
   // ---- lock, rename, delete ------------------------------------------------
   face(host, 'Lock').fire('click');
   eq('Lock sets the mark DOS draws as a star',
@@ -794,7 +827,12 @@ async function dosuiCmd() {
   const t = await open('examples/Alice_v3_840.agc');
   ui.mount(t.dos, { label: 'Alice_v3_840.dsk', writable: true });
   named(host, 'ALICE_RUN').fire('click');
-  face(host, 'Edit text…').fire('click');
+  face(host, 'View').fire('click');
+  eq('a T file opens on its text, and Memory is not offered for it',
+     [byClass(host, 'dos-pop-view')[0].children[0].textContent.split('\n')[0],
+      face(host, 'Text').disabled, face(host, 'Memory').disabled],
+     ['[RAM2', false, true]);
+  face(host, 'Edit').fire('click');
   const area = all(host).find((n) => n.tag === 'textarea');
   eq('a T file opens decoded', area.value.split('\n')[0], '[RAM2');
   eq('and a file with no leading CR opens with the box clear',
@@ -808,7 +846,8 @@ async function dosuiCmd() {
   // Saving the file that is open is not "replacing a file already on the
   // disk", and is not asked about: with confirm() saying no, it still writes.
   named(host, 'ALICE_RUN').fire('click');
-  face(host, 'Edit text…').fire('click');
+  face(host, 'View').fire('click');
+  face(host, 'Edit').fire('click');
   all(host).find((n) => n.tag === 'textarea').value = 'ОДНА\n';
   answer = false;
   face(host, 'Save').fire('click');
@@ -818,12 +857,23 @@ async function dosuiCmd() {
       t.dos.match('ALICE_RUN').length],
      ['ОДНА\n', 1]);
 
+  named(host, 'ALICE_RUN').fire('click');
+  face(host, 'View').fire('click');
+  face(host, 'Edit').fire('click');
+  face(host, 'Cancel').fire('click');
+  eq('Cancel backs out of the editor to the view, not out of the file',
+     [all(host).filter((n) => n.tag === 'textarea').length,
+      byClass(host, 'dos-pop-view').length], [0, 1]);
+  face(host, 'Close').fire('click');
+  eq('and Close takes the popup away', byClass(host, 'dos-pop').length, 0);
+
   // A file written the way asm-89 and the ИКП disks write one: the $8D in
   // front shows as the box ticked, and saving puts back one, not two.
   t.dos.create('ЛИД', 0x00, A.dosfile.pack('ABCDE', { text: true, lead: true }).data, {});
   ui.refresh();
   named(host, 'ЛИД').fire('click');
-  face(host, 'Edit text…').fire('click');
+  face(host, 'View').fire('click');
+  face(host, 'Edit').fire('click');
   {
     const box = boxed(host, 'leading CR').box;
     const ta = all(host).find((n) => n.tag === 'textarea');
@@ -836,7 +886,8 @@ async function dosuiCmd() {
        [0x8d, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0x8d]);
   }
   named(host, 'ЛИД').fire('click');
-  face(host, 'Edit text…').fire('click');
+  face(host, 'View').fire('click');
+  face(host, 'Edit').fire('click');
   {
     // Untick it and the file becomes what DOS alone needs.
     boxed(host, 'leading CR').box.checked = false;

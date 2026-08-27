@@ -55,7 +55,10 @@
       extension.
     </td></tr>
     <tr><td><b>A file</b></td><td>
-      Click one for what can be done with it. <b>.fil</b> is the file with its
+      Click one for what can be done with it. <b>View</b> shows what is inside:
+      the text of a <code>T</code> file, and otherwise a hex dump — of the body,
+      of the whole stream, or of a <code>B</code> file at the address it loads
+      at. <b>.fil</b> is the file with its
       catalog entry in front, which is what the emulator loads, so a program
       taken off a disk can be dropped straight onto it; <b>raw</b> is the data
       stream as DOS stores it and <b>body</b> the contents alone.
@@ -67,7 +70,8 @@
       dropped on the page opens instead.
     </td></tr>
     <tr><td><b>Text</b></td><td>
-      A <code>T</code> file reads as UTF-8 and writes back in the Agat
+      <b>View</b> then <b>Edit</b> opens a <code>T</code> file in a box. It
+      reads as UTF-8 and writes back in the Agat
       character set, every line ending in the <code>$8D</code> DOS wants —
       the last one too. <b>leading CR</b> is the <code>$8D</code> some editors
       also put in front of the <i>first</i> line: asm-89's does, and its reader

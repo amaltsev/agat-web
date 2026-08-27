@@ -19,10 +19,16 @@
 // the panel is empty exactly then.
 //
 // **The per-file actions expand under the row rather than dropping out of a
-// menu.** A menu would be the page's first popup — positioning, outside-click,
-// keyboard dismissal, a layer — and the strip has somewhere to put the rename
-// field and the text editor, which a menu would need a second surface for. The
-// `⋯` at the right edge of every row is what says a row opens.
+// menu.** The strip is where they are, with room for the rename field beside
+// them, and the `⋯` at the right edge of every row is what says a row opens.
+//
+// **Looking inside a file is the one thing that gets a layer.** It is the only
+// operation whose whole point is room — a hex dump is 70 columns wide and a
+// text file is as long as it is, and the strip lives inside a list that
+// scrolls — so **View** puts up the page's one popup, and the editor moved
+// into it. It is drawn into the panel's own root rather than into
+// `document.body`: this is handed a host element and does not reach outside
+// it.
 (function (AGAT) {
   'use strict';
 
@@ -97,7 +103,9 @@
     this.writable = false;
     this.onUnlock = null;
     this.open = '';                        // which file's strip is open
-    this.mode = '';                        // '', 'rename' or 'text', in that strip
+    this.mode = '';                        // '' or 'rename', in that strip
+    this.view = null;                      // the popup: {key, how, editing}
+    this.esc = null;                       // its Escape listener, while it is up
     this.deleted = false;                  // are the tombstones shown
     this.lead = false;                     // what a new T file gets in front
 
@@ -107,6 +115,7 @@
     this.listEl = el('div', 'dos-list');
     this.formEl = el('div', 'dos-form');
     this.footEl = el('div', 'dos-foot');
+    this.popHost = el('div', 'dos-pop-host');
     this.noteEl.hidden = true;
     this.formEl.hidden = true;
 
@@ -141,6 +150,7 @@
     this.root.appendChild(this.listEl);
     this.root.appendChild(this.formEl);
     this.root.appendChild(this.footEl);
+    this.root.appendChild(this.popHost);
     host.appendChild(this.root);
 
     ['dragenter', 'dragover'].forEach(function (t) {
@@ -170,6 +180,8 @@
     this.dos = dos;
     this.open = '';
     this.mode = '';
+    this.dropEsc();
+    this.view = null;
     this.hideForm();
     this.refresh();
   };
@@ -237,6 +249,16 @@
 
     var files = dos.list({ deleted: this.deleted });
     files.forEach(function (e) { self.listEl.appendChild(self.fileEl(e)); });
+
+    // The popup is drawn from the same list as the rows under it, so a file
+    // that is no longer on the disk takes its own view down with it.
+    this.popHost.textContent = '';
+    if (this.view) {
+      var on = null;
+      files.forEach(function (e) { if (key(e) === self.view.key) on = e; });
+      if (on) this.popHost.appendChild(this.popEl(on));
+      else this.dropEsc();
+    }
 
     var free = dos.freeCount();
     this.listEl.appendChild(el('div', 'dos-sum',
@@ -364,11 +386,11 @@
 
     var act = el('div', 'dos-acts');
     act.appendChild(el('span', 'key', ''));
-    // The two that open something rather than doing it carry the page's
-    // ellipsis, which also keeps the button that opens the rename field from
-    // reading the same as the one that commits it.
-    act.appendChild(button('Edit text…', 'Read it as Agat text and write it back',
-      function () { self.mode = 'text'; self.refresh(); }));
+    // Rename carries the page's ellipsis, which keeps the button that opens
+    // the field from reading the same as the one that commits it. View does
+    // not: what it opens is a window onto the file, not a question.
+    act.appendChild(button('View', 'Look inside it, and edit it if it is text',
+      function () { self.setView(e, defaultHow(e)); }));
     act.appendChild(button('Rename…', null, function () {
       self.mode = 'rename'; self.refresh();
     }));
@@ -395,7 +417,6 @@
     s.appendChild(act);
 
     if (this.mode === 'rename') s.appendChild(this.renameEl(e));
-    if (this.mode === 'text') s.appendChild(this.textEl(e));
     return s;
   };
 
@@ -434,13 +455,141 @@
     return r;
   };
 
+  // ---- the popup -----------------------------------------------------------
+
+  // The four ways of reading a file, in the order the strip's Download row
+  // offers the same bytes — capitalized, so that neither the eye nor a test
+  // can take one row's buttons for the other's.
+  //
+  // `Memory` is `Body` with the offsets counted from where the file loads,
+  // which is the only way a dump of a `B` file lines up with a listing or with
+  // the monitor. A disassembly, if one ever comes, belongs behind it.
+  var VIEWS = [
+    { how: 'text', face: 'Text', title: 'The contents as Agat text' },
+    { how: 'mem', face: 'Memory',
+      title: 'The contents in hex, at the address the file loads at' },
+    { how: 'body', face: 'Body',
+      title: "The contents in hex, without the type's own address and length" },
+    { how: 'raw', face: 'Raw',
+      title: 'The stream as DOS stores it, whole sectors and all' },
+  ];
+
+  // Which views a file has. `Text` is for a `T` file and `Memory` for a `B`
+  // one: reading an `I` file as text is a thing to do to a file, and the
+  // Download row is where doing things to a file lives.
+  function offers(e, how) {
+    if (how === 'text') return e.type === 0x00;
+    if (how === 'mem') return e.type === 0x04;
+    return true;
+  }
+
+  function defaultHow(e) {
+    return e.type === 0x00 ? 'text' : e.type === 0x04 ? 'mem' : 'body';
+  }
+
+  DosUI.prototype.setView = function (e, how) {
+    var self = this;
+    if (!this.esc) {
+      // Escape backs out one step: out of the editor to the view it was
+      // opened from, and out of the view to the panel.
+      this.esc = function (ev) {
+        if (ev.key !== 'Escape' || !self.view) return;
+        if (self.view.editing) { self.view.editing = false; self.refresh(); }
+        else self.shutView();
+      };
+      document.addEventListener('keydown', this.esc);
+    }
+    this.view = { key: key(e), how: how, editing: false };
+    this.refresh();
+  };
+
+  // The popup taken down, without the redraw — for a caller that is about to
+  // redraw anyway.
+  DosUI.prototype.dropEsc = function () {
+    if (this.esc) document.removeEventListener('keydown', this.esc);
+    this.esc = null;
+    this.view = null;
+  };
+
+  DosUI.prototype.shutView = function () {
+    this.dropEsc();
+    this.refresh();
+  };
+
+  // The bytes of one view, as the text to show. Throws what `unpack` throws:
+  // a file whose chain will not decode has no view, and the message is what
+  // there is to show instead.
+  DosUI.prototype.viewText = function (e, how) {
+    if (how === 'text') return AGAT.dosfile.unpack(this.dos, e, 'text').text;
+    var got = AGAT.dosfile.unpack(this.dos, e, how === 'raw' ? 'raw' : 'body');
+    var base = 0;
+    if (how === 'mem') base = AGAT.dosfile.describe(this.dos, e).addr || 0;
+    return AGAT.dosfile.hexdump(got.bytes, base);
+  };
+
+  DosUI.prototype.popEl = function (e) {
+    var self = this, v = this.view;
+    var pop = el('div', 'dos-pop');
+    var box = el('div', 'dos-pop-box');
+    // A click on the backdrop is a click outside, and shuts it; one inside the
+    // box is not, and must not travel up to it.
+    pop.addEventListener('click', function () { self.shutView(); });
+    box.addEventListener('click', function (ev) {
+      if (ev.stopPropagation) ev.stopPropagation();
+    });
+
+    var head = el('div', 'dos-pop-head');
+    head.appendChild(el('b', null, e.name));
+    head.appendChild(el('span', 'dim', e.typeLetter));
+    if (!v.editing) {
+      VIEWS.forEach(function (w) {
+        var b = button(w.face, w.title, function () {
+          v.how = w.how;
+          self.refresh();
+        });
+        if (!offers(e, w.how)) b.disabled = true;
+        else if (v.how === w.how) b.className = 'on';
+        head.appendChild(b);
+      });
+    } else {
+      head.appendChild(el('span', 'dim', 'editing'));
+    }
+    box.appendChild(head);
+
+    if (v.editing) {
+      box.appendChild(this.textEl(e));
+    } else {
+      var body = el('div', 'dos-pop-view');
+      try {
+        body.appendChild(el('pre', null, this.viewText(e, v.how)));
+      } catch (err) {
+        body.appendChild(el('div', 'dim', err.message));
+      }
+      box.appendChild(body);
+      var r = el('div', 'dos-acts');
+      // Editing is for a `T` file: what the editor writes back is a `T` file,
+      // whatever it was opened on.
+      var ed = button('Edit', 'Change it and write it back as a T file',
+        function () { v.editing = true; self.refresh(); });
+      ed.disabled = e.type !== 0x00;
+      r.appendChild(ed);
+      r.appendChild(button('Close', null, function () { self.shutView(); }));
+      box.appendChild(r);
+    }
+    pop.appendChild(box);
+    return pop;
+  };
+
   // ---- text ----------------------------------------------------------------
 
-  // A T file, decoded, in a box. Writing it back is a delete and a create,
-  // which is what `put --force` does: DOS has no way to grow a file in place.
+  // A T file, decoded, in a box, inside the popup that opened on it. Writing it
+  // back is a delete and a create, which is what `put --force` does: DOS has no
+  // way to grow a file in place.
   DosUI.prototype.textEl = function (e) {
     var self = this, box = el('div', 'dos-text'), area = null, text;
-    var shut = function () { self.mode = ''; self.refresh(); };
+    // Out of the editor is back to the view it was opened from, not out of the
+    // file: somebody who cancels an edit is still looking at the file.
+    var shut = function () { self.view.editing = false; self.refresh(); };
     try {
       text = AGAT.dosfile.unpack(this.dos, e, 'text').text;
     } catch (err) {
@@ -450,10 +599,6 @@
     }
     var lead = null;
     if (text !== undefined) {
-      if (e.type !== 0x00) {
-        box.appendChild(el('div', 'dim', 'Type ' + e.typeLetter +
-          ', not T — read as text anyway.'));
-      }
       // The leading CR is the box's, not the text's: shown as a setting rather
       // than as a blank first line, so that saving writes back what the file
       // already had instead of a second one.
@@ -468,25 +613,20 @@
         self.act(function () {
           // `put` replaces this very file, the new one written before the old
           // is removed — so a disk with no room says so and the file is still
-          // there. The strip closes only once something has been written.
+          // there. The popup closes only once something has been written.
           self.lead = lead.box.checked;
           var wrote = self.put(AGAT.dosfile.pack(area.value, {
             text: true, lead: self.lead, name: e.name, locked: e.locked }),
             e.name, e);
-          if (wrote) { self.open = ''; self.mode = ''; self.refresh(); }
+          if (wrote) { self.open = ''; self.shutView(); }
         });
       }));
     }
     r.appendChild(button('Cancel', null, shut));
     if (lead) r.appendChild(lead);
     box.appendChild(r);
-    // The list scrolls, and the editor opens somewhere down it. Bring the row
-    // that saves into view — the box is no use without it — and put the cursor
-    // in the text, which is what the click asked for.
-    setTimeout(function () {
-      if (area) area.focus();
-      if (r.scrollIntoView) r.scrollIntoView({ block: 'nearest' });
-    }, 0);
+    // The cursor goes in the text, which is what the click asked for.
+    setTimeout(function () { if (area) area.focus(); }, 0);
     return box;
   };
 

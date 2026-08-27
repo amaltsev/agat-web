@@ -74,6 +74,42 @@
     return AGAT.chars.decode(bytes).replace(/\\x0D/g, '\n');
   }
 
+  // Bytes, as a dump: an offset, sixteen bytes in hex, and the same sixteen as
+  // the characters the machine draws for them. `base` is what the first byte's
+  // offset is called — 0 for a file read from its own start, and the load
+  // address for a `B` file read as the memory it becomes.
+  //
+  // The text column is `chars.glyph`, which masks bit 7 and answers `.` for a
+  // control code: an Agat file is Agat characters, so `$E0` reads as `Ю` and
+  // not as a dot, and the columns still line up because every byte is one
+  // character wide. The offset takes as many digits as the last one needs, so
+  // a stream past 64K does not shift its own columns halfway down.
+  function hexdump(bytes, base) {
+    var at = base || 0, wide = (at + bytes.length - 1).toString(16).length;
+    var out = [], i, j, b, hx, tx;
+    if (wide < 4) wide = 4;
+    for (i = 0; i < bytes.length; i += 16) {
+      hx = '';
+      tx = '';
+      for (j = 0; j < 16; j++) {
+        // A short last line pads its hex column rather than ending early, so
+        // the text beside it stays where the lines above put it.
+        b = i + j < bytes.length ? bytes[i + j] : -1;
+        hx += (b < 0 ? '  ' : ('0' + b.toString(16).toUpperCase()).slice(-2)) +
+              (j === 7 ? '  ' : ' ');
+        if (b >= 0) tx += AGAT.chars.glyph(b);
+      }
+      out.push(hexAt(at + i, wide) + '  ' + hx + ' ' + tx);
+    }
+    return out.join('\n');
+  }
+
+  function hexAt(n, wide) {
+    var s = n.toString(16).toUpperCase();
+    while (s.length < wide) s = '0' + s;
+    return s;
+  }
+
   // **The last line is terminated too.** A DOS text file is a sequence of
   // CR-terminated records, not lines with separators between them: 136 of the
   // 151 T files on the disks in `examples/` end with `$8D`, including every one
@@ -227,7 +263,7 @@
 
   AGAT.dosfile = {
     describe: describe, body: body,
-    toText: toText, fromText: fromText,
+    toText: toText, fromText: fromText, hexdump: hexdump,
     parseAddr: parseAddr, outName: outName, defaultName: defaultName,
     hasLead: hasLead, dropLead: dropLead,
     unpack: unpack, pack: pack,

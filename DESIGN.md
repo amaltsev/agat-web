@@ -508,10 +508,19 @@ a file already open, which holds its own T/S list in a file buffer; deleting
 that file underneath it is a different question.
 
 The per-file actions expand under the row rather than dropping out of a `⋯`
-menu. A menu would be the page's first popup — positioning, outside-click,
-keyboard dismissal, a layer over everything — and the strip has somewhere to
-put the rename field and the text editor, which a menu would have needed a
-second surface for.
+menu: the strip is where they are, with room for the rename field beside them.
+**View** is the one thing that gets a layer, because it is the one whose point
+is room — a hex dump is 70 columns wide, a text file is as long as it is, and
+the strip lives inside a list that scrolls. It draws into the panel's own root
+rather than into `document.body`, since `DosUI` is handed a host element and
+does not reach outside it, and it offers four readings of the same file: the
+text of a `T` one, and `dosfile.hexdump` over the body, over the whole stream,
+or over the body at the address a `B` file loads at. The editor is inside it,
+on **Edit**, for a `T` file.
+
+`hexdump` is in `dosfile.js` rather than in the panel because it is pure — 16
+bytes to a line, `chars.glyph` for the text column, so `$E0` reads as `Ю` and a
+`$8D` as a dot — which is what lets `vectors.js` test it without a document.
 
 `check.js dosui` is how it is tested: the real `DosUI` drawn into a stub
 document and clicked on, with the assertions against the `Dos33` underneath. It

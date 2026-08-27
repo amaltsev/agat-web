@@ -49,7 +49,7 @@ input[type=text] {
   font: inherit; color: var(--ink); background: var(--bg);
   border: 1px solid var(--edge); border-radius: 5px; padding: 4px 8px;
 }
-input[type=text]:focus { outline: 1px solid var(--accent); }
+input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); }
 
 /* A panel: a card under the bar, holding rows of controls with a dim word at
    the head of each. Under the bar rather than over it — on the emulator page
@@ -140,14 +140,47 @@ input[type=text]:focus { outline: 1px solid var(--accent); }
 .dos-foot button, .dos-foot label.file { padding: 3px 9px; font-size: 12px; }
 .dos-foot label { color: var(--dim); }
 .dos-form { margin-top: 8px; border-top: 1px solid var(--edge); }
-/* Seven lines to start with, dragged taller by the corner when a file needs
-   it. The editor opens inside the scrolling list, so a box tall enough to push
-   its own Save past the fold is a box whose Save is not there. */
+/* The editor fills the popup it opens in, and is dragged taller by the corner
+   past that. Its Save is under it, inside the box, so a tall one cannot push
+   its own Save out of reach. */
 .dos-text textarea {
   display: block; width: 100%; min-height: 7em; margin-top: 6px;
   font: var(--mono); color: var(--ink); background: var(--bg);
   border: 1px solid var(--edge); border-radius: 5px; padding: 6px 8px;
   resize: vertical;
 }
+.dos-pop .dos-text textarea { min-height: 55vh; }
+
+/* Looking inside a file: the page's one popup, over everything, because a hex
+   dump is 70 columns wide and the catalog it opens from is a list that
+   scrolls. Fixed to the viewport rather than to the panel — on the emulator
+   page the panel is somewhere down a page that is taller than the window. */
+.dos-pop {
+  position: fixed; inset: 0; z-index: 20; padding: 4vh 3vw;
+  background: #00000099; display: flex; align-items: center;
+  justify-content: center;
+}
+.dos-pop-box {
+  display: flex; flex-direction: column; gap: 6px;
+  width: min(94vw, 820px); max-height: 92vh; padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+  box-shadow: 0 12px 40px #000000a6;
+}
+.dos-pop-head {
+  display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
+  border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+}
+.dos-pop-head button { padding: 2px 9px; font-size: 12px; }
+/* Which of the four is showing. The accent is the page's word for "this one",
+   and it is a border rather than a fill so the row stays a row of buttons. */
+.dos-pop-head button.on { border-color: var(--accent); color: var(--accent); }
+/* The dump scrolls both ways: a line is as wide as it is, and wrapping one
+   would take the columns apart. */
+.dos-pop-view {
+  flex: 1 1 auto; overflow: auto; font: var(--mono);
+  background: var(--bg); border: 1px solid var(--edge); border-radius: 5px;
+  padding: 6px 8px;
+}
+.dos-pop-view pre { margin: 0; font: inherit; }
 .dos-nm { width: 22ch; }
 .dos-ad { width: 9ch; }
