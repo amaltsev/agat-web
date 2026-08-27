@@ -91,7 +91,7 @@ Settled, with evidence, and expensive to relearn:
 - **Whatever the CLI and the page both do goes in `src/`.** `src/dosfile.js` is
   what a DOS file *is* on the way in and on the way out — the type prefixes, the
   `.fil`, the `$8D` line endings — and `tools/dos.js` and `src/dosui.js` are two
-  front ends over it. `node tools/dos.js ls -l` and the panel's dim column print
+  front ends over it. `node tools/dos.js ls -l` and the panel's open row print
   the same fields because they are the same call.
 - `Machine.PROFILES` is the single definition of what each machine is.
   `App.build()` and `tools/harness.js` both go through it; do not spell a card

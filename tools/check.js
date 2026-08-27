@@ -687,9 +687,9 @@ async function dosuiCmd() {
      ['TestCom7_840.dsk', ' 840K, 160 tracks of 21, ДИСК N 254']);
   eq('with the free count under it', byClass(host, 'dos-sum')[0].textContent,
      '2 files, 3117 free sectors of 3360');
-  eq('a B file says where it loads',
-     byClass(host, 'dos-dim')[1].textContent,
-     'ts=20/20 sectors=10 len=2325 addr=$4C00');
+  eq('and the row carries the length the file declares, and nothing else',
+     byClass(host, 'dos-row')[1].children.map((c) => c.textContent).join('|'),
+     '|B|011|TEST.DATA|2325|⋯');
 
   // ---- a row opens ---------------------------------------------------------
   eq('nothing is open to begin with', byClass(host, 'dos-strip').length, 0);
@@ -697,6 +697,12 @@ async function dosuiCmd() {
   eq('a click opens that row and only it', byClass(host, 'dos-strip').length, 1);
   eq('and the row it opened is still the one it was',
      rows(host), [' A 041 TEST', ' B 011 TEST.DATA']);
+  // The rest of what the file says about itself, which the row no longer
+  // spends its width on: where the chain starts, what it holds, where it loads.
+  eq('the open row spells out the rest, each field with a hint on it',
+     byClass(host, 'dos-facts')[0].children.slice(1).map(
+       (c) => c.textContent + (c.title ? '' : ' [no hint]')).join(' '),
+     'ts=20/20 sectors=10 lists=1 len=2325 addr=$4C00');
   named(host, 'TEST.DATA').fire('click');
   eq('a second click shuts it', byClass(host, 'dos-strip').length, 0);
 

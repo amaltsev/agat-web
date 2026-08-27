@@ -17,21 +17,39 @@
 
   // The long view's fields, for one file. `sectors` is what the T/S chain
   // actually reaches, which is the number to believe — the catalog's own count
-  // is a byte and saturates at 255. `len` and `addr` are what the file says
-  // about itself, and a type that says nothing has neither.
+  // is a byte and saturates at 255 — and `lists` is how many T/S list sectors
+  // hold it, which is the rest of what the catalog's count covers. `len` and
+  // `addr` are what the file says about itself, and a type that says nothing
+  // has neither.
   //
   // A file whose chain will not decode has `error` and nothing else: the disk
   // is telling us something, and a row of blanks would be a worse account of it
   // than the message.
+  //
+  // `warn` is the file contradicting itself where the contradiction costs
+  // something: the length it declares needs sectors the chain does not have,
+  // so whatever reads it runs off the end. It is rare — not one of the 400 files
+  // on the disks in `examples/` has one.
+  //
+  // The catalog's own sector count disagreeing with `sectors + lists` is *not*
+  // that, and is not reported: 28 of the 400 files in `examples/` have one,
+  // almost always the T/S list left uncounted, and nothing reads the byte —
+  // the chain is what DOS follows. The two numbers are both here for whoever
+  // wants to compare them.
   function describe(dos, entry) {
     var out = { tsTrack: entry.tsTrack, tsSector: entry.tsSector };
     try {
       var bytes = dos.read(entry);
       var len = dos.length(entry, bytes);
       out.sectors = Math.ceil(bytes.length / 256);
+      out.lists = dos.chain(entry).lists.length;
       if (len) {
         out.len = len.len;
         if (len.addr >= 0) out.addr = len.addr;
+        if (len.at + len.len > bytes.length) {
+          out.warn = 'the declared length runs ' +
+                     (len.at + len.len - bytes.length) + ' bytes past the last sector';
+        }
       }
     } catch (e) {
       out.error = e.message;

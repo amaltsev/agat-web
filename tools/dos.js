@@ -207,9 +207,10 @@ function line(dos, e) {
   const d = F.describe(dos, e);
   s = s.padEnd(44) + ' ts=' + d.tsTrack + '/' + d.tsSector;
   if (d.error) return s + ' ' + d.error;
-  s += ' sectors=' + d.sectors;
+  s += ' sectors=' + d.sectors + ' lists=' + d.lists;
   if (d.len !== undefined) s += ' len=' + d.len;
   if (d.addr !== undefined) s += ' addr=' + hex(d.addr);
+  if (d.warn) s += ' -- ' + d.warn;
   return s;
 }
 

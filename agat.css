@@ -106,14 +106,26 @@ input[type=text]:focus { outline: 1px solid var(--accent); }
 .dos-mark { width: 1ch; color: var(--dim); }
 .dos-type { width: 1ch; }
 .dos-sect { color: var(--dim); font-variant-numeric: tabular-nums; }
-.dos-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* What the file says about itself, off at the right where it can be ignored:
-   where the T/S list is, how long the file claims to be, where it loads. */
-.dos-dim {
-  color: var(--dim); margin-left: auto; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
+/* A file that contradicts itself, which is the one thing in the row worth a
+   color. Everything else it says about itself is under the row. */
+.dos-sect.bad, .dos-facts .bad { color: var(--warn); }
+/* The name takes the row, and shrinks last: it is what the catalog is read
+   for, and on a phone it is most of what fits. */
+.dos-name {
+  flex: 1 1 auto; min-width: 6ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* How long the file is — the one number DOS does not print and a person wants
+   anyway. Right up against the ⋯, and it gives way to the name. */
+.dos-len {
+  color: var(--dim); text-align: right; flex: 0 1 auto;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: clip; white-space: nowrap;
 }
 .dos-more { color: var(--dim); }
+/* The rest of what the file says, under it, in the same monospace as the row
+   so the numbers line up with the ones above them. */
+.dos-facts { font: var(--mono); color: var(--dim); gap: 1em; }
 /* The actions, under the row they belong to. */
 .dos-strip { padding: 2px 0 8px 2.5ch; }
 .dos-acts {

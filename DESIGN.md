@@ -463,8 +463,8 @@ of address and length, an `A` file's two of length, a `T` file's `$8D` line
 endings, a `.fil`'s catalog entry glued in front — is one layer up, in
 `dosfile.js`, and it is there rather than in the tool because two things need
 it. `tools/dos.js` is the command line, `dosui.js` is the panel, and neither
-implements any of it: `describe` is what `ls -l` prints and what the panel's
-dim column draws, `pack` is what `put` and **Add file…** both hand to
+implements any of it: `describe` is what `ls -l` prints and what the panel puts
+in a row's length column and under an open row, `pack` is what `put` and **Add file…** both hand to
 `Dos33.create`, `unpack` is `get` and the download buttons. Nothing in it
 touches `fs` or the DOM.
 

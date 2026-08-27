@@ -2671,7 +2671,7 @@ async function dosTests() {
     const b = o.dos.find('RUS_ALICE_GAME');
     eq('describe reads the B file\'s own address and length',
        F.describe(o.dos, b),
-       { tsTrack: 20, tsSector: 20, sectors: 162, len: 41280, addr: 0x1097 });
+       { tsTrack: 20, tsSector: 20, sectors: 162, lists: 2, len: 41280, addr: 0x1097 });
     // The catalog's count is one byte and saturates; the chain is what is real.
     const big = o.dos.find('A.ROOM');
     eq('and the chain, where the catalog byte has run out',
@@ -2679,7 +2679,23 @@ async function dosTests() {
     // A D file declares neither, so there is nothing to declare.
     eq('a type that says nothing about itself says nothing',
        Object.keys(F.describe(o.dos, o.dos.find('A.SAVE'))).join(),
-       'tsTrack,tsSector,sectors');
+       'tsTrack,tsSector,sectors,lists');
+
+    // A file whose own length needs sectors the chain does not have. This is
+    // the one thing the panel colors a row for, so it has to be found, and it
+    // has to stay rare: not one file on the disks in `examples/` has it.
+    {
+      const lying = new ctx.Uint8Array(100);
+      lying[0] = 0x58; lying[1] = 0x02;                  // says 600 bytes
+      o.dos.create('ЛЖЕЦ', 0x02, lying, {});
+      const l = o.dos.find('ЛЖЕЦ');
+      eq('a declared length past the last sector is a warning',
+         F.describe(o.dos, l).warn,
+         'the declared length runs 346 bytes past the last sector');
+      o.dos.remove(l);
+      eq('and an honest one is not',
+         F.describe(o.dos, o.dos.find('RUS_ALICE_GAME')).warn, undefined);
+    }
 
     // Out: the four ways, each the length its type implies.
     const raw = F.unpack(o.dos, b, 'raw'), body = F.unpack(o.dos, b, 'body');

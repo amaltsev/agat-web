@@ -258,28 +258,43 @@
     }
   };
 
+  // The columns DOS prints, and then the one number a person reads a catalog
+  // for that DOS does not print: how long the file is. Everything else the
+  // file says about itself — where its T/S list is, how many sectors the chain
+  // holds, where a `B` file loads — waits under the row, because on a healthy
+  // disk it all follows from the two counts already on screen and it is the
+  // name that the narrow screen has too little of.
+  //
+  // A file that contradicts itself is the exception, and it has to say so
+  // before anyone clicks: the sector count goes red and carries the reason.
   DosUI.prototype.fileEl = function (e) {
     var self = this, k = key(e);
     var wrap = el('div', 'dos-file' + (this.open === k ? ' open' : ''));
     var row = el('div', 'dos-row' + (e.deleted ? ' gone' : ''));
+    var d = e.deleted ? null : AGAT.dosfile.describe(this.dos, e);
+    var bad = d && (d.error || d.warn);
+
     row.appendChild(el('span', 'dos-mark', e.deleted ? 'x' : e.locked ? '*' : ''));
     row.appendChild(el('span', 'dos-type', e.typeLetter));
-    row.appendChild(el('span', 'dos-sect', pad3(e.sectors)));
+    var sect = el('span', 'dos-sect' + (bad ? ' bad' : ''), pad3(e.sectors));
+    sect.title = bad ? '"' + e.name + '": ' + (d.error || d.warn)
+                     : 'Sectors, as the catalog counts them: the file\'s data ' +
+                       'and its T/S lists together.';
+    row.appendChild(sect);
     row.appendChild(el('span', 'dos-name', e.name));
 
-    var d = AGAT.dosfile.describe(this.dos, e);
-    var dim = 'ts=' + d.tsTrack + '/' + d.tsSector;
-    if (d.error) dim += ' ' + d.error;
-    else {
-      // Not the count in the column to the left: that is DOS's, and it counts
-      // the file's T/S lists as well as its data — and it is one byte, so it
-      // stops at 255. This is what the chain actually reaches.
-      dim += ' sectors=' + d.sectors;
-      if (d.len !== undefined) dim += ' len=' + d.len;
-      if (d.addr !== undefined) dim += ' addr=' + hex(d.addr);
+    // A tombstone has no chain left to ask, and the track DOS parked in the
+    // last byte of its name is the only thing it still knows.
+    var tail = el('span', 'dos-len');
+    if (e.deleted) {
+      tail.textContent = 'track ' + e.tsTrack;
+      tail.title = 'Deleted. Its T/S list was on this track, which is what an ' +
+                   'undelete would need.';
+    } else if (d.len !== undefined) {
+      tail.textContent = String(d.len);
+      tail.title = 'Bytes, as the file itself declares in its own first bytes.';
     }
-    if (e.deleted) dim += ' deleted, T/S list was on track ' + e.tsTrack;
-    row.appendChild(el('span', 'dos-dim', dim));
+    row.appendChild(tail);
     row.appendChild(el('span', 'dos-more', e.deleted ? '' : '⋯'));
 
     if (!e.deleted) {
@@ -294,10 +309,48 @@
     return wrap;
   };
 
+  // What the file says about itself, spelled out where there is room for it.
+  // Each field carries what it is on hover, because none of them is obvious
+  // from its name and the panel is the only place they are written down.
+  DosUI.prototype.factsEl = function (e) {
+    var d = AGAT.dosfile.describe(this.dos, e);
+    var f = el('div', 'dos-acts dos-facts');
+    var add = function (text, title, cls) {
+      var x = el('span', cls || null, text);
+      x.title = title;
+      f.appendChild(x);
+    };
+    f.appendChild(el('span', 'key', 'On disk'));
+    add('ts=' + d.tsTrack + '/' + d.tsSector,
+        'The track and sector of the file\'s first T/S list, which is where ' +
+        'the catalog entry points. Not the first sector of the data.');
+    if (d.error) {
+      add(d.error, 'The chain will not read, so nothing below it is known.', 'bad');
+      return f;
+    }
+    add('sectors=' + d.sectors,
+        'Data sectors the chain reaches. The catalog\'s count to the left is ' +
+        'this plus the T/S lists, and it is one byte, so it stops at 255.');
+    add('lists=' + d.lists,
+        'T/S list sectors holding those pairs — 122 to a list.');
+    if (d.len !== undefined) {
+      add('len=' + d.len, 'Bytes, as the file itself declares: a length in the ' +
+          'first two bytes of an `A` or `I` file, in bytes 3-4 of a `B` file, ' +
+          'and up to the first $00 in a `T` file.');
+    }
+    if (d.addr !== undefined) {
+      add('addr=' + hex(d.addr), 'The address a `B` file loads at, out of its ' +
+          'own first two bytes.');
+    }
+    if (d.warn) add(d.warn, 'The file contradicts itself.', 'bad');
+    return f;
+  };
+
   DosUI.prototype.stripEl = function (e) {
     var self = this, s = el('div', 'dos-strip');
     var bar = el('div', 'dos-acts');
 
+    s.appendChild(this.factsEl(e));
     bar.appendChild(el('span', 'key', 'Download'));
     bar.appendChild(button('.fil', 'The data stream with its catalog entry in front — what the emulator loads',
       function () { self.save(e, 'fil'); }));
