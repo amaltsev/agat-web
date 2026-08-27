@@ -347,26 +347,23 @@
       f.appendChild(x);
     };
     f.appendChild(el('span', 'key', 'On disk'));
-    add('ts=' + d.tsTrack + '/' + d.tsSector,
+    add('track/sec=' + d.tsTrack + '/' + d.tsSector,
         'The track and sector of the file\'s first T/S list, which is where ' +
         'the catalog entry points. Not the first sector of the data.');
     if (d.error) {
       add(d.error, 'The chain will not read, so nothing below it is known.', 'bad');
       return f;
     }
-    add('sectors=' + d.sectors,
-        'Data sectors the chain reaches. The catalog\'s count to the left is ' +
-        'this plus the T/S lists, and it is one byte, so it stops at 255.');
-    add('lists=' + d.lists,
-        'T/S list sectors holding those pairs — 122 to a list.');
+    add('sectors=' + d.sectors + '+' + d.lists,
+        'Data and list sectors (catalog count is usually this, sometimes w/o lists).');
+    if (d.addr !== undefined) {
+      add('addr=' + hex(d.addr), 'The address a `B` file loads at, out of its ' +
+          'own first two bytes.');
+    }
     if (d.len !== undefined) {
       add('len=' + d.len, 'Bytes, as the file itself declares: a length in the ' +
           'first two bytes of an `A` or `I` file, in bytes 3-4 of a `B` file, ' +
           'and up to the first $00 in a `T` file.');
-    }
-    if (d.addr !== undefined) {
-      add('addr=' + hex(d.addr), 'The address a `B` file loads at, out of its ' +
-          'own first two bytes.');
     }
     if (d.warn) add(d.warn, 'The file contradicts itself.', 'bad');
     return f;
@@ -465,21 +462,17 @@
   // offers the same bytes — capitalized, so that neither the eye nor a test
   // can take one row's buttons for the other's.
   //
-  // `Memory` is `Body` with the offsets counted from where the file loads,
-  // which is the only way a dump of a `B` file lines up with a listing or with
-  // the monitor. `Code` is the same bytes as instructions, and sits behind it.
+  // `Code` is a `B` file's bytes as instructions, and `Memory` is `Body` with
+  // the offsets counted from where the file loads, which is the only way a
+  // dump of a `B` file lines up with a listing or with the monitor. The two
+  // sit next to the listing, from the most digested reading to the least.
   var VIEWS = [
     { how: 'text', face: 'Text', title: 'The contents as Agat text' },
-    { how: 'basic', face: 'BASIC',
-      title: 'The program, listed the way the machine lists it' },
-    { how: 'mem', face: 'Memory',
-      title: 'The contents in hex, at the address the file loads at' },
-    { how: 'code', face: 'Code',
-      title: 'The contents as 6502 instructions, from the first byte forward' },
-    { how: 'body', face: 'Body',
-      title: "The contents in hex, without the type's own address and length" },
-    { how: 'raw', face: 'Raw',
-      title: 'The stream as DOS stores it, whole sectors and all' },
+    { how: 'basic', face: 'BASIC', title: 'Decoded program text' },
+    { how: 'code', face: 'Code', title: 'Disassembled 6502 instructions' },
+    { how: 'mem', face: 'Memory', title: 'Hex, at the address the file loads at' },
+    { how: 'body', face: 'Body', title: 'Hex, without the type header' },
+    { how: 'raw', face: 'Raw', title: 'Hex, as DOS stores it, whole sectors' },
   ];
 
   // Which views a file has. `Text` is for a `T` file and `Memory` for a `B`

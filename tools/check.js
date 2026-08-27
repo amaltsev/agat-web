@@ -708,10 +708,12 @@ async function dosuiCmd() {
      rows(host), [' A 041 TEST', ' B 011 TEST.DATA']);
   // The rest of what the file says about itself, which the row no longer
   // spends its width on: where the chain starts, what it holds, where it loads.
+  // The sector count is the chain's own, data and T/S lists apart, so the `+`
+  // is part of the field and not two fields run together.
   eq('the open row spells out the rest, each field with a hint on it',
      byClass(host, 'dos-facts')[0].children.slice(1).map(
        (c) => c.textContent + (c.title ? '' : ' [no hint]')).join(' '),
-     'ts=20/20 sectors=10 lists=1 len=2325 addr=$4C00');
+     'track/sec=20/20 sectors=10+1 addr=$4C00 len=2325');
   named(host, 'TEST.DATA').fire('click');
   eq('a second click shuts it', byClass(host, 'dos-strip').length, 0);
 
