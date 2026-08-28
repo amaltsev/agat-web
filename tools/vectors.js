@@ -2321,6 +2321,23 @@ async function agcTests() {
       eq('slots survive the round trip', back.machine.slots[4],
          { card: 'xram', ram: 128 });
 
+      // And a tool builds the machine that container names, cards and all: the
+      // kilobytes in the file are bytes in the machine, and a card named there
+      // reaches the same slot it would on the page.
+      const fromAgc = H.makeMachine(ctx, roms, { model: 7, agc: back });
+      eq('makeMachine takes a container\'s machine whole',
+         [fromAgc.ramSize, fromAgc.xram.size], [0x8000, 0x20000]);
+      const moved9 = await A.agc.parse(ctx.Uint8Array.from(Buffer.from(await A.agc.build({
+        title: 'moved', model: 9, ram: 128,
+        slots: { 5: null, 6: { card: 'fdd840' } },
+        media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(860160) }],
+      }))), 'moved.agc');
+      const m9 = H.makeMachine(ctx, roms, { model: 9, agc: moved9 });
+      eq('...including a controller it moved',
+         [M.slotOf(m9.slots, 'fdd840'), H.fddSlot(m9)], [6, 6]);
+      eq('and a disk goes into the controller the container moved',
+         H.insert(m9, A.mount({ kind: 'dsk840', payload: new ctx.Uint8Array(860160) })), 6);
+
       const plain = await A.agc.build({
         title: 'plain', model: 7, ram: 64,
         media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],

@@ -65,17 +65,31 @@ function mountFile(ctx, p) {
 
 // Build a machine with the stock card complement for its model — the same
 // Machine.PROFILES the page builds from, so a tool and the browser cannot end
-// up testing different hardware. `opts.slots` overrides it the way an .agc does.
+// up testing different hardware. `opts.slots` overrides it the way an .agc
+// does, and `opts.agc` is a parsed container whose machine is taken whole:
+// its base RAM and its cards, under whatever the command line says over them.
+//
+// A tool that took only the model out of a container ran the program on a
+// machine the container did not describe — a container that moves the 840K
+// controller to slot 6 booted the stock one at slot 5 — which is the one thing
+// README promises the tools do not do.
 function makeMachine(ctx, roms, opts) {
   opts = opts || {};
   const A = ctx.AGAT;
   const model = opts.model === 7 ? 7 : 9;
+  const named = (opts.agc && opts.agc.machine) || null;
+  const ramSize = opts.ramSize || (named && named.ram * 1024) || undefined;
+  // Slot by slot, the flags winning: --mouse puts a mouse in a machine whose
+  // container says nothing about one, and leaves the rest of it alone.
+  const slots = named && named.slots
+    ? Object.assign(A.agc.scaleSlots(named.slots), opts.slots || null)
+    : opts.slots;
   const m = new A.Machine({
     model: model,
-    ramSize: opts.ramSize,
+    ramSize: ramSize,
     sysmon: model === 7 ? roms.monitor7 : roms.monitor9,
   });
-  m.slots = A.Machine.resolveSlots(model, opts.slots);
+  m.slots = A.Machine.resolveSlots(model, slots);
   m.fit(m.slots, roms);
   if (opts.media) insert(m, opts.media);
   return m;
@@ -97,6 +111,16 @@ function resume(ctx, m, agc) {
   return A.state.restore(app, agc.state).then(
     (s) => A.state.describe(s),
     (e) => 'booted - ' + e.message);
+}
+
+// Where a tool boots when the medium did not decide it: the 840K controller of
+// the machine that got built, which a container may have moved, and failing
+// that the slot this model keeps one in — entering an empty slot's ROM is
+// something a command can still ask for, so there is always a number.
+function fddSlot(m) {
+  const A = m.constructor;
+  const n = A.slotOf(m.slots || A.resolveSlots(m.model, null), 'fdd840');
+  return n < 0 ? A.SLOTS[m.model].fdd840 : n;
 }
 
 // Put media into whichever controller can read it, in the drive named or the
@@ -129,6 +153,6 @@ function keyCode(c) {
 
 module.exports = {
   loadModules, loadRoms, sniffFile, mountFile, modelOf, makeMachine, insert,
-  keyCode, resume,
+  fddSlot, keyCode, resume,
   ROOT, MODULES,
 };

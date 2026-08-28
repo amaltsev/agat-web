@@ -71,7 +71,7 @@ H.loadRoms(ctx).then(async (roms) => {
       const model = Number(flags.model) || H.modelOf(s) || 9;
       row.model = model;
       const m = H.makeMachine(ctx, roms,
-        { model: model, ramSize: ramSize, slots: slots });
+        { model: model, ramSize: ramSize, slots: slots, agc: s.agc });
       if (s.kind === 'fil') {
         if (!ctx.AGAT.loadFil) { row.note = 'fil loader pending'; rows.push(row); continue; }
         ctx.AGAT.loadFil(m, s.payload);

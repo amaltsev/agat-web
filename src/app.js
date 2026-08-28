@@ -790,17 +790,6 @@
 
   // ---- containers ----------------------------------------------------------
 
-  // A container's slot map, kilobytes to bytes. `null` — an emptied slot —
-  // survives as null, which is what it means.
-  function scaleSlots(slots) {
-    var out = {}, n;
-    for (n in slots) {
-      out[n] = slots[n] && { card: slots[n].card, ram: slots[n].ram * 1024 || 0 };
-      if (out[n] && slots[n].drives > 1) out[n].drives = slots[n].drives;
-    }
-    return out;
-  }
-
   // The two card layers as one override map for the model being built, kept in
   // `slotOverrides` because that is what the machine and the .agc writer speak.
   // Worked out on every build rather than stored, since a change of model moves
@@ -872,7 +861,7 @@
     // slot numbers are about.
     this.agcCards = c.machine.slots
       ? AGAT.Machine.cardsOf(this.agcModel || this.model,
-                             scaleSlots(c.machine.slots))
+                             AGAT.agc.scaleSlots(c.machine.slots))
       : null;
     var model = over.model || this.agcModel;
     if (model) this.model = model;

@@ -54,8 +54,8 @@ loadRoms(ctx).then(async (roms) => {
   // ROM in whichever slot took it.
   const sniffed = await H.sniffFile(ctx, image);
   const model = Number(process.env.AGAT_MODEL) || H.modelOf(sniffed) || 9;
-  const m = makeMachine(ctx, roms, { model: model });
-  let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
+  const m = makeMachine(ctx, roms, { model: model, agc: sniffed.agc });
+  let slot = H.fddSlot(m);
   if (sniffed.kind && sniffed.kind !== 'fil') {
     slot = H.insert(m, ctx.AGAT.mount(sniffed));
   }

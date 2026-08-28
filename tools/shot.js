@@ -123,11 +123,12 @@ H.loadRoms(ctx).then(async (roms) => {
     model: model,
     ramSize: flags.ram ? Number(flags.ram) * 1024 : undefined,
     slots: Object.keys(slots).length ? slots : undefined,
+    agc: sniffed.agc,
   });
   if (sniffed.kind === 'fil') {
     ctx.AGAT.loadFil(m, sniffed.payload);
   } else {
-    let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
+    let slot = H.fddSlot(m);
     if (sniffed.kind) slot = H.insert(m, ctx.AGAT.mount(sniffed));
     m.reset();
     if (!flags.cold) m.bootSlot(slot);

@@ -578,8 +578,26 @@
     });
   }
 
+  // A container's `machine.slots` as a machine takes it: kilobytes to bytes.
+  // Sizes are kilobytes in the file, because that is how a fitting is spoken
+  // of, and bytes everywhere they are used. `null` — a slot the container
+  // empties — survives as null, which is what it means.
+  //
+  // Here rather than in whoever builds a machine, because the unit belongs to
+  // the format: src/app.js and tools/harness.js both read a container into a
+  // machine, and one conversion is what keeps the page and the tools building
+  // the same one.
+  function scaleSlots(slots) {
+    var out = {}, n;
+    for (n in (slots || {})) {
+      out[n] = slots[n] && { card: slots[n].card, ram: slots[n].ram * 1024 || 0 };
+      if (out[n] && slots[n].drives > 1) out[n].drives = slots[n].drives;
+    }
+    return out;
+  }
+
   AGAT.agc = {
-    looks: looks, parse: parse, build: build,
+    looks: looks, parse: parse, build: build, scaleSlots: scaleSlots,
     encode64: encode64, decode64: decode64,
     fromHex: fromHex, toHex: toHex,
     decodeBytes: decodeBytes, encodeBytes: encodeBytes,

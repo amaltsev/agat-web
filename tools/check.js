@@ -1312,11 +1312,8 @@ async function stateCmd(roms) {
   const model = flags.model ? Number(flags.model) : (H.modelOf(sniffed) || 9);
   const agc = sniffed.agc;
   const build = () => {
-    const m = H.makeMachine(ctx, roms, {
-      model: model,
-      ramSize: agc && agc.machine.ram ? agc.machine.ram * 1024 : undefined,
-    });
-    let slot = A.Machine.SLOTS[model].fdd840;
+    const m = H.makeMachine(ctx, roms, { model: model, agc: agc });
+    let slot = H.fddSlot(m);
     if (sniffed.kind && sniffed.kind !== 'fil') slot = H.insert(m, A.mount(sniffed));
     if (flags.slot) slot = Number(flags.slot);
     m.reset();
@@ -1393,11 +1390,8 @@ H.loadRoms(ctx).then(async (roms) => {
   const sniffed = await H.sniffFile(ctx, target);
   const model = flags.model ? Number(flags.model) : (H.modelOf(sniffed) || 9);
   const agc = sniffed.agc;
-  const m = H.makeMachine(ctx, roms, {
-    model: model,
-    ramSize: agc && agc.machine.ram ? agc.machine.ram * 1024 : undefined,
-  });
-  let slot = ctx.AGAT.Machine.SLOTS[model].fdd840;
+  const m = H.makeMachine(ctx, roms, { model: model, agc: agc });
+  let slot = H.fddSlot(m);
   if (sniffed.kind && sniffed.kind !== 'fil') {
     slot = H.insert(m, ctx.AGAT.mount(sniffed));
   }
