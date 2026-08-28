@@ -20,9 +20,11 @@
   from flags of their own. The page reads all of it, and where a disk goes is
   `App.place`/`App.mountSpot`: it is `src/` already, but reachable only through
   an `App`.
-* PWA - for both desktop and phone app installs
 * A way to merge patches into the disk from the page. `node tools/agc.js
   merge` does it on the command line. Especially useful for blank disks,
   but might be useful for all. Think the UI through if decided to
   implement this.
-* Cache-busting on loading from src/ and agat.css
+* Cache-busting on loading from src/ and agat.css. `sw.js` covers a served
+  copy — the shell revalidates behind the cache on every load, so a deploy is
+  live on the second one — but the first fetch of each is still the HTTP
+  cache's, and a checkout opened as a file has no worker at all.

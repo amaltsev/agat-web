@@ -24,6 +24,13 @@ Node freely; it never ships.
 agrees, and it catches the "works in Node, blank page in the browser" bug that is
 otherwise very easy to create.
 
+The list has a second reader: `sw.js`'s `SHELL`, which is what an installed copy
+holds offline. `sw.js` is not a module and is not in `tools/modules.js` — it has
+no window and Node never evaluates it — but its list has to be the module list
+in order, and `node tools/check.js pwa` asserts that. A module missing from it
+is a blank page on somebody's phone, a week later, with no network to explain
+itself.
+
 **The English is US English** — color, behavior, catalog, gray — with Russian
 terms interspersed freely where they are the thing's own name (ЭмПЗУ, ЛАТ/РУС,
 НГМД, табл.).
@@ -36,6 +43,7 @@ node tools/check.js modules    # the pages vs the module list
 node tools/check.js kbdmenu    # the page's keyboard menu, load order and all
 node tools/check.js urlkeys    # the page's address, around the whole loop
 node tools/check.js dosui      # the file manager, over a stub document
+node tools/check.js pwa        # the manifest, its icons, the offline shell
 node tools/cputest.js          # Klaus Dormann; slow, run on CPU changes
 ```
 

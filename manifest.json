@@ -1,0 +1,28 @@
+{
+  "id": "./",
+  "name": "Agat-7 / Agat-9 emulator",
+  "short_name": "Agat",
+  "description": "A browser emulator for the Soviet Agat-7 and Agat-9 micros.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14161a",
+  "theme_color": "#14161a",
+  "lang": "en",
+  "icons": [
+    { "src": "icons/agat-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/agat-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/agat-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "application/x-agat-container": [".agc"],
+        "application/x-agat-disk": [".dsk", ".aim", ".nib"],
+        "application/x-agat-file": [".fil"]
+      }
+    }
+  ]
+}

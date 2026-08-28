@@ -23,6 +23,8 @@
 //                                                built from a fragment, and the
 //                                                fragment written back out
 //   node tools/check.js modules                  the pages vs tools/modules.js
+//   node tools/check.js pwa                      the manifest, the icons and the
+//                                                worker's precache list
 //   node tools/check.js state  <image> [cycles]  save the machine mid-run,
 //                                                restore it into a fresh one,
 //                                                and run both on: the two have
@@ -99,6 +101,81 @@ if (cmd === 'modules') {
     console.log(page + ' : agat.css ' + (has ? 'linked' : 'MISSING'));
     if (!has) bad = true;
   }
+  process.exit(bad ? 1 : 0);
+}
+
+// The installable app: the manifest, the icons it names, and the worker's
+// precache list. That list is a second copy of tools/modules.js, which is the
+// thing check.js exists to stop — a module added to src/ and not to sw.js is a
+// file the offline copy quietly lacks, and the page is blank a week later on
+// somebody's phone with no network to explain it.
+if (cmd === 'pwa') {
+  const read = (f) => fs.readFileSync(path.join(H.ROOT, f), 'utf8');
+  const here = (f) => fs.existsSync(path.join(H.ROOT, f));
+  const say = (label, ok, note) => {
+    console.log(label + ' : ' + (ok ? 'OK' : 'MISSING') + (note ? ' - ' + note : ''));
+    return ok;
+  };
+  let bad = false;
+  const need = (ok) => { if (!ok) bad = true; };
+
+  // The manifest, and every icon it names. A manifest pointing at artwork that
+  // is not there installs as a blank tile, which no browser calls an error.
+  let man = null;
+  try {
+    man = JSON.parse(read('manifest.json'));
+    console.log('manifest.json : ' + man.name + ' - ' + man.display + ' from ' + man.start_url);
+  } catch (e) {
+    console.log('manifest.json : UNREADABLE - ' + e.message);
+    process.exit(1);
+  }
+  (man.icons || []).forEach((i) => need(say('  ' + i.src + ' (' + i.sizes + ' ' + (i.purpose || 'any') + ')', here(i.src))));
+
+  // The worker's shell, against the module list. Same shape as `modules`: the
+  // src/ entries have to be the list exactly, in load order, and the rest of
+  // the shell has to be on disk.
+  const sw = read('sw.js');
+  const arr = /var SHELL = \[([^\]]*)\]/.exec(sw);
+  if (!arr) { console.log('sw.js : no SHELL list'); process.exit(1); }
+  const shell = arr[1].match(/'([^']+)'/g).map((s) => s.slice(1, -1));
+  const mods = shell.filter((f) => f.indexOf('src/') === 0);
+  const same = mods.length === H.MODULES.length && mods.every((v, i) => v === H.MODULES[i]);
+  console.log('sw.js SHELL : ' + shell.length + ' files, ' + mods.length + ' of them modules');
+  console.log(same ? 'OK - in step with modules.js' : 'MISMATCH - see `check.js modules`');
+  if (!same) bad = true;
+  const gone = shell.filter((f) => f !== './' && !here(f));
+  gone.forEach((f) => console.log('  ' + f + ' : MISSING'));
+  console.log('  ' + (shell.length - gone.length) + ' of ' + shell.length + ' present');
+  if (gone.length) bad = true;
+  // The pages themselves are the shell's reason for existing.
+  ['index.html', 'edit-dos.html', 'agat.css', 'roms/roms.js'].forEach((f) => {
+    need(say('sw.js precaches ' + f, shell.indexOf(f) >= 0));
+  });
+
+  // And what the page has to say for itself before any of the above is reached.
+  const idx = read('index.html');
+  need(say('index.html manifest link', /<link rel="manifest" href="manifest.json">/.test(idx)));
+  need(say('index.html registers sw.js', /serviceWorker\.register\('sw\.js'\)/.test(idx)));
+  need(say('index.html file handler', /launchQueue\.setConsumer/.test(idx)));
+  for (const page of ['index.html', 'edit-dos.html']) {
+    const html = read(page);
+    need(say(page + ' icon links',
+             /<link rel="icon"/.test(html) && /<link rel="apple-touch-icon"/.test(html)));
+    need(say(page + ' theme-color', /<meta name="theme-color"/.test(html)));
+  }
+
+  // The types the manifest claims, against what the page says it takes. The
+  // sniffer decides by size and not by extension, so this is about the OS's
+  // file dialog and nothing deeper — but a format offered on the page and not
+  // in the manifest is a file the installed copy refuses to be opened with.
+  const claimed = [];
+  (man.file_handlers || []).forEach((h) => {
+    Object.keys(h.accept || {}).forEach((k) => h.accept[k].forEach((x) => claimed.push(x)));
+  });
+  ['.agc', '.dsk', '.aim', '.nib', '.fil'].forEach((x) => {
+    need(say('handles ' + x, claimed.indexOf(x) >= 0));
+  });
+
   process.exit(bad ? 1 : 0);
 }
 

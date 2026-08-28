@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="agat.css">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14161a">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/agat-180.png">
 <title>Agat-7 / Agat-9 emulator</title>
 <style>
   .screen {
@@ -1129,6 +1133,17 @@
     if (e.dataTransfer && e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
   });
 
+  // An installed copy is the system's handler for the disk formats, so a file
+  // double-clicked in a file manager arrives here instead of on the screen —
+  // as a launch carrying handles rather than a drop carrying files. One await
+  // apiece and it is the drop path again, whole.
+  if (window.launchQueue) {
+    launchQueue.setConsumer(function (l) {
+      if (!l.files || !l.files.length) return;
+      Promise.all(l.files.map(function (h) { return h.getFile(); })).then(loadFiles);
+    });
+  }
+
   // The bar picks the machine and the popup adjusts it, but both end up here:
   // a size or a card is part of what gets built, not something set afterwards.
   // The menus are read before setModel because that is what rebuilds, and while
@@ -2039,6 +2054,14 @@
     if (url.monitor && pick(monitorSel, url.monitor)) o.monitor = monitorSel.value;
     if (urlCardLayer) o.cards = urlCardLayer;
     return o;
+  }
+
+  // Offline, and the Install offer that comes with it. A checkout opened from
+  // file:// has no origin for a worker to be scoped to and registration throws
+  // there, so it is guarded rather than reported: the page is the same page
+  // either way, and a reader who opened a file has nothing to do about it.
+  if (navigator.serviceWorker && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
   }
 
   app.init().then(function () {

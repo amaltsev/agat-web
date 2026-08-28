@@ -197,6 +197,20 @@ edited — and a container that the address *cannot* name, one dropped on the pa
 or opened by hand, has its machine written out in full instead, since reopening
 the address will not bring it back.
 
+### Installing it
+
+The [hosted copy](https://amaltsev.github.io/agat-web/) installs. Chromium
+offers **Install** in the address bar; a phone offers *Add to Home Screen*. An
+installed copy opens in its own window and is the system's handler for `.agc`,
+`.dsk`, `.aim`, `.nib` and `.fil` — double-click a disk and it boots.
+
+It runs offline once visited: the emulator and both pages are kept, and an
+example is kept from the first time it is played, so a program played once stays
+playable with no network. One never opened still needs one.
+
+A checkout opened as a file has none of this — it needs a served copy, the same
+way the examples do — and is otherwise exactly the same page.
+
 ## `.agc` — the Agat Container
 
 Knowing how to run an old program is more than having its disk: which machine,
@@ -436,6 +450,7 @@ printer and tape.
 ```sh
 node tools/vectors.js               # pure-function tests, about a second
 node tools/check.js modules         # index.html vs tools/modules.js
+node tools/check.js pwa             # the manifest, its icons, the offline shell
 node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/check.js boot <image>    # boot and report where it got to
 node tools/check.js write <image> --keys=…   # boot unlocked, say what was written

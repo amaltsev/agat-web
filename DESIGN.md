@@ -41,6 +41,37 @@ This one check kills the entire class of "works headlessly, blank page in the
 browser" bug, which is otherwise very easy to introduce and very annoying to
 diagnose. Run it before believing anything.
 
+### The installable copy
+
+`manifest.json` and `sw.js` are what make a served copy an app: Chromium offers
+Install, the window opens without chrome, and the system hands `.agc`, `.dsk`,
+`.aim`, `.nib` and `.fil` to it. The manifest's `file_handlers` claim the types;
+`launchQueue.setConsumer` in `index.html` turns the launch into the same
+`loadFiles` call a drop makes, one `getFile()` apiece. Nothing in `src/` knows
+any of this happened.
+
+`sw.js` answers three ways, by what is asked for:
+
+| | | |
+| --- | --- | --- |
+| the shell | stale-while-revalidate | the cache answers, the network refreshes behind it |
+| `examples/`, and any image | cache-first, filled on use | a disk image does not change under its own name |
+| everything else | network | no `respondWith`, so it is as if there were no worker |
+
+The shell is stale-while-revalidate rather than cache-first behind a version
+constant because a constant somebody has to remember to bump is the failure this
+project would actually hit. A deploy is live on the second load, and the shell
+moves as a set. `CACHE`'s name exists to throw everything away by hand, not to
+stamp a release.
+
+`SHELL` is `tools/modules.js` in load order, plus the two pages, the sheet, the
+ROMs, the manifest and the icons — asserted by `node tools/check.js pwa`, which
+also parses the manifest and looks on disk for every icon it names.
+
+Registration is guarded by `location.protocol !== 'file:'`: a worker needs an
+origin, a checkout opened by double-clicking `index.html` has none, and that has
+to keep working exactly as it does today.
+
 ---
 
 ## Module map
