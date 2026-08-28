@@ -236,6 +236,7 @@
     var self = this, dos = this.dos;
     this.headEl.textContent = '';
     this.listEl.textContent = '';
+    this.noteEl.textContent = '';
     this.noteEl.hidden = true;
     this.addEl.disabled = !this.writable;
     if (!dos) {
