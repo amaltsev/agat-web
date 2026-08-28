@@ -94,7 +94,9 @@
 //
 // A field this reader does not know is dropped rather than carried through, so
 // a hand-written key on the container itself does not survive a `set`. Patch
-// records are the exception: their annotations are kept.
+// records are the exception: their annotations are kept. The fields that do
+// survive keep the order the file had them in, so a change to one shows up in a
+// diff as a change to one; a new container is written in the documented order.
 //
 // The writer is src/agc.js, the same one the page's Save button goes through,
 // so a container written here and one written there are the same file.
@@ -387,10 +389,37 @@ function select(c, names, all) {
 async function write(c, media, to) {
   const s = spec(c);
   s.media = media;
-  const text = await A.agc.build(s);
+  const text = asItWas(await A.agc.build(s), c.path);
   if (to === '-') { process.stdout.write(text); return '-'; }
   fs.writeFileSync(to, text);
   return to;
+}
+
+// The fields back in the order the container already had them. src/agc.js
+// writes the documented order, which is what a new container should have and
+// what the page's Save button produces; a container that has been hand-edited
+// since is somebody's own arrangement, and a `set` that changes one field and
+// silently shuffles the rest makes a diff nobody can read. `make` has no file
+// to take an order from and gets the documented one.
+//
+// A field the file did not have goes where the documented order puts it,
+// relative to whatever of that order survives around it.
+function asItWas(text, from) {
+  if (!from) return text;
+  const had = Object.keys(JSON.parse(fs.readFileSync(from, 'utf8')));
+  const o = JSON.parse(text);
+  const seq = had.filter((k) => k in o);
+  for (const k of Object.keys(o)) {
+    if (seq.indexOf(k) >= 0) continue;
+    // The nearest field ahead of this one that the file did have: the new field
+    // lands just after it, and first of all when there is none.
+    const before = Object.keys(o).slice(0, Object.keys(o).indexOf(k))
+                         .filter((p) => seq.indexOf(p) >= 0).pop();
+    seq.splice(before === undefined ? 0 : seq.indexOf(before) + 1, 0, k);
+  }
+  const out = {};
+  for (const k of seq) out[k] = o[k];
+  return JSON.stringify(out, null, 2) + '\n';
 }
 
 // «1 medium», «2 media» — the plural of the word the container uses.
