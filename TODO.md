@@ -17,3 +17,7 @@
   from flags of their own. The page reads all of it, and where a disk goes is
   `App.place`/`App.mountSpot`: it is `src/` already, but reachable only through
   an `App`.
+* PWA - for both desktop and phone app installs
+* A way to merge patches into the disk. Especially useful for blank
+  disks, but might be useful for all. Think the UI through if decided to
+  implement this.

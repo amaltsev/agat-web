@@ -114,9 +114,11 @@ the tab loses them; **Save AGC** lights up while there are any, and keeps them
 as patches on the image they came from. It can also keep the machine itself, if
 you tick the box it puts up — see [`.agc`](#agc--the-agat-container) below.
 
-The **⋯** beside the lock opens the drive: which disk is in it, **Eject**,
-**Blank** — a disk of nothing, to `INIT` from DOS — and **Open into drive…**,
-which changes that one disk and leaves the rest of the session running. The list
+The **⋯** beside the lock opens the drive: which disk is in it, **Rename**,
+**Eject**, **Blank** — a disk of nothing, to `INIT` from DOS — and **Open into
+drive…**, which changes that one disk and leaves the rest of the session
+running. A name is what the container calls the disk and nothing more; the
+format is read from the image's size. The list
 holds every disk the session has, including any a container carries that no
 drive is holding, so an editor booted from one disk can save to another. Under
 the rule, **View/Edit DOS files** is the disk's own catalog and what a file can

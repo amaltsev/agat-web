@@ -310,6 +310,10 @@
     font-size: 12px; padding: 2px 8px;
   }
   #files .disks select { max-width: 22ch; }
+  /* The name being typed sits where the disk's name is read, and is the width
+     a DOS filename and an extension take. */
+  #renamerow input { width: 24ch; font-size: 12px; padding: 3px 8px; }
+  #renamerow button { font-size: 12px; padding: 2px 8px; }
   #files .disks button.rw { color: #ff8078; border-color: #6a2a24; }
   /* Where the drive stops and the disk's files begin. Full width of the panel,
      since it divides the panel rather than the row. */
@@ -410,11 +414,18 @@
     <span class="key" id="diskkey">Disk</span>
     <select id="whichdisk" title="The disk in this drive"></select>
     <button id="disklock">RO</button>
+    <button id="diskrename" title="What this disk is called in the container; the format is read from its size, never from the name">Rename</button>
     <button id="diskeject" title="Take the disk out; it is still saved">Eject</button>
     <button id="diskblank" title="A disk of nothing — INIT it from DOS">Blank</button>
     <label class="file" title="Open a file into this drive, leaving the rest of the session alone">Open into drive…
       <input type="file" id="diskopen"></label>
     <button id="filesclose" class="sp">Close</button>
+  </div>
+  <div class="row" id="renamerow" hidden>
+    <span class="key">Name</span>
+    <input type="text" id="diskname" spellcheck="false" autocomplete="off">
+    <button id="renamego">OK</button>
+    <button id="renamecancel">Cancel</button>
   </div>
   <div class="row"><span class="key"></span><span class="note" id="diskfacts"></span></div>
   <hr>
@@ -565,10 +576,10 @@
       The lock is the disk's and follows it from drive to drive.
     </td></tr>
     <tr><td><b>⋯</b></td><td>
-      The drive: which disk is in it, <b>Eject</b>, <b>Blank</b> — a disk
-      of nothing, to <code>INIT</code> from DOS — and <b>Open into
-      drive…</b>, which changes that one disk and leaves the session
-      running. The list holds every disk the session has, a container's
+      The drive: which disk is in it, <b>Rename</b>, <b>Eject</b>,
+      <b>Blank</b> — a disk of nothing, to <code>INIT</code> from DOS — and
+      <b>Open into drive…</b>, which changes that one disk and leaves the
+      session running. The list holds every disk the session has, a container's
       spares included, so an editor booted from one disk can save to
       another. <b>View/Edit DOS files</b> under it is that disk's catalog,
       and what each file can be taken off or put onto it with:
@@ -1651,6 +1662,8 @@
   var diskFactsEl = document.getElementById('diskfacts');
   var dosToggleEl = document.getElementById('dostoggle');
   var listEl = document.getElementById('filespanel');
+  var renameRowEl = document.getElementById('renamerow');
+  var renameEl = document.getElementById('diskname');
 
   function openFiles(e) {
     var at = driveOf(e.currentTarget);
@@ -1704,6 +1717,10 @@
       ? 'Writable. What a program writes stays in memory — Save AGC keeps it'
       : 'Read-only. Click to let a program write to this disk';
     document.getElementById('diskeject').disabled = !entry;
+    document.getElementById('diskrename').disabled = !entry;
+    // A name being typed belongs to the disk it was opened on: change the disk
+    // and the row is about a disk that is no longer there.
+    if (!entry || (renameFor && renameFor !== entry)) closeRename();
 
     diskFactsEl.textContent = 'slot ' + filesSlot + ' — ' + (entry
       ? entry.name + ', ' + entry.kind + ', ' +
@@ -1754,6 +1771,55 @@
       } : null,
     });
   }
+
+  // ---- the disk's name -----------------------------------------------------
+  //
+  // What the container calls this disk, and nothing else: the format is read
+  // from the image's size, so a name is for whoever opens the file. A row of
+  // its own rather than a prompt, so the disk it is about stays on the screen
+  // above it.
+  var renameFor = null;
+
+  function openRename() {
+    var entry = app.diskIn(filesSlot, filesDrv);
+    if (!entry) return;
+    renameFor = entry;
+    renameRowEl.hidden = false;
+    renameEl.value = entry.name;
+    renameEl.focus();
+    renameEl.select();
+  }
+
+  function closeRename() {
+    renameFor = null;
+    renameRowEl.hidden = true;
+  }
+
+  function doRename() {
+    var entry = renameFor, was = entry && entry.name;
+    var name = renameEl.value.replace(/^\s+|\s+$/g, '');
+    if (!entry) return;
+    if (!name) { say('a disk needs a name', true); return; }
+    closeRename();
+    if (name === was) return;
+    entry.name = name;
+    say(was + ' is now ' + name);
+    showDisk();
+  }
+
+  document.getElementById('diskrename').addEventListener('click', function () {
+    if (renameRowEl.hidden) openRename(); else closeRename();
+  });
+  document.getElementById('renamego').addEventListener('click', doRename);
+  document.getElementById('renamecancel').addEventListener('click', closeRename);
+  // Typed rather than clicked, which is how a name gets entered: Return is the
+  // button beside it and Escape is the one after that. Nothing has to be done
+  // about the machine reading the same keyboard — keyboard.js hands nothing on
+  // from a field being typed into.
+  renameEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); doRename(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeRename(); }
+  });
 
   dosToggleEl.addEventListener('click', function () {
     dosOpen = !dosOpen;
@@ -1817,6 +1883,7 @@
 
   function closeFiles() {
     if (filesEl.hidden) return;
+    closeRename();
     filesEl.hidden = true;
     filesSlot = -1;
     if (filesUI) filesUI.mount(null, {});
