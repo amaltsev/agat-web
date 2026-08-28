@@ -513,48 +513,52 @@ function get(c) {
   }
 }
 
-// What the container says, in the order the file says it, and then a line for
-// each medium. The encodings come off the JSON rather than off the parse, since
-// what a payload was written as is a property of the file and not of the bytes.
+// What the container says, laid out as YAML is — `name: value`, a block
+// indented under its name — for no reason but that it reads well down a column.
+// It is a convention and not a format: nothing parses this back.
+//
+// The order runs from what the program is to what it runs on: the machine, then
+// the media it holds, then last the state it was saved in.
+//
+// The machine is printed whole — every field and every slot, whether the
+// container names it or the model brings it — with `# default` against what the
+// container does not say. What a container leaves out is most of what a machine
+// is, and a listing that shows only the overrides makes a stock Agat-9 — two
+// controllers and an ОЗУ card — look like a machine with nothing in it.
+//
+// The encodings come off the JSON rather than off the parse, since what a
+// payload was written as is a property of the file and not of the bytes.
 function info(c) {
   const raw = JSON.parse(fs.readFileSync(c.path, 'utf8'));
-  const say = (k, v) => { if (v) console.log(k.padEnd(9) + v); };
-  say('agc', c.version);
+  say('agc', c.version + ', ' + fs.statSync(c.path).size + ' bytes on disk');
   say('title', c.title);
   say('author', c.author);
   say('date', c.date);
   say('url', c.url);
-  const m = c.machine;
-  const bits = ['Agat-' + (m.model || 7), (m.ram || (m.model === 9 ? 128 : 64)) + 'K'];
-  if (m.monitor) bits.push(m.monitor);
-  if (m.boot) bits.push('boot ' + m.boot);
-  for (const n in m.slots || {}) {
-    const s = m.slots[n];
-    bits.push(n + ':' + (s ? s.card + (s.ram ? ':' + s.ram : '') +
-                             (s.drives === 2 ? ' (2 drives)' : '') : 'empty'));
-  }
-  say('machine', bits.join(', '));
   const keys = Object.keys(c.keys);
   if (keys.length) {
-    say('keys', keys.length + ': ' + keys.join(' '));
-    for (const k of keys) {
+    say('keys', keys.length);
+    const rows = keys.map((k) => {
       const v = c.keys[k], code = typeof v === 'string' ? v : (v && v.code) || '';
-      const hint = v && v.hint ? v.hint : '';
-      console.log(('  ' + k.padEnd(12) + (code || '(as it is)').padEnd(11) +
-                   hint).replace(/\s+$/, ''));
-    }
+      return { text: k + ': ' + (code || '(as it is)'),
+               note: v && v.hint ? v.hint : '' };
+    });
+    column(rows, '  ', '');
   }
   const groups = Object.keys(c.controls);
   if (groups.length) say('controls', groups.join(', '));
   say('info', c.info);
   say('hint', c.hint);
   say('notes', c.notes);
-  say('state', c.state ? 'the machine as it stood' : '');
-  console.log(count(c.media.length) + ', ' + fs.statSync(c.path).size + ' bytes on disk');
+
+  console.log('machine:');
+  column(machineRows(c.machine), '  ', '# default');
+
+  say('media', count(c.media.length));
   c.media.forEach((md, i) => {
     const s = A.sniff(md.payload, md.name);
     const enc = (raw.media || [])[i] || {};
-    let line = i + ' ' + md.name.padEnd(24) + ' ' +
+    let line = '  ' + i + ': ' + md.name.padEnd(24) + ' ' +
                (s.kind || md.payload.length + ' bytes').padEnd(7) +
                ' ' + String(md.payload.length).padStart(7) +
                ' ' + (enc.gz ? 'gz' : enc.data ? 'base64' : 'hex');
@@ -568,4 +572,61 @@ function info(c) {
     }
     console.log(line);
   });
+  say('state', c.state ? 'the machine as it stood' : '');
+}
+
+// One field. A value with line breaks in it — a --notes of several paragraphs —
+// becomes the block under its name rather than one very long line.
+function say(name, v) {
+  if (!v && v !== 0) return;
+  const lines = String(v).split('\n');
+  if (lines.length === 1) { console.log(name + ': ' + lines[0]); return; }
+  console.log(name + ':');
+  for (const l of lines) console.log('  ' + l);
+}
+
+// Rows with something said about some of them, in a column: the marks line up
+// whatever the values are, which is what makes a block of defaults readable as
+// a block. `note` is the mark itself where every row's is the same word.
+function column(rows, indent, note) {
+  const wide = rows.reduce((w, r) => (r.note ? Math.max(w, r.text.length) : w), 0);
+  for (const r of rows) {
+    console.log((indent + (r.note ? r.text.padEnd(wide) + '  ' + (note || r.note)
+                                  : r.text)).replace(/\s+$/, ''));
+  }
+}
+
+// The machine the container asks for, field by field, marked where the value is
+// the model's rather than the container's. The slots are the resolved map —
+// what would actually be fitted — so a slot the container says nothing about
+// shows the card the stock complement puts there; `machine.slots` is consulted
+// only for which of them to mark, and for a slot the container empties, which
+// resolving takes out of the map altogether.
+function machineRows(m) {
+  const model = m.model || 7;
+  const named = m.slots || {};
+  const rows = [];
+  const row = (k, v, own) => rows.push({ text: k + ': ' + v, note: own ? '' : 'default' });
+  row('model', 'Agat-' + model, m.model);
+  row('ram', (m.ram || (model === 9 ? 128 : 64)) + 'K', m.ram);
+  row('monitor', m.monitor || 'color16', m.monitor);
+  row('boot', m.boot || 'auto', m.boot);
+  rows.push({ text: 'slots:', note: '' });
+  // Sizes are kilobytes in a container and bytes in a machine, as they are on
+  // the page: App.scaleSlots does this same multiplication on the way in.
+  const scaled = {};
+  for (const n in named) {
+    scaled[n] = named[n] && { card: named[n].card, ram: named[n].ram * 1024 || 0,
+                              drives: named[n].drives };
+  }
+  const fitted = A.Machine.resolveSlots(model, scaled);
+  const slots = Object.keys(fitted).concat(Object.keys(named).filter((n) => !named[n]));
+  for (const n of slots.sort((a, b) => a - b)) {
+    const s = fitted[n];
+    const what = !s ? 'empty'
+               : s.card + (s.ram ? ', ' + (s.ram >> 10) + 'K' : '') +
+                 (s.drives === 2 ? ', 2 drives' : '');
+    rows.push({ text: '  ' + n + ': ' + what, note: n in named ? '' : 'default' });
+  }
+  return rows;
 }
