@@ -1574,7 +1574,7 @@ async function agcTests() {
   eq('patching leaves the packed copy alone',
      [c.media[0].bytes[2], c.media[0].bytes[3]], [bytes[2], bytes[3]]);
   // Unprefixed, because `applyPatches` is also called on its own — by
-  // `tools/mkagc.js` and by the Save button — where there is no container to
+  // `tools/agc.js` and by the Save button — where there is no container to
   // name. The container's own reader is what adds the name; see below.
   eq('a patch off the end is refused', (() => {
     try { A.agc.applyPatches(bytes, [patch(199, 'AABB')]); return 'no'; }
@@ -1620,7 +1620,7 @@ async function agcTests() {
     eq('bytes that gzip cannot help stay base64', await pick(dense(200)), 'data');
     eq('an empty sector is worth compressing', await pick(empty(256)), 'gz');
     eq('and so is a track of them', await pick(empty(4096)), 'gz');
-    // The two overrides, which are `mkagc --plain` and `mkagc --gz`.
+    // The two overrides, which are `agc.js --plain` and `agc.js --gz`.
     eq('gz: false keeps a payload readable whatever it costs',
        await pick(empty(4096), { gz: false }), 'data');
     eq('gz: true compresses one that has not earned it',

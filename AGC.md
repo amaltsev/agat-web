@@ -577,12 +577,15 @@ with a `-yyyymmdd-hhmmss` stamp on it, so `game.agc` saves as
 over it. An existing stamp is replaced rather than added to. One made from a
 bare image takes the image's name for both, unstamped — that save is a first
 one — so `game.dsk` saves as `game.agc` titled `game.dsk`. Rename either, and
-open it in a text editor to add an author, a date and the keys.
+add an author, a date and the keys with `tools/agc.js set` or a text editor.
 
 ### From the command line
 
+`tools/agc.js` is the container as a command: it makes one, says what one holds,
+and changes one that exists.
+
 ```sh
-node tools/mkagc.js game.dsk \
+node tools/agc.js make game.dsk \
   --title="…" --author="…" --date=1989 --url=https://… \
   --model=7 --ram=64 --info="A platform game of 1989." \
   --hint="Press РУС at the title screen." \
@@ -592,11 +595,38 @@ node tools/mkagc.js game.dsk \
 `--key` is `CODE:VALUE:HINT`, split on the first two colons, and may be repeated.
 `--patch=AT:HEX` states a patch directly; `--diff=<modified image>` works the
 patches out by comparing a changed copy against the original, which is how a
-patch is usually arrived at.
+patch is usually arrived at. `--model`, `--ram`, `--monitor`, `--boot` and
+`--slot=N:CARD[:RAM[:DRIVES]]` are the machine; `--in` and `--writable` are the
+drive a medium goes in and whether a program may write to it.
+
+Every one of those flags means the same thing to `set`, which changes what an
+existing container says and leaves its media alone — an empty value clears a
+field, and `--no-key=KEY` drops a key:
+
+```sh
+node tools/agc.js info  game.agc                     # what it holds
+node tools/agc.js set   game.agc --date="1990-92" --url=
+node tools/agc.js get   game.agc 0 --out=/tmp        # the disk back out as a file
+node tools/agc.js add   game.agc side-b.dsk --in=fdd140:2
+node tools/agc.js rm    game.agc 'side-b*'
+node tools/agc.js merge game.agc                     # patches into the image
+```
+
+A medium is named by its position or by its name, where `*` and `?` glob. `add`
+takes a container as well as an image, and then takes its media, patches and
+drives and nothing else. `get` writes the image the machine runs — the payload
+with the patches applied — which is what `merge` writes back into the container
+itself, for a disk that has been written to and is not going to be written back.
+An annotated patch is somebody's writing about a change, so `merge` refuses to
+lose one until `--force` says to.
 
 `--plain` writes every payload and patch as base64 whatever it costs, for a
 container meant to be hand-edited or read in a diff; `--gz` compresses even
 where the saving is slight. Left alone, the size rule decides.
+
+**A field this reader does not know is dropped rather than carried through**, so
+a hand-written key on the container itself does not survive a `set` — patch
+records are the exception, and keep their annotations.
 
 ---
 

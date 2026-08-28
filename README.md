@@ -284,13 +284,16 @@ that save being a first one, so `game.dsk` saves as `game.agc` titled
 line:
 
 ```sh
-node tools/mkagc.js game.dsk --title="…" --author="…" --date=1989 \
+node tools/agc.js make game.dsk --title="…" --author="…" --date=1989 \
   --model=7 --ram=64 --key="KeyW:^:Shoot right" \
   --hint="Press РУС at the title screen." > game.agc
 ```
 
 `--diff=<patched image>` works out the patches by comparing, and `--patch=AT:HEX`
-states one directly.
+states one directly. The same tool reads and changes a container that exists:
+`info` says what one holds, `set` changes what it says, `get` writes a medium
+back out as a file, `add` and `rm` put media in and take them out, and `merge`
+folds the patches into the image.
 
 ### Examples
 
@@ -437,7 +440,8 @@ node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/check.js boot <image>    # boot and report where it got to
 node tools/check.js write <image> --keys=…   # boot unlocked, say what was written
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
-node tools/mkagc.js <image> …       # pack an image and its settings into an .agc
+node tools/agc.js make <image> …    # pack images and their settings into an .agc
+node tools/agc.js info|set|get|add|rm|merge <.agc> …   # read one, change one
 node tools/dos.js ls <image>        # the catalog of a DOS 3.3 disk
 ```
 

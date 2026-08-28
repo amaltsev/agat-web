@@ -541,7 +541,7 @@
       });
   }
 
-  // The writer both `tools/mkagc.js` and the page's Save button go through, so
+  // The writer both `tools/agc.js` and the page's Save button go through, so
   // there is one definition of what a container looks like. Fields are added in
   // the documented order because JSON.stringify keeps insertion order, and a
   // format people are meant to hand-edit should read the same way every time.
@@ -585,6 +585,7 @@
     decodeBytes: decodeBytes, encodeBytes: encodeBytes,
     applyPatches: applyPatches, diff: diff, repatch: repatch,
     isAnnotated: isAnnotated,
+    CARDS: CARDS, BOOT: BOOT, IN: IN,
     VERSION: VERSION, LINE: LINE, HEX_MAX: HEX_MAX, GAIN: GAIN,
   };
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

@@ -170,6 +170,8 @@ async function save(img, sec) {
       bytes: m.bytes,
       patches: i === img.index ? A.agc.repatch(m.bytes, m.patches, patched)
                                : m.patches,
+      mount: m.mount,
+      writable: m.writable,
     }));
     const text = await A.agc.build({
       title: c.title, author: c.author, date: c.date, url: c.url,

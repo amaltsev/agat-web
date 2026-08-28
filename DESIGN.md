@@ -1053,8 +1053,13 @@ node tools/shot.js <image> --mouse=nippel --click=R --hold=L --move=60,0
 node tools/corpus.js <dir> --md     # walk a directory, boot everything
 node tools/debug.js …               # dump / trace / run-to-PC
 
-node tools/mkagc.js <image> …       # pack an image and its settings into an .agc
-node tools/mkagc.js a.dsk --diff=b.dsk    # ...with the difference as patches
+node tools/agc.js make <image> …    # pack images and their settings into an .agc
+node tools/agc.js make a.dsk --diff=b.dsk # ...with the difference as patches
+node tools/agc.js info  <.agc>      # what one holds
+node tools/agc.js set   <.agc> …    # change what it says
+node tools/agc.js get   <.agc> …    # media out of it, as files
+node tools/agc.js add|rm <.agc> …   # media into it, media out of it
+node tools/agc.js merge <.agc>      # patches folded into the image
 
 node tools/dos.js ls    <image>     # the catalog of a DOS 3.3 disk
 node tools/dos.js get   <image> NAME [out]     # a file off it, as a .fil

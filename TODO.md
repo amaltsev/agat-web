@@ -8,7 +8,10 @@
   top-level or `media` field is dropped on load and gone from the next
   Save. AGC.md's implementer note asks a reader to carry through what it
   does not understand; only patch records do.
-* AGC structure editor CLI & Web UI (merge patches into media, add/remove media, reorder, set meta). Or should that all just be a part of "Save AGC" prompt?
+* AGC structure editor Web UI. The CLI is `tools/agc.js`: `set` for the
+  metadata, `get`/`add`/`rm` for the media, `--at` for the order, `merge`
+  for the patches. Nothing on the page does any of it — should it be part
+  of the "Save AGC" prompt?
 * The CLI drives one medium of a container, on the machine that container's
   `model` and `ram` name. `harness.js` unwraps an `.agc` to `media[0]`, and
   nothing hands `makeMachine` the container's `machine.slots` — so a second
@@ -18,6 +21,8 @@
   `App.place`/`App.mountSpot`: it is `src/` already, but reachable only through
   an `App`.
 * PWA - for both desktop and phone app installs
-* A way to merge patches into the disk. Especially useful for blank
-  disks, but might be useful for all. Think the UI through if decided to
+* A way to merge patches into the disk from the page. `node tools/agc.js
+  merge` does it on the command line. Especially useful for blank disks,
+  but might be useful for all. Think the UI through if decided to
   implement this.
+* Cache-busting on loading from src/ and agat.css
