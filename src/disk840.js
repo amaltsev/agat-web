@@ -93,6 +93,13 @@
     this.cyl = 0;                       // head cylinder, 0..79
     this.pos = 0;                       // byte index within the track
     this.lastWritePos = 0;              // the slot the last written byte went to
+    // The side this drive last had business with. One head select line goes to
+    // both drives, so the side a drive's head is over is the card's and not the
+    // drive's — but a logical track built from the live line moves for a drive
+    // that is standing still, and a drive bar that counts off tracks on an idle
+    // drive is describing a seek that never happened. What each drive last
+    // worked on holds until it works again.
+    this.side = 0;
   }
 
   function Disk840(opts) {
@@ -142,11 +149,11 @@
 
   Disk840.prototype.mediaAt = function (drv) { return this.disks[which(drv)]; };
 
-  // Where one drive's head stands, for a lamp that draws both. The side is the
-  // controller's — one head select line goes to both drives — so only the
-  // cylinder is the drive's own.
+  // Where one drive's head stands, for a lamp that draws both: its own cylinder
+  // and the side it last worked, which for the selected drive is the live one.
   Disk840.prototype.trackAt = function (drv) {
-    return this.heads[which(drv)].cyl * 2 + this.side;
+    var h = this.heads[which(drv)];
+    return h.cyl * 2 + h.side;
   };
 
   // Reset clears the 8255s, so the drive lines — motor, side, direction, select
@@ -154,7 +161,9 @@
   // ROM's recalibrate is what finds cylinder 0 again.
   Disk840.prototype.reset = function () {
     this.portC = 0;
-    this.side = 0;
+    // The side line drops at both drives, so neither is left claiming the far
+    // side of a cylinder it is no longer over.
+    this.side = this.heads[0].side = this.heads[1].side = 0;
     this.ready = false;
     this.syncSeen = false;
     this.latched = false;
@@ -219,7 +228,8 @@
                 heads: [] };
     for (var i = 0; i < this.heads.length; i++) {
       out.heads.push({ cyl: this.heads[i].cyl, pos: this.heads[i].pos,
-                       lastWritePos: this.heads[i].lastWritePos });
+                       lastWritePos: this.heads[i].lastWritePos,
+                       side: this.heads[i].side });
     }
     return out;
   };
@@ -245,6 +255,10 @@
       this.heads[i].cyl = list[i].cyl;
       this.heads[i].pos = list[i].pos;
       this.heads[i].lastWritePos = list[i].lastWritePos;
+      // After setPortC, which stamped the selected head with the live side. A
+      // snapshot from before the side was a drive's to remember has the line's,
+      // which is what it was taken under.
+      this.heads[i].side = list[i].side === undefined ? this.side : list[i].side;
     }
     if (!list.length) {
       this.cyl = s.cyl;
@@ -278,6 +292,10 @@
   Disk840.prototype.setPortC = function (v) {
     this.portC = v & 0xff;
     this.side = (this.portC >> PC_SIDE) & 1;
+    // The drive the card is talking to is the one whose side this is; the other
+    // keeps the side it was left on. Both lines are in this one write, so the
+    // drive stamped is the one selected by the value just stored.
+    this.heads[this.drv].side = this.side;
   };
 
   // 8255 control port. Values with bit 7 clear are the chip's bit set/reset

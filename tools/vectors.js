@@ -1143,6 +1143,30 @@ async function disk840WriteTests() {
     const moved = two.cyl;
     two.control(0x06);                        // back to drive 1
     eq('840K: each drive keeps its own cylinder', [moved, two.cyl], [1, 0]);
+
+    // A logical track is cylinder*2 + side, and the side line goes to both
+    // drives — so a track number built from the live line counts off tracks on
+    // a drive that is standing still, which is what a copy sweeping D1 looked
+    // like on D2. What a drive shows is the side it last worked.
+    two.control(0x07);                        // D2 again, and the far side
+    two.control(0x09);                        // port C bit 4 — side 1
+    const parked = two.trackAt(1);
+    two.control(0x06);                        // back to drive 1
+    two.control(0x08);                        // side 0, for D1's own track
+    eq('840K: an idle drive keeps the track it last worked',
+       [parked, two.trackAt(1), two.trackAt(0)], [3, 3, 0]);
+
+    // And it survives a snapshot, including one taken before a drive had a
+    // side of its own: those carry the line's, which is what they were under.
+    const saved = two.saveState();
+    const back = new A.Disk840({ drives: 2 });
+    back.loadState(saved);
+    const old840 = new A.Disk840({ drives: 2 });
+    old840.loadState(Object.assign({}, saved, {
+      heads: saved.heads.map((h) => ({ cyl: h.cyl, pos: h.pos,
+                                       lastWritePos: h.lastWritePos })) }));
+    eq('840K: the side a drive last worked is in the snapshot',
+       [back.trackAt(1), old840.trackAt(1)], [3, 2]);
   }
 }
 
