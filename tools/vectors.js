@@ -152,6 +152,18 @@ function eq(what, got, want) {
   eq('App fits a «Марсианка» on a card with the ROM',
      cards(marsRom), ['2:xram9', '4:mouse-mars-rom', '5:fdd840', '6:fdd140']);
 
+  // A machine has one card of a class, so a container that names a slot for one
+  // the profile already fits moves that card rather than standing a second one
+  // beside it. examples/ikp9.agc puts the 840K controller in slot 6, which is
+  // what its disk copying addresses; the stock one at slot 5 goes with it, or
+  // whatever asks which slot holds the controller is answered 5 and the disk
+  // goes into a drive the program is not driving.
+  const moved = mk({ model: 9, cards: { fdd840: { card: 'fdd840', slot: 6 } } });
+  eq('App moves a controller rather than doubling it',
+     cards(moved), ['2:xram9', '6:fdd840']);
+  eq('App puts an 840K disk in the controller the container moved',
+     moved.slotFor('dsk840'), 6);
+
   // What Save AGC calls its file. The clock is passed in, so the stamp is a
   // fact rather than whatever second the test ran in.
   const at = new Date(2026, 7, 25, 14, 30, 12);   // months are 0-based
@@ -2360,6 +2372,18 @@ async function agcTests() {
                       { psrom: { card: 'psrom', ram: 0x4000 } }),
          { psrom: { card: 'psrom', ram: 0x4000 },
            xram: { card: 'xram', ram: 0x8000 } });
+      // The same, at the level the container is read at: `{5: null, 6: fdd840}`
+      // is one controller in slot 6, and so is `{6: fdd840}` on its own.
+      const at6 = { 2: { card: 'xram9', ram: 0x20000 }, 6: { card: 'fdd840' } };
+      eq('a card named in a slot leaves no stock one behind',
+         M.resolveSlots(9, { 6: { card: 'fdd840' } }), at6);
+      eq('...and the emptied slot beside it changes nothing',
+         M.resolveSlots(9, M.slotsFor(9, M.cardsOf(9, {
+           5: null, 6: { card: 'fdd840', ram: 0 } }), 9)), at6);
+      eq('a slot emptied on its own is still the card taken away',
+         M.slotOf(M.resolveSlots(9, M.slotsFor(9, M.cardsOf(9, { 5: null }), 9)),
+                  'fdd840'), -1);
+
       eq('and a mouse replaces a mouse rather than joining it',
          M.slotsFor(9, M.mergeCards({ mouse: { card: 'mouse-mars', slot: 4 } },
                                     { mouse: { card: 'mouse-nippel' } }), 9),

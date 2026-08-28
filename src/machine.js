@@ -205,11 +205,26 @@
   // different card, a different size, a second drive, or all of them; `null`
   // empties the slot. Keys are slot numbers, and sizes are bytes — the .agc
   // that carries them speaks kilobytes and converts on the way in.
+  //
+  // A machine has one card of a class — that is what a class is, and what the
+  // menus and the address are written against — so an override that names one
+  // somewhere is that card moved, not a second one beside the stock machine's.
+  // The profile's copy goes before anything is merged, or a container that puts
+  // the 840K controller in slot 6 gets the stock one at slot 5 as well, and
+  // whatever asks which slot holds it is answered 5.
   Machine.resolveSlots = function (model, overrides) {
-    var base = Machine.PROFILES[model === 7 ? 7 : 9].slots, out = {}, n, o, was;
+    var base = Machine.PROFILES[model === 7 ? 7 : 9].slots, out = {}, n, o, was, b;
     for (n in base) {
       out[n] = { card: base[n].card };
       if (base[n].ram) out[n].ram = base[n].ram;
+    }
+    for (n in (overrides || {})) {
+      o = overrides[n];
+      if (!o || !o.card) continue;
+      for (b in out) {
+        if (Number(b) !== Number(n) &&
+            Machine.classOf(out[b].card) === Machine.classOf(o.card)) delete out[b];
+      }
     }
     for (n in (overrides || {})) {
       o = overrides[n];
@@ -280,7 +295,14 @@
     for (n in (overrides || {})) {
       o = overrides[n];
       if (!o) {
-        if (stock[n]) out[Machine.classOf(stock[n].card)] = null;
+        // An emptied slot is the class taken away, but a container may empty
+        // the slot its model keeps a card in and name that same card in
+        // another — «the 840K controller lives at 6» said in two entries. The
+        // card it names wins whichever entry is read first, so a slot number
+        // never decides which of the two the machine gets.
+        if (stock[n] && !(Machine.classOf(stock[n].card) in out)) {
+          out[Machine.classOf(stock[n].card)] = null;
+        }
         continue;
       }
       out[Machine.classOf(o.card)] = { card: o.card, ram: o.ram || 0,
