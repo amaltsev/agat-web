@@ -5,9 +5,14 @@
   "url": "https://agatcomp.ru/agat/Software/Other/IKP.shtml",
   "date": "1988",
   "info": "ИКП1 из поставки Агат-9 завода ЗЭМЗ (ikp1-16414.dsk)",
+  "hint": "В машине два дисковода для удобства копирования",
   "machine": {
     "model": 9,
-    "ram": 128
+    "ram": 128,
+    "slots": {
+      "5": { "card": "fdd840", "drives": 2 },
+      "6": null
+    }
   },
   "media": [
     {
