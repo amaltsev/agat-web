@@ -99,14 +99,15 @@ function resume(ctx, m, agc) {
     (e) => 'booted - ' + e.message);
 }
 
-// Put media into whichever controller can read it; returns the slot used.
-function insert(m, media) {
+// Put media into whichever controller can read it, in the drive named or the
+// first; returns the slot used.
+function insert(m, media, drv) {
   const A = m.constructor;
   const slots = m.slots || A.resolveSlots(m.model, null);
   const slot = A.slotOf(slots, media.kind === 'nib140' ? 'fdd140' : 'fdd840');
   const card = m.cards[slot];
   if (!card || !card.insert) throw new Error('no controller for ' + media.kind);
-  card.insert(media);
+  card.insert(media, drv);
   return slot;
 }
 

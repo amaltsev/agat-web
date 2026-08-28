@@ -202,9 +202,9 @@
   Machine.MOUSE_SLOTS = { 7: 6, 9: 4 };
 
   // A profile's slots with overrides merged over them. An override may name a
-  // different card, a different size, or both; `null` empties the slot. Keys
-  // are slot numbers, and sizes are bytes — the .agc that carries them speaks
-  // kilobytes and converts on the way in.
+  // different card, a different size, a second drive, or all of them; `null`
+  // empties the slot. Keys are slot numbers, and sizes are bytes — the .agc
+  // that carries them speaks kilobytes and converts on the way in.
   Machine.resolveSlots = function (model, overrides) {
     var base = Machine.PROFILES[model === 7 ? 7 : 9].slots, out = {}, n, o, was;
     for (n in base) {
@@ -218,9 +218,15 @@
       if (!o.card && !was) continue;                 // a size for an empty slot
       out[n] = { card: o.card || was.card };
       // A size survives a slot being re-sized but not re-carded: 32K of ЭмПЗУ
-      // says nothing about the drive someone puts there instead.
+      // says nothing about the drive someone puts there instead. The drive
+      // count goes the same way, and a controller says nothing about how many
+      // drives hang off the card that replaced it.
       if (o.ram) out[n].ram = o.ram;
       else if (was && out[n].card === was.card && was.ram) out[n].ram = was.ram;
+      if (o.drives > 1) out[n].drives = o.drives;
+      else if (was && out[n].card === was.card && was.drives) {
+        out[n].drives = was.drives;
+      }
     }
     return out;
   };
@@ -277,8 +283,12 @@
         if (stock[n]) out[Machine.classOf(stock[n].card)] = null;
         continue;
       }
-      out[Machine.classOf(o.card)] =
-        { card: o.card, ram: o.ram || 0, slot: Number(n) };
+      out[Machine.classOf(o.card)] = { card: o.card, ram: o.ram || 0,
+                                       slot: Number(n) };
+      // Said only where there is something to say: one drive is what a card
+      // means on its own, and a `drives` on every entry would be noise in
+      // every container and every address.
+      if (o.drives > 1) out[Machine.classOf(o.card)].drives = o.drives;
     }
     return out;
   };
@@ -296,6 +306,7 @@
         ? e.slot : Machine.stockSlot(model, cls);
       if (n < 0) continue;
       out[n] = e ? { card: e.card, ram: e.ram || 0 } : null;
+      if (e && e.drives > 1) out[n].drives = e.drives;
       any = true;
     }
     return any ? out : null;
@@ -334,12 +345,15 @@
           if (AGAT.Xram9) card = new AGAT.Xram9({ size: spec.ram });
           break;
         case 'fdd840':
-          if (AGAT.Disk840) card = new AGAT.Disk840({ rom: roms.teac });
+          if (AGAT.Disk840) {
+            card = new AGAT.Disk840({ rom: roms.teac, drives: spec.drives });
+          }
           break;
         case 'fdd140':
           if (AGAT.Disk140) {
             card = new AGAT.Disk140({
               rom: this.model === 7 ? roms.shugart7 : roms.shugart9,
+              drives: spec.drives,
             });
           }
           break;

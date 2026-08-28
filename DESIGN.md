@@ -376,11 +376,24 @@ is the only thing that decides how bytes are written, by the size rule in
 [AGC.md](AGC.md#media). In between, a patch is `{ at, bytes }`, so `diff`,
 `applyPatches` and `writeBack` never see an encoding and stay synchronous.
 
-`App.sources` is the other half: the file **as it arrived**, keyed by slot,
-because nothing else keeps it. `drives[slot]` holds a name and a kind, the
-mounted `Media` is normalized past recognition, and Save would otherwise have
-nothing to write. Patches are kept beside those bytes rather than folded into
-them, so a container that is loaded and saved again is the same file.
+`App.disks` is the other half: every disk the session holds, in the order a
+container lists them, each entry the file **as it arrived** —
+`{id, name, kind, offset, prodos, bytes, patches, media}` — because nothing else
+keeps it. The mounted `Media` is normalized past recognition and Save would
+otherwise have nothing to write. Patches are kept beside those bytes rather than
+folded into them, so a container that is loaded and saved again is the same file.
+
+The entry owns its `media`, and that is what makes a disk moveable: `mount`,
+`unmount` and `place` put one in a drive and take it out again, `diskIn(slot,
+drv)` and `mountedAt(entry)` are the two directions of the same question, and a
+disk no drive is holding is still in the list and still saved. A machine holds
+two disks at the most and a container may carry more.
+
+Which drive a container's medium goes in is `in` (`agc.js` reads it as `mount`),
+and on the way out `mountSpecs` writes the fewest of them that reproduce the
+arrangement: it replays the load, and any disk the fill order would put
+somewhere else is given an `in` and the replay is run again. A container of one
+disk therefore says nothing about drives at all.
 
 ### Writing goes out the same door
 
@@ -390,9 +403,9 @@ is the image it came from, so every track the drive marked written is decoded
 back — through `gcr140.denibblizeTrack` to 16 sectors, or
 `aim840.desectorizeTrack` to 21 — and the difference comes out as patches; a
 `.nib` or `.aim` source is its own baseline and the patches are simply what
-moved (`aim840.toAim` interleaves the two planes back). It reads `this.sources`
-and the card's media and touches neither, which is what lets the tests call it
-with a two-field stand-in for an `App`.
+moved (`aim840.toAim` interleaves the two planes back). It reads the entry and
+its media and touches neither, which is what lets the tests call it with a
+two-field stand-in for an `App`.
 
 The patch list is recomputed rather than added to, and `agc.repatch` is the one
 rule for it: an **annotated** record — anything carrying a key beyond its

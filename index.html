@@ -118,6 +118,10 @@
   /* An empty drive has nothing to lock, but it keeps the space: a disk being
      dropped in must not shift the drive beside it out from under the pointer. */
   .lamp button.blank { visibility: hidden; }
+  /* A machine with fewer drives than the last one leaves a lamp over. The
+     class's own display beats the [hidden] attribute's, so hidden has to be
+     said again at the class's strength. */
+  .lamp[hidden] { display: none; }
   /* The on-screen keyboard. Sized in `em` throughout so the whole board scales
      with one font-size, which is what makes it fit a phone as well as a page:
      every cap width in keyview.js is a multiple of the same unit. */
@@ -300,6 +304,27 @@
      that does not fit on a line already carrying a title. The tiles are the
      info card's idiom — panel, edge, accent on hover — because they load a
      program rather than say something about one. */
+  /* The panel's own controls are smaller than the bar's: this is a header over
+     a drive, not a row of the page's chrome. */
+  #files .disks select, #files .disks button, #files .disks label.file {
+    font-size: 12px; padding: 2px 8px;
+  }
+  #files .disks select { max-width: 22ch; }
+  #files .disks button.rw { color: #ff8078; border-color: #6a2a24; }
+  /* Where the drive stops and the disk's files begin. Full width of the panel,
+     since it divides the panel rather than the row. */
+  #files hr {
+    border: 0; border-top: 1px solid var(--edge); margin: 9px -10px 8px;
+  }
+  /* The catalog is a second thing this panel can do, and the one that is wanted
+     less often, so it is folded away behind its own name. */
+  #dostoggle {
+    background: none; border: 0; padding: 2px 0; color: var(--dim);
+    font-size: 12.5px;
+  }
+  #dostoggle:hover { color: var(--ink); }
+  #dostoggle:disabled:hover { color: var(--dim); }
+  #dostoggle .tri { display: inline-block; width: 1.2ch; }
   /* The catalog, under the row that names the drive it came off. */
   #filespanel { margin-top: 8px; }
   #examplelist { display: grid; gap: 8px; margin: 8px 0 12px;
@@ -376,15 +401,27 @@
   </div>
 </div>
 
-<!-- The files on the disk in one drive. Not part of the machine and not part
-     of saving it, so a panel of its own: it is the disk being worked on rather
-     than the program being run. -->
+<!-- One drive: which disk is in it, and what can be done to that disk. Not
+     part of the machine and not part of saving it, so a panel of its own — it
+     is the disk being worked on rather than the program being run. The catalog
+     is this panel's other job and the rarer one, folded away under the rule. -->
 <div id="files" class="panel" hidden>
-  <div class="row">
-    <span class="key">Files</span>
+  <div class="row disks">
+    <span class="key" id="diskkey">Disk</span>
+    <select id="whichdisk" title="The disk in this drive"></select>
+    <button id="disklock">RO</button>
+    <button id="diskeject" title="Take the disk out; it is still saved">Eject</button>
+    <button id="diskblank" title="A disk of nothing — INIT it from DOS">Blank</button>
+    <label class="file" title="Open a file into this drive, leaving the rest of the session alone">Open into drive…
+      <input type="file" id="diskopen"></label>
     <button id="filesclose" class="sp">Close</button>
   </div>
-  <div id="filespanel"></div>
+  <div class="row"><span class="key"></span><span class="note" id="diskfacts"></span></div>
+  <hr>
+  <div class="row">
+    <button id="dostoggle" aria-expanded="false"><span class="tri">▸</span> View/Edit DOS files</button>
+  </div>
+  <div id="filespanel" hidden></div>
 </div>
 
 <!-- The machine, rather than the program running on it: which Agat it is, what
@@ -498,7 +535,8 @@
       <code>.fil</code> program files. Format is detected by size, not by
       extension. Opening replaces what was open, drives and all; files opened
       together stay together, so a 140K and an 840K dropped at once fill both
-      drives and are saved as one container.
+      drives and are saved as one container. <b>Open into drive…</b> on a
+      drive's <code>⋯</code> is the one that adds instead.
     </td></tr>
     <tr><td><b>AGC</b></td><td>
       An Agat Container: one of those images plus the machine it wants,
@@ -513,22 +551,30 @@
     </td></tr>
     <tr><td><b>Drives</b></td><td>
       By default 840K is in slot 5 on both machines; 140K is in slot
-      6 on the Agat-9 and slot 3 on the Agat-7. A dropped image goes
-      to whichever drive can read it. Each drive's lamp is dim while
-      its motor is running and bright while bytes are reaching the CPU;
-      <code>T</code> beside it is the track its head is on.
+      6 on the Agat-9 and slot 3 on the Agat-7, one drive on each. A
+      dropped image goes to whichever drive can read it. Each drive's
+      lamp is dim while its motor is running and bright while bytes are
+      reaching the CPU; <code>T</code> beside it is the track its head is
+      on. A container can ask for a second drive on either controller,
+      and then the lamps say <code>D1</code> and <code>D2</code>.
     </td></tr>
     <tr><td><b>RO / RW</b></td><td>
       Disks are read-only by default. Click <code>RO</code> to allow
       writing.  Writes go to memory, and closing the tab loses them.
       <b>Save AGC</b> keeps them, as patches on the disk they came from.
+      The lock is the disk's and follows it from drive to drive.
     </td></tr>
     <tr><td><b>⋯</b></td><td>
-      The files on that drive's disk: a catalog, and what each file can be
-      taken off or put onto it with. <b>View</b> opens a file — as text, as a
-      BASIC listing, as hex at the address it loads, or as the 6502
-      instructions there — and edits it if it is a <code>T</code> one.
-      It edits the disk in the drive, so the
+      The drive: which disk is in it, <b>Eject</b>, <b>Blank</b> — a disk
+      of nothing, to <code>INIT</code> from DOS — and <b>Open into
+      drive…</b>, which changes that one disk and leaves the session
+      running. The list holds every disk the session has, a container's
+      spares included, so an editor booted from one disk can save to
+      another. <b>View/Edit DOS files</b> under it is that disk's catalog,
+      and what each file can be taken off or put onto it with:
+      <b>View</b> opens a file — as text, as a BASIC listing, as hex at the
+      address it loads, or as the 6502 instructions there — and edits it if
+      it is a <code>T</code> one. It edits the disk in the drive, so the
       machine reads what is written and <b>Save AGC</b> keeps it — a running
       DOS re-reads the catalog for every command, so the next <code>CATALOG</code>
       shows the change. The machine is held while the panel is up. The same
@@ -1542,14 +1588,15 @@
 
   var lampsEl = document.getElementById('lamps');
   var lampEls = [];
+  var nameEls = [];
   var trackEls = [];
   var lockEls = [];
   var fileEls = [];
 
   // The write lock, one per drive. Every disk arrives read-only: a program that
   // writes to the disk it booted from would otherwise change the only copy the
-  // tab holds before anyone had agreed to it. Unlocking follows the disk, so
-  // ejecting one and dropping in another locks the drive again.
+  // tab holds before anyone had agreed to it. The lock is the disk's rather
+  // than the drive's, so it travels with a disk carried from one to the other.
   function syncLock(el, d) {
     var open = !!d.name && !d.locked;
     var label = d.name ? (open ? 'RW' : 'RO') : '';
@@ -1561,8 +1608,8 @@
           : 'Read-only. Click to let a program write to this disk' +
             (d.headerProtect ? ' (the image says it is write-protected)' : '');
     var cls = !d.name ? 'blank' : open ? 'rw' : '';
-    if (el.getAttribute('data-slot') !== String(d.slot)) {
-      el.setAttribute('data-slot', d.slot);
+    if (el.getAttribute('data-drive') !== d.slot + ':' + d.drv) {
+      el.setAttribute('data-drive', d.slot + ':' + d.drv);
     }
     if (el.textContent !== label) el.textContent = label;
     if (el.title !== title) el.title = title;
@@ -1570,40 +1617,46 @@
     if (el.disabled !== !d.canUnlock) el.disabled = !d.canUnlock;
   }
 
-  function toggleLock(e) {
-    var slot = Number(e.currentTarget.getAttribute('data-slot'));
-    var card = app.machine.cards[slot];
-    if (!card || !card.media) return;
-    if (!app.setLocked(slot, !card.media.locked)) return;
-    say(card.media.locked
-        ? 'slot ' + slot + ' is read-only again'
-        : 'slot ' + slot + ' can be written to — Save AGC keeps what is written');
-    syncLamps();
+  // The drive an element belongs to, as the pair the app speaks: the elements
+  // outlive one machine, so the drive is on the element rather than closed over.
+  function driveOf(el) {
+    var at = String(el.getAttribute('data-drive')).split(':');
+    return { slot: Number(at[0]), drv: Number(at[1]) };
   }
 
-  // ---- the files on a disk -------------------------------------------------
+  function toggleLock(e) {
+    var at = driveOf(e.currentTarget), entry = app.diskIn(at.slot, at.drv);
+    if (!entry) return;
+    if (!app.setLocked(entry, !entry.media.locked)) return;
+    say(entry.name + (entry.media.locked
+        ? ' is read-only again'
+        : ' can be written to — Save AGC keeps what is written'));
+    syncLamps();
+    if (filesSlot === at.slot && filesDrv === at.drv) showDisk();
+  }
+
+  // ---- one drive, and the disk in it ---------------------------------------
   //
-  // The catalog of the disk in one drive, over the live media: what is written
-  // here goes into the stream the controller is reading, so the machine sees
-  // it, and Save AGC keeps it as a patch like any other write.
+  // Which disk is in this drive, and what can be done to that disk. Under it,
+  // folded away, the catalog of it: what is written there goes into the stream
+  // the controller is reading, so the machine sees it, and Save AGC keeps it as
+  // a patch like any other write.
   var filesEl = document.getElementById('files');
   var filesUI = null;
   var filesSlot = -1;
+  var filesDrv = 0;
+  var dosOpen = false;
+  var whichEl = document.getElementById('whichdisk');
+  var diskLockEl = document.getElementById('disklock');
+  var diskFactsEl = document.getElementById('diskfacts');
+  var dosToggleEl = document.getElementById('dostoggle');
+  var listEl = document.getElementById('filespanel');
 
   function openFiles(e) {
-    var slot = Number(e.currentTarget.getAttribute('data-slot'));
-    if (!filesEl.hidden && filesSlot === slot) { closeFiles(); return; }
-    if (!app.machine.cards[slot] || !app.machine.cards[slot].media) {
-      say('slot ' + slot + ' is empty', true);
+    var at = driveOf(e.currentTarget);
+    if (!filesEl.hidden && filesSlot === at.slot && filesDrv === at.drv) {
+      closeFiles();
       return;
-    }
-    if (!filesUI) {
-      filesUI = new AGAT.DosUI(document.getElementById('filespanel'), {
-        onStatus: say,
-        // A write is a write: the Save button lights the same way it does for
-        // one the program made.
-        onChange: syncLamps,
-      });
     }
     if (!saveOptsEl.hidden) closeSaveOpts();
     // Held while the panel is up, for the same reason Save AGC holds: what is
@@ -1612,37 +1665,155 @@
     // in RAM — which is what the panel's own line says.
     if (filesEl.hidden) holdMachine();
     filesEl.hidden = false;
-    showFiles(slot);
+    filesSlot = at.slot;
+    filesDrv = at.drv;
+    showDisk();
   }
 
-  function showFiles(slot) {
-    var card = app.machine.cards[slot], src = app.sources[slot];
-    filesSlot = slot;
-    // Built fresh every time: the machine has been running, and a track
-    // decoded before it wrote is not that track any more.
-    var sec = new AGAT.Sectors(card.media.kind, null,
-                               { media: card.media, prodos: !!(src && src.prodos) });
+  // The drive's row: what could be in it, what is, and the state of the three
+  // buttons. Redrawn whenever any of that changes, which includes the lock
+  // being turned from the drive's own button.
+  function showDisk() {
+    var entry = app.diskIn(filesSlot, filesDrv), i, o;
+    document.getElementById('diskkey').textContent =
+      app.driveLabel(filesSlot, filesDrv);
+
+    // Every disk this drive can read, with where each one is now: choosing a
+    // disk that is in the other drive takes it out of there.
+    whichEl.innerHTML = '';
+    o = document.createElement('option');
+    o.value = '';
+    o.textContent = '— empty —';
+    whichEl.appendChild(o);
+    for (i = 0; i < app.disks.length; i++) {
+      if (!app.fitsDrive(app.disks[i], filesSlot)) continue;
+      var at = app.mountedAt(app.disks[i]);
+      var where = at && !(at.slot === filesSlot && at.drv === filesDrv)
+        ? ' (in ' + app.driveLabel(at.slot, at.drv) + ')' : '';
+      o = document.createElement('option');
+      o.value = String(app.disks[i].id);
+      o.textContent = app.disks[i].name + where;
+      if (app.disks[i] === entry) o.selected = true;
+      whichEl.appendChild(o);
+    }
+
+    diskLockEl.textContent = entry && !entry.media.locked ? 'RW' : 'RO';
+    diskLockEl.className = entry && !entry.media.locked ? 'rw' : '';
+    diskLockEl.disabled = !entry;
+    diskLockEl.title = entry && !entry.media.locked
+      ? 'Writable. What a program writes stays in memory — Save AGC keeps it'
+      : 'Read-only. Click to let a program write to this disk';
+    document.getElementById('diskeject').disabled = !entry;
+
+    diskFactsEl.textContent = 'slot ' + filesSlot + ' — ' + (entry
+      ? entry.name + ', ' + entry.kind + ', ' +
+        (entry.media.locked ? 'read-only' : 'writable') +
+        (entry.media.isWritten() ? ', written to' : '')
+      : 'no disk');
+
+    dosToggleEl.disabled = !entry;
+    showCatalog();
+    syncLamps();
+  }
+
+  // The catalog, when the fold is open. Built fresh every time: the machine has
+  // been running, and a track decoded before it wrote is not that track any
+  // more — and the disk in the drive may not be the one it was.
+  function showCatalog() {
+    var entry = app.diskIn(filesSlot, filesDrv);
+    dosToggleEl.firstChild.textContent = dosOpen ? '▾' : '▸';
+    dosToggleEl.setAttribute('aria-expanded', dosOpen ? 'true' : 'false');
+    listEl.hidden = !dosOpen || !entry;
+    if (listEl.hidden) return;
+    if (!filesUI) {
+      filesUI = new AGAT.DosUI(listEl, {
+        onStatus: say,
+        // A write is a write: the Save button lights the same way it does for
+        // one the program made.
+        onChange: syncLamps,
+      });
+    }
+    var sec = new AGAT.Sectors(entry.media.kind, null,
+                               { media: entry.media, prodos: !!entry.prodos });
     var dos;
     try {
       dos = new AGAT.Dos33(sec);
     } catch (err) {
       filesUI.mount(null, {});
       say(err.message, true);
-      syncLamps();
       return;
     }
     filesUI.mount(dos, {
-      label: app.drives[slot] ? app.drives[slot].name : 'slot ' + slot,
-      writable: !card.media.locked,
+      label: entry.name,
+      writable: !entry.media.locked,
       // Just the lock: syncLamps carries the new state into the panel, the
       // same way it does when the drive's own RO/RW button is the one clicked.
-      onUnlock: app.canUnlock(slot) ? function () {
-        app.setLocked(slot, false);
-        syncLamps();
+      onUnlock: app.canUnlock(entry) ? function () {
+        app.setLocked(entry, false);
+        showDisk();
       } : null,
     });
-    syncLamps();
   }
+
+  dosToggleEl.addEventListener('click', function () {
+    dosOpen = !dosOpen;
+    showCatalog();
+  });
+
+  whichEl.addEventListener('change', function () {
+    var id = Number(whichEl.value), i;
+    if (!id) {
+      app.unmount(filesSlot, filesDrv);
+      say('empty ' + app.driveLabel(filesSlot, filesDrv));
+    } else {
+      for (i = 0; i < app.disks.length; i++) {
+        if (app.disks[i].id !== id) continue;
+        app.mount(app.disks[i], filesSlot, filesDrv);
+        say(app.disks[i].name + ' in ' + app.driveLabel(filesSlot, filesDrv));
+      }
+    }
+    showDisk();
+  });
+
+  diskLockEl.addEventListener('click', function () {
+    var entry = app.diskIn(filesSlot, filesDrv);
+    if (!entry || !app.setLocked(entry, !entry.media.locked)) return;
+    say(entry.name + (entry.media.locked
+        ? ' is read-only again'
+        : ' can be written to — Save AGC keeps what is written'));
+    showDisk();
+  });
+
+  // Out of the drive, not out of the session: an ejected disk is still saved,
+  // writes and all, and can be put back from the list beside this.
+  document.getElementById('diskeject').addEventListener('click', function () {
+    var entry = app.diskIn(filesSlot, filesDrv);
+    app.unmount(filesSlot, filesDrv);
+    if (entry) say(entry.name + ' out of ' + app.driveLabel(filesSlot, filesDrv));
+    showDisk();
+  });
+
+  document.getElementById('diskblank').addEventListener('click', function () {
+    var kind = filesSlot === app.slotFor('nib140') ? 'dsk140' : 'dsk840';
+    var entry = app.blankDisk(kind);
+    app.mount(entry, filesSlot, filesDrv);
+    say(entry.name + ' in ' + app.driveLabel(filesSlot, filesDrv) +
+        ' — INIT it from DOS');
+    showDisk();
+  });
+
+  document.getElementById('diskopen').addEventListener('change', function (e) {
+    var file = e.target.files && e.target.files[0], slot = filesSlot, drv = filesDrv;
+    e.target.value = '';
+    if (!file) return;
+    app.readFile(file).then(function (bytes) {
+      var entry = app.openInto(slot, drv, bytes, file.name);
+      say(entry.name + ' in ' + app.driveLabel(slot, drv));
+      showDisk();
+    }, function (err) {
+      say(err.message, true);
+    });
+  });
 
   function closeFiles() {
     if (filesEl.hidden) return;
@@ -1660,29 +1831,38 @@
     for (i = lampEls.length; i < list.length; i++) {
       var el = document.createElement('span');
       var dot = document.createElement('i');
+      var name = document.createElement('span');
       var trk = document.createElement('b');
       var lock = document.createElement('button');
       var files = document.createElement('button');
       el.className = 'lamp';
       el.appendChild(dot);
-      el.appendChild(document.createTextNode(list[i].label));
+      el.appendChild(name);
       el.appendChild(trk);
       el.appendChild(lock);
       el.appendChild(files);
       files.textContent = '⋯';
-      files.title = 'The files on this disk';
-      // The slot is on the element rather than closed over, because the list is
-      // rebuilt for a different model and the elements outlive one machine.
+      files.title = 'Disk controls';
+      // The drive is on the element rather than closed over, because the list
+      // is rebuilt for a different model and the elements outlive one machine.
       lock.addEventListener('click', toggleLock);
       files.addEventListener('click', openFiles);
       lampsEl.appendChild(el);
       lampEls.push(el);
+      nameEls.push(name);
       trackEls.push(trk);
       lockEls.push(lock);
       fileEls.push(files);
     }
+    // A machine can lose a drive — a container with two is opened and then a
+    // bare image is dropped — and a lamp for a drive that is not there would
+    // sit dark for the rest of the session.
+    for (i = list.length; i < lampEls.length; i++) {
+      lampEls[i].hidden = true;
+    }
     for (i = 0; i < list.length; i++) {
       var d = list[i];
+      lampEls[i].hidden = false;
       // A stopped machine is not a spinning drive: cpu.cycles has stopped
       // advancing, so the lamp would sit frozen wherever the machine left it.
       var state = app.running ? d.lamp : 0;
@@ -1690,30 +1870,36 @@
       // Everything about the drive that is not already drawn on it: what is in
       // it and what format that image is in. The status line used to carry the
       // format, and it is worth a hover rather than a permanent two words.
-      var title = 'slot ' + d.slot + ' — ' +
+      var title = 'slot ' + d.slot +
+                  (d.drives > 1 ? ', drive ' + (d.drv + 1) : '') + ' — ' +
                   (d.name ? d.name + ', ' + d.kind + ', track ' + d.track : 'empty') +
                   (d.name && d.written ? ', written to' : '');
+      // The controller alone while it has one drive: `D1` means nothing until
+      // there is a D2 to tell it from.
+      var label = d.label + (d.drives > 1 ? ' D' + (d.drv + 1) : '');
       // An empty drive's head is somewhere too, and saying where is noise.
       var track = d.name ? 'T' + d.track : '';
       if (lampEls[i].className !== cls) lampEls[i].className = cls;
       if (lampEls[i].title !== title) lampEls[i].title = title;
+      if (nameEls[i].textContent !== label) nameEls[i].textContent = label;
       if (trackEls[i].textContent !== track) trackEls[i].textContent = track;
       syncLock(lockEls[i], d);
-      // An empty drive has no catalog to show. The button keeps its place, so
-      // a disk dropped into the drive beside it does not shift this one out
-      // from under the pointer — the same reason the lock keeps its.
-      var mark = !d.name ? 'blank' : filesSlot === d.slot ? 'on' : '';
+      // An empty drive has its controls too — a disk is put into it from
+      // there — so the button is lit for the drive whose panel is up and
+      // otherwise plain.
+      var mark = filesSlot === d.slot && filesDrv === d.drv ? 'on' : '';
       if (fileEls[i].className !== mark) fileEls[i].className = mark;
       // The write lock can be turned from either end — the drive's RO/RW
       // button or the panel's own — and the panel is drawn from it, so this is
       // where the two are kept in step. Cheap enough to check every tick, and
       // it is the only thing that catches the button beside the one that
       // opened the panel.
-      if (filesUI && filesSlot === d.slot && filesUI.writable === d.locked) {
+      if (filesUI && !listEl.hidden && filesSlot === d.slot &&
+          filesDrv === d.drv && filesUI.writable === d.locked) {
         filesUI.setWritable(!d.locked, filesUI.onUnlock);
       }
-      if (fileEls[i].getAttribute('data-slot') !== String(d.slot)) {
-        fileEls[i].setAttribute('data-slot', d.slot);
+      if (fileEls[i].getAttribute('data-drive') !== d.slot + ':' + d.drv) {
+        fileEls[i].setAttribute('data-drive', d.slot + ':' + d.drv);
       }
     }
     // Lit rather than relabelled: the bar is one line and a button that changes

@@ -56,18 +56,25 @@
     // code and the monitor decides what color that is, so software drawn for
     // one monitor looks wrong on another.
     this.monitor = AGAT.MONITORS[opts.monitor] ? opts.monitor : AGAT.MONITOR_DEFAULT;
-    this.drives = {};                     // slot -> {name, kind}
     // The media kind of the drive booted last, so Boot starts that one
     // again. A kind and not a slot: switching models moves the 140K drive
     // from slot 3 to slot 6, and the disk moves with it.
     this.lastBoot = '';
-    // What was loaded, as it arrived: slot -> {name, bytes, patches, kind,
-    // offset, prodos}, plus 'fil:<name>' for programs poked into memory. The
-    // mounted Media is normalized and the drives keep only a name, so without
-    // this there is nothing left to write an .agc back out of. The last three
-    // are what saving a disk that has been written to needs in order to put the
-    // sectors back where they came from.
-    this.sources = {};
+    // Every disk this session holds, in the order a container lists them:
+    //
+    //   { id, name, kind, offset, prodos, bytes, patches, media }
+    //
+    // `media` is what a drive reads and null for a .fil, which is in this list
+    // so that saving keeps it. The rest is the file as it arrived — what a
+    // written disk is put back into to work out its patches — and the entry
+    // owns its media, so a disk can be taken out of one drive and put in
+    // another without anything having to be re-keyed.
+    //
+    // A machine has two drives at the most and a container may carry more
+    // disks than that; what is not in a drive is still the session's, still
+    // saved, and still in this list.
+    this.disks = [];
+    this.nextDiskId = 1;
     // A container's own fields, kept so that loading one and saving it again
     // does not quietly drop what it said about the program.
     this.title = '';                      // also the head of the info card
@@ -210,14 +217,13 @@
   // (Re)create the machine for the current model. Media already inserted is
   // carried across, so switching machines does not mean re-dropping your disks.
   App.prototype.build = function () {
-    var keep = [], s, c;
-    if (this.machine) {
-      for (s = 0; s < 8; s++) {
-        c = this.machine.cards[s];
-        // Which slot it was in comes along: the 140K drive is slot 6 on the
-        // Agat-9 and slot 3 on the Agat-7, and `sources` is keyed by slot.
-        if (c && c.media) keep.push({ from: s, media: c.media });
-      }
+    // What is in which drive, as entries rather than slots: the 140K drive is
+    // slot 6 on the Agat-9 and slot 3 on the Agat-7, and a disk stays in the
+    // drive it was in — D2 of the old machine is D2 of the new one.
+    var keep = [], i, at;
+    for (i = 0; i < this.disks.length; i++) {
+      at = this.mountedAt(this.disks[i]);
+      if (at) keep.push({ entry: this.disks[i], drv: at.drv });
     }
     this.slots = AGAT.Machine.resolveSlots(this.model, this.cardSlots());
     this.machine = new AGAT.Machine({
@@ -230,20 +236,9 @@
       this.model === 7 ? this.roms.font7 : this.roms.font9,
       AGAT.monitorPalette(this.monitor),
       { m0: this.model === 7 ? 0x80 : 0x40 });
-    this.drives = {};
-    // The disks move with the machine, and so must what each one was loaded
-    // from — otherwise switching models between writing to a disk and saving
-    // would leave Save looking in an empty slot. Staged rather than moved in
-    // place, because two drives can trade slots.
-    var moved = {}, i, to;
     for (i = 0; i < keep.length; i++) {
-      to = this.insert(keep[i].media);
-      if (to !== keep[i].from && this.sources[keep[i].from]) {
-        moved[to] = this.sources[keep[i].from];
-        delete this.sources[keep[i].from];
-      }
+      this.place(keep[i].entry, keep[i].drv);
     }
-    for (var slot in moved) this.sources[slot] = moved[slot];
     this.machine.reset();
     this.resize();
     this.start();
@@ -358,53 +353,193 @@
     return AGAT.Machine.slotOf(this.slots, kind === 'nib140' ? 'fdd140' : 'fdd840');
   };
 
-  // What the drive lamps show: every drive the model has, empty or not, so the
-  // bar does not reflow the moment a disk is dropped into one of them.
-  App.prototype.driveLamps = function () {
-    var S = AGAT.Machine, now = this.machine.cpu.cycles, out = [], i;
+  // Every drive the machine is fitted with, in the order the lamps are drawn:
+  // the 840K controller and then the 140K, each with the one drive it has
+  // unless a container asked for two.
+  App.prototype.driveList = function () {
+    var S = AGAT.Machine, out = [], i, d;
     var want = [[S.slotOf(this.slots, 'fdd840'), '840K'],
                 [S.slotOf(this.slots, 'fdd140'), '140K']];
     for (i = 0; i < want.length; i++) {
       var slot = want[i][0], card = this.machine.cards[slot];
       if (!card || !card.lamp) continue;
-      var media = card.media;
+      for (d = 0; d < (card.drives || 1); d++) {
+        out.push({ slot: slot, drv: d, drives: card.drives || 1,
+                   label: want[i][1] });
+      }
+    }
+    return out;
+  };
+
+  // The disk in one drive, as the entry that carries what it was loaded from,
+  // or null. The card holds the media and this list holds everything else
+  // about it, and they are matched by identity — a medium is in one drive of
+  // one machine and there is nothing else it could be.
+  App.prototype.diskIn = function (slot, drv) {
+    var card = this.machine.cards[slot];
+    var media = card && card.mediaAt ? card.mediaAt(drv) : null;
+    if (!media) return null;
+    for (var i = 0; i < this.disks.length; i++) {
+      if (this.disks[i].media === media) return this.disks[i];
+    }
+    return null;
+  };
+
+  // Which drive an entry is in, `{slot, drv}`, or null for one on the shelf.
+  App.prototype.mountedAt = function (entry) {
+    var list = this.driveList(), i, card;
+    if (!entry || !entry.media) return null;
+    for (i = 0; i < list.length; i++) {
+      card = this.machine.cards[list[i].slot];
+      if (card.mediaAt(list[i].drv) === entry.media) {
+        return { slot: list[i].slot, drv: list[i].drv };
+      }
+    }
+    return null;
+  };
+
+  // Put a disk in a drive. A disk is in one drive at a time, so it comes out of
+  // wherever it was, and whatever was in this one goes back on the shelf —
+  // which is what carrying a floppy from drive to drive does.
+  App.prototype.mount = function (entry, slot, drv) {
+    var card = this.machine.cards[slot], at = this.mountedAt(entry);
+    if (!card || !card.insert || !entry || !entry.media) return false;
+    // The media kind, not the file's: a .dsk and a .nib of the same disk are
+    // one drive's business, and AGAT.mount normalized both to one of two.
+    if (this.slotFor(entry.media.kind) !== slot) return false;
+    if (at) this.machine.cards[at.slot].eject(at.drv);
+    card.insert(entry.media, drv);
+    return true;
+  };
+
+  App.prototype.unmount = function (slot, drv) {
+    var card = this.machine.cards[slot];
+    if (card && card.eject) card.eject(drv);
+  };
+
+  // Where a disk goes when nobody has said: the drive its size belongs to, and
+  // the first one of those that is empty. `want` asks for one drive in
+  // particular and takes it whether or not something was there — a rebuild puts
+  // each disk back where it was. -1 when the machine has no such drive or every
+  // one of them is full, and then the disk stays on the shelf.
+  App.prototype.place = function (entry, want) {
+    var slot = this.slotFor(entry.media.kind), card = this.machine.cards[slot], d;
+    if (!card || !card.insert) return -1;
+    if (want !== undefined && want < (card.drives || 1)) {
+      return this.mount(entry, slot, want) ? slot : -1;
+    }
+    for (d = 0; d < (card.drives || 1); d++) {
+      if (!card.mediaAt(d)) return this.mount(entry, slot, d) ? slot : -1;
+    }
+    return -1;
+  };
+
+  // What the drive lamps show: every drive the machine has, empty or not, so
+  // the bar does not reflow the moment a disk is dropped into one of them.
+  App.prototype.driveLamps = function () {
+    var now = this.machine.cpu.cycles, list = this.driveList(), out = [], i;
+    for (i = 0; i < list.length; i++) {
+      var d = list[i], card = this.machine.cards[d.slot];
+      var entry = this.diskIn(d.slot, d.drv), media = entry && entry.media;
       out.push({
-        slot: slot,
-        label: want[i][1],
-        name: this.drives[slot] ? this.drives[slot].name : '',
-        kind: this.drives[slot] ? this.drives[slot].kind : '',
-        track: card.track,
-        lamp: card.lamp(now),
+        slot: d.slot,
+        drv: d.drv,
+        drives: d.drives,
+        label: d.label,
+        name: entry ? entry.name : '',
+        kind: entry ? entry.kind : '',
+        track: card.trackAt(d.drv),
+        lamp: card.lamp(now, d.drv),
         locked: !media || media.locked,
         // The disk claimed it was protected, which is worth showing even now
         // that the lock is the user's to set.
         headerProtect: !!(media && media.headerProtect),
-        canUnlock: this.canUnlock(slot),
+        canUnlock: this.canUnlock(entry),
         written: !!(media && media.isWritten()),
       });
     }
     return out;
   };
 
-  // A disk can be unlocked once it is in a drive and its file is remembered,
-  // which is what a save needs in order to keep the writes.
-  App.prototype.canUnlock = function (slot) {
-    var card = this.machine.cards[slot];
-    return !!(card && card.media && this.sources[slot]);
+  // A disk can be unlocked once there is one: every entry carries the file it
+  // arrived as, which is what a save needs in order to keep the writes.
+  App.prototype.canUnlock = function (entry) {
+    return !!(entry && entry.media);
   };
 
-  App.prototype.setLocked = function (slot, locked) {
-    if (!this.canUnlock(slot)) return false;
-    this.machine.cards[slot].media.locked = !!locked;
+  App.prototype.setLocked = function (entry, locked) {
+    if (!this.canUnlock(entry)) return false;
+    entry.media.locked = !!locked;
     return true;
   };
 
   // Has anything been written to a disk since it was mounted? What the Save
-  // button uses to say there is something new to save.
+  // button uses to say there is something new to save. Every disk the session
+  // holds, not only the ones in a drive: a disk written to and then taken out
+  // is still a disk with something new on it.
   App.prototype.hasWrites = function () {
-    for (var s = 0; s < 8; s++) {
-      var card = this.machine.cards[s];
-      if (card && card.media && card.media.isWritten()) return true;
+    for (var i = 0; i < this.disks.length; i++) {
+      if (this.disks[i].media && this.disks[i].media.isWritten()) return true;
+    }
+    return false;
+  };
+
+  // Can this disk go in that drive? The controllers read different disks, and
+  // this is the whole of what the panel's list of disks is filtered by.
+  App.prototype.fitsDrive = function (entry, slot) {
+    return !!(entry && entry.media && this.slotFor(entry.media.kind) === slot);
+  };
+
+  // A blank disk: the right number of zero bytes, and nothing else. There is no
+  // formatter here — DOS's own INIT is what puts a catalog on it, exactly as it
+  // did on the machine — so what this makes is an unformatted disk, which is
+  // what a box of new floppies held.
+  //
+  // It arrives unlocked, unlike every disk that comes from a file: there is
+  // nothing on it to protect, and a locked blank is of no use to anybody.
+  App.prototype.blankDisk = function (kind) {
+    var sizes = { dsk140: 143360, dsk840: 860160 };
+    if (!sizes[kind]) throw new Error('no blank of kind ' + kind);
+    var name = 'blank.dsk', n = 1, i, taken = true;
+    while (taken) {
+      taken = false;
+      for (i = 0; i < this.disks.length; i++) {
+        if (this.disks[i].name === name) taken = true;
+      }
+      if (taken) name = 'blank-' + (++n) + '.dsk';
+    }
+    var s = { kind: kind, name: name, payload: new Uint8Array(sizes[kind]),
+              offset: 0, prodos: false };
+    var entry = this.remember(name, s.payload, null, s, AGAT.mount(s));
+    entry.media.locked = false;
+    return entry;
+  };
+
+  // One file, into one drive, and nothing else touched. Everything else that
+  // opens a file replaces the session — see startOpen — and this is the other
+  // gesture: the disk in this drive, changed, while the machine goes on
+  // running whatever it was running.
+  App.prototype.openInto = function (slot, drv, bytes, name) {
+    var s = AGAT.sniff(bytes, name);
+    if (s.kind === 'agc' || s.kind === 'fil' || !s.kind) {
+      throw new Error(name + ': not a disk image');
+    }
+    var media = AGAT.mount(s);
+    if (this.slotFor(media.kind) !== slot) {
+      throw new Error(name + ' is a ' + s.kind + ', which this drive cannot read');
+    }
+    var entry = this.remember(name, bytes, null, s, media);
+    this.mount(entry, slot, drv);
+    return entry;
+  };
+
+  // A disk the session no longer wants: out of its drive, and out of the list,
+  // so a container saved afterwards does not carry it.
+  App.prototype.forget = function (entry) {
+    var at = this.mountedAt(entry), i;
+    if (at) this.unmount(at.slot, at.drv);
+    for (i = 0; i < this.disks.length; i++) {
+      if (this.disks[i] === entry) { this.disks.splice(i, 1); return true; }
     }
     return false;
   };
@@ -414,7 +549,6 @@
       var card = this.machine.cards[s];
       if (card && card.eject) card.eject();
     }
-    this.drives = {};
     this.lastBoot = '';
   };
 
@@ -434,16 +568,16 @@
     this.pending = newPending();
   };
 
-  // Spending it: the drives are emptied and `sources` with them, so that what
-  // gets saved is what was opened. The two go together — `sources` is what a
-  // mounted disk arrived as, and Save reads it to work out what the program
-  // wrote — and a disk left in a drive that the container would not carry is
-  // exactly the container that does not run.
+  // Spending it: the drives are emptied and the disk list with them, so that
+  // what gets saved is what was opened. The two go together — an entry is what
+  // a disk arrived as, and Save reads it to work out what the program wrote —
+  // and a disk left in a drive that the container would not carry is exactly
+  // the container that does not run.
   App.prototype.takeFresh = function () {
     if (!this.freshOpen) return;
     this.freshOpen = false;
     this.ejectAll();
-    this.sources = {};
+    this.disks = [];
   };
 
   // The rest of the gesture has arrived. Everything it named is in the drives
@@ -477,7 +611,8 @@
       return;
     }
     this.bootFrom(slot);
-    this.onStatus('booting ' + (this.drives[slot] ? this.drives[slot].name : 'slot ' + slot) +
+    var entry = this.diskIn(slot, 0);
+    this.onStatus('booting ' + (entry ? entry.name : 'slot ' + slot) +
                   ' from slot ' + slot + (note ? ' — ' + note : ''));
   };
 
@@ -489,19 +624,11 @@
     return m ? Number(m[1]) : AGAT.Machine.slotOf(this.slots, spec);
   };
 
-  App.prototype.insert = function (media) {
-    var slot = this.slotFor(media.kind);
-    var card = this.machine.cards[slot];
-    if (!card || !card.insert) throw new Error('no drive for ' + media.kind);
-    card.insert(media);
-    this.drives[slot] = { name: media.name, kind: media.kind };
-    return slot;
-  };
-
   // Reset and enter a slot's card ROM — ПР#n, and the whole of what starting a
   // disk is. The drive is remembered: Boot on its own starts the same one.
   App.prototype.bootFrom = function (slot) {
-    this.lastBoot = this.drives[slot] ? this.drives[slot].kind : '';
+    var entry = this.diskIn(slot, 0);
+    this.lastBoot = entry ? entry.kind : '';
     this.machine.reset();
     this.machine.bootSlot(slot);
   };
@@ -516,7 +643,7 @@
       if (!kinds[i]) continue;
       slot = this.slotFor(kinds[i]);
       card = this.machine.cards[slot];
-      if (card && card.media) return slot;
+      if (card && card.hasDisk && card.mediaAt(0)) return slot;
     }
     return this.slotFor('aim840');
   };
@@ -582,16 +709,55 @@
     if (s.kind === 'fil') {
       if (!AGAT.loadFil) throw new Error('.fil loading is not built in yet');
       AGAT.loadFil(this.machine, s.payload);
-      this.remember('fil:' + name, name, bytes, from, s);
+      this.remember(name, bytes, from, s, null);
       this.onStatus('loaded ' + (s.filName || name) + ' at $' +
                     s.loadAddr.toString(16).toUpperCase());
       return this.loaded({ kind: 'fil' });
     }
-    var slot = this.insert(AGAT.mount(s));
-    this.remember(slot, name, bytes, from, s);
+    var entry = this.remember(name, bytes, from, s, AGAT.mount(s));
+    // Where the container said it goes, if it said; the first drive that can
+    // read it otherwise. A `none` leaves it on the shelf: the session carries
+    // it and no drive holds it.
+    var spot = from ? this.mountSpot(from.mount) : undefined;
+    var slot = spot === null ? -1
+             : spot && this.mount(entry, spot.slot, spot.drv) ? spot.slot
+             : this.place(entry);
+    // Every disk arrives locked unless the container says otherwise, which is
+    // the container speaking for the program: see Media.
+    if (from && from.writable) entry.media.locked = false;
+    if (slot < 0) {
+      this.onStatus(name + ' — no free drive, kept for saving');
+      return this.loaded({ kind: s.kind, slot: -1 });
+    }
     this.pending.disks.push(slot);
-    this.onStatus(name + ' in slot ' + slot);
+    this.onStatus(name + ' in ' + this.driveLabel(slot, this.mountedAt(entry).drv));
     return this.loaded({ kind: s.kind, slot: slot });
+  };
+
+  // What a drive is called on the page and on the status line: the controller
+  // alone while it has one drive, since `D1` means nothing until there is a D2
+  // to tell it from.
+  App.prototype.driveLabel = function (slot, drv) {
+    var list = this.driveList(), i, out = 'slot ' + slot;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].slot !== slot || list[i].drv !== (drv || 0)) continue;
+      out = list[i].label + (list[i].drives > 1 ? ' D' + (list[i].drv + 1) : '');
+    }
+    return out;
+  };
+
+  // A container's `in`, as a drive of the machine that got built: `undefined`
+  // for a medium that said nothing, `null` for one that asked for no drive at
+  // all, and `{slot, drv}` otherwise. A drive this machine has not got reads as
+  // nothing said, and the medium takes its turn with the rest.
+  App.prototype.mountSpot = function (spec) {
+    if (!spec) return undefined;
+    if (spec === 'none') return null;
+    var m = /^(.*?)(?::([12]))?$/.exec(spec), slot = this.bootSlotOf(m[1]);
+    var card = slot < 0 ? null : this.machine.cards[slot];
+    var drv = m[2] === '2' ? 1 : 0;
+    if (!card || !card.insert || drv >= (card.drives || 1)) return undefined;
+    return { slot: slot, drv: drv };
   };
 
   // One medium is in. Inside a gesture the boot waits for the rest of it; a
@@ -603,20 +769,23 @@
     return r;
   };
 
-  // Keyed by slot, so re-dropping a disk into a drive replaces what was there
-  // rather than saving both. A .fil has no slot to be replaced in, so it is
-  // keyed by its name instead: the several a container names stay apart, and
-  // opening one twice still leaves one. What keeps them from piling up over a
+  // One more disk the session holds — the file as it arrived, and the media a
+  // drive will read. Appended, because the order is the order a container
+  // lists them in and saving keeps it. What keeps the list from growing over a
   // session is the gesture's clear — see startOpen.
-  App.prototype.remember = function (key, name, bytes, from, s) {
-    this.sources[key] = {
+  App.prototype.remember = function (name, bytes, from, s, media) {
+    var entry = {
+      id: this.nextDiskId++,
       name: name,
       bytes: from ? from.bytes : bytes,
       patches: from ? from.patches : [],
       kind: s.kind,
       offset: s.offset || 0,
       prodos: !!s.prodos,
+      media: media || null,
     };
+    this.disks.push(entry);
+    return entry;
   };
 
   // ---- containers ----------------------------------------------------------
@@ -627,6 +796,7 @@
     var out = {}, n;
     for (n in slots) {
       out[n] = slots[n] && { card: slots[n].card, ram: slots[n].ram * 1024 || 0 };
+      if (out[n] && slots[n].drives > 1) out[n].drives = slots[n].drives;
     }
     return out;
   }
@@ -654,11 +824,16 @@
     for (n in this.slots) {
       mine = this.slots[n];
       theirs = base[n];
-      if (theirs && theirs.card === mine.card && (theirs.ram || 0) === (mine.ram || 0)) {
+      if (theirs && theirs.card === mine.card &&
+          (theirs.ram || 0) === (mine.ram || 0) &&
+          (theirs.drives || 1) === (mine.drives || 1)) {
         continue;
       }
-      out[n] = mine.ram ? { card: mine.card, ram: mine.ram >> 10 }
-                        : { card: mine.card };
+      out[n] = { card: mine.card };
+      if (mine.ram) out[n].ram = mine.ram >> 10;
+      // A second drive is the container's to ask for and nothing on the page
+      // fits one, so this is the only way it survives a save.
+      if (mine.drives > 1) out[n].drives = mine.drives;
       any = true;
     }
     return any ? out : null;
@@ -713,7 +888,7 @@
 
     var keys = AGAT.keyboard.setRemap(c.keys);
     var ctl = AGAT.keyboard.setControls(c.controls);
-    this.sources = {};                 // the container is the whole set
+    this.disks = [];                   // the container is the whole set
     this.title = c.title;
     this.author = c.author;
     this.date = c.date;
@@ -849,19 +1024,17 @@
       return base(this.fromAgc).replace(STAMPED, '') +
              '-' + stamp(now || new Date()) + '.agc';
     }
-    for (var k in this.sources) {
-      return base(this.sources[k].name) + '.agc';
-    }
-    return '';
+    return this.disks.length ? base(this.disks[0].name) + '.agc' : '';
   };
 
-  // One source as it should be saved: the file it arrived as, plus what has
-  // been written to it since.
+  // One disk as it should be saved: the file it arrived as, plus what has been
+  // written to it since, plus where it is — the drive it sits in and whether a
+  // program may write to it.
   //
   // A written track is decoded back to the sectors it was built from — 16 on
   // the 140K, 21 on the 840K — and the difference comes out as patches, so a
   // container still carries the image as it was found and what changed stays
-  // legible. `this.sources` is left alone, and the whole plain part of the
+  // legible. The entry is left alone, and the whole plain part of the
   // patch list is recomputed against the finished image rather than added to —
   // see `agc.repatch`, which is what keeps a change and its undo from both
   // ending up in the file. A stream image (.nib, .aim) is its own baseline and
@@ -871,12 +1044,11 @@
   // caught half done — has no sector image to be the difference from. Then the
   // stream itself is what is saved, as .nib for the 140K and .aim for the 840K,
   // which is a bigger and duller file but not a lossy one.
-  App.prototype.writeBack = function (key) {
-    var src = this.sources[key];
-    var entry = { name: src.name, bytes: src.bytes, patches: src.patches };
-    var card = this.machine.cards[key], gcr = AGAT.gcr140, aim = AGAT.aim840;
-    var media = card && card.media;
-    if (!media || !media.isWritten()) return entry;
+  App.prototype.writeBack = function (src) {
+    var out0 = { name: src.name, bytes: src.bytes, patches: src.patches };
+    var gcr = AGAT.gcr140, aim = AGAT.aim840;
+    var media = src.media;
+    if (!media || !media.isWritten()) return out0;
 
     var base = AGAT.agc.applyPatches(src.bytes, src.patches);
     var out = new Uint8Array(base), ok = true, t, got, sec;
@@ -926,6 +1098,81 @@
     };
   };
 
+  // A disk as a container's `media` entry: what writeBack makes of it, and
+  // then where it is. The lock is the medium's own and travels with it, so it
+  // is written here rather than with the machine; `in` is written only where
+  // the drives would not be filled the way they stand, which is what keeps a
+  // container of one disk saying nothing about drives at all.
+  App.prototype.saveMedium = function (entry, specs) {
+    var out = this.writeBack(entry);
+    if (entry.media && !entry.media.locked) out.writable = true;
+    if (entry.media && specs[entry.id]) out.mount = specs[entry.id];
+    return out;
+  };
+
+  // Which disks have to be told where to go, id -> `in`, and the rest is the
+  // order doing it by itself. Worked out by playing the load back: the drives
+  // are filled from the list, and wherever that puts a disk somewhere it is
+  // not, that disk is given an `in` and the whole thing is played again. It
+  // settles, because each pass pins one more disk down — and a container of one
+  // disk, or of two in the order their drives take them, comes out saying
+  // nothing about drives at all.
+  App.prototype.mountSpecs = function () {
+    var specs = {}, actual = {}, i, pass, entry, sim, bad;
+    var same = function (a, b) {
+      return !a === !b && (!a || (a.slot === b.slot && a.drv === b.drv));
+    };
+    for (i = 0; i < this.disks.length; i++) {
+      if (this.disks[i].media) {
+        actual[this.disks[i].id] = this.mountedAt(this.disks[i]);
+      }
+    }
+    for (pass = 0; pass <= this.disks.length; pass++) {
+      sim = this.replay(specs);
+      bad = null;
+      for (i = 0; i < this.disks.length && !bad; i++) {
+        entry = this.disks[i];
+        if (entry.media && !same(sim[entry.id], actual[entry.id])) bad = entry;
+      }
+      if (!bad) break;
+      specs[bad.id] = actual[bad.id]
+        ? this.slots[actual[bad.id].slot].card + (actual[bad.id].drv ? ':2' : '')
+        : 'none';
+    }
+    return specs;
+  };
+
+  // Where the drives end up when a container carrying these disks, with these
+  // `in` values on them, is opened: id -> {slot, drv} or null. The same rules
+  // loadOne follows, including a disk that says `in` taking a drive from one
+  // that did not.
+  App.prototype.replay = function (specs) {
+    var out = {}, held = {}, i, entry, spot, slot, card, d, key;
+    for (i = 0; i < this.disks.length; i++) {
+      entry = this.disks[i];
+      if (!entry.media) continue;
+      out[entry.id] = null;
+      spot = specs[entry.id] === 'none' ? null
+           : specs[entry.id] ? this.mountSpot(specs[entry.id])
+           : undefined;
+      if (spot === null) continue;
+      if (spot === undefined) {
+        slot = this.slotFor(entry.media.kind);
+        card = this.machine.cards[slot];
+        if (!card || !card.insert) continue;
+        for (d = 0; d < (card.drives || 1); d++) {
+          if (held[slot + ':' + d] === undefined) { spot = { slot: slot, drv: d }; break; }
+        }
+        if (!spot) continue;                     // every drive of that size full
+      }
+      key = spot.slot + ':' + spot.drv;
+      if (held[key] !== undefined) out[held[key]] = null;   // turned out of it
+      held[key] = entry.id;
+      out[entry.id] = spot;
+    }
+    return out;
+  };
+
   // The machine as it stands, as a container: what is in the drives, the model
   // and RAM it is running as, the live remap and the controls it came in with.
   // A promise: what a payload is written as is decided by trying it, and the
@@ -935,8 +1182,12 @@
   // Off unless asked for, because a container is a program to hand to somebody
   // and one person's session in the middle of it is a different document.
   App.prototype.toAgc = function (opts) {
-    var media = [], k, self = this;
-    for (k in this.sources) media.push(this.writeBack(k));
+    var media = [], i, self = this, specs = this.mountSpecs();
+    // In the order the list holds them, which is the order a container was
+    // read in and the order the drives are filled in on the way back.
+    for (i = 0; i < this.disks.length; i++) {
+      media.push(this.saveMedium(this.disks[i], specs));
+    }
     var state = opts && opts.state && AGAT.state
               ? AGAT.state.save(this) : Promise.resolve(null);
     return state.then(function (st) {

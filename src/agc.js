@@ -326,12 +326,23 @@
   // all, or the machine's own scan. `auto` is the default spelled out.
   var BOOT = /^(auto|none|monitor|fdd140|fdd840|slot:[0-7])$/;
 
+  // What a medium's `in` may say: the drive it goes in — a card or a slot, and
+  // a `:2` for the second drive on that cable — or `none` for one the container
+  // carries without putting it in a drive. Absent is not the same as `none`:
+  // it means nothing was said, and the drives are filled in the order the media
+  // are listed.
+  var IN = /^(none|fdd140|fdd840|slot:[0-7])(:[12])?$/;
+
   // `machine.slots`: what this machine has that its model's stock complement
-  // does not. Keys are slot numbers 0-7, values `{card, ram}` — kilobytes, as
-  // `machine.ram` is — or `null` for a slot deliberately left empty. `card` is
-  // required; an entry that gives only a size names no card to resize and is
-  // dropped. Returns null when there is nothing to say, so a stock machine
-  // carries no field.
+  // does not. Keys are slot numbers 0-7, values `{card, ram, drives}` — sizes
+  // in kilobytes, as `machine.ram` is — or `null` for a slot deliberately left
+  // empty. `card` is required; an entry that gives only a size names no card to
+  // resize and is dropped. Returns null when there is nothing to say, so a
+  // stock machine carries no field.
+  //
+  // `drives` is 2 for a controller with a second drive on the cable. One is
+  // what a machine was fitted with and what everything else means, so anything
+  // but 2 is left unsaid.
   function parseSlots(slots) {
     if (!slots || typeof slots !== 'object') return null;
     var out = {}, any = false, n, e, slot;
@@ -342,6 +353,7 @@
       if (e === null) { out[slot] = null; any = true; continue; }
       if (!e || !CARDS[e.card]) continue;
       out[slot] = { card: e.card, ram: Number(e.ram) || 0 };
+      if (Number(e.drives) === 2) out[slot].drives = 2;
       any = true;
     }
     return any ? out : null;
@@ -462,6 +474,12 @@
           bytes: raw,                                 // as packed, before patches
           patches: patches,
           payload: payload,
+          // Which drive it goes in, and whether a program may write to it.
+          // Anything `in` cannot be read as is dropped, and the medium takes
+          // its turn with the rest; every disk is locked unless it says
+          // otherwise, which is what a drive's RO/RW button sets.
+          mount: IN.test(m['in']) ? m['in'] : '',
+          writable: m.writable === true,
         };
       });
     });
@@ -494,6 +512,10 @@
   // rule decide, which is what the Save button does.
   function buildMedium(m, spec) {
     var e = { name: m.name || 'image' };
+    // Before the payload, which is the unreadable part of the entry: what the
+    // disk is comes first, then the bytes.
+    if (m.mount) e['in'] = m.mount;
+    if (m.writable) e.writable = true;
     return encodeBytes(m.bytes, { width: spec.width, gz: spec.gz })
       .then(function (enc) {
         var k;

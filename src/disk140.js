@@ -40,7 +40,14 @@
   function Disk140(opts) {
     opts = opts || {};
     this.rom = opts.rom || null;
-    this.media = null;
+    // A drive each, because the select line picks between two of them: what
+    // the cable carries is one controller and up to two drives, and a disk in
+    // the second is not the disk in the first. Machines were as good as always
+    // fitted with one, so `drives` is 1 unless a container asks for two, and
+    // selecting a drive that is not there finds no disk — which is what an
+    // Agat with one drive does.
+    this.drives = opts.drives === 2 ? 2 : 1;
+    this.disks = [null, null];
     this.heads = [new Head(), new Head()];
     this.drv = 0;
     this.motor = 0;
@@ -52,13 +59,29 @@
     this.seed = 0x2545f491;        // deterministic, so headless runs reproduce
   }
 
-  Disk140.prototype.insert = function (media) {
-    this.media = media;
-    this.heads[this.drv].index = 0;
-    this.heads[this.drv].rotated = 0;
+  // Which drive, defaulting to the first: everything that does not care about
+  // the second says nothing and gets D1.
+  function which(drv) { return drv === 1 ? 1 : 0; }
+
+  Disk140.prototype.insert = function (media, drv) {
+    var d = which(drv);
+    this.disks[d] = media;
+    this.heads[d].index = 0;
+    this.heads[d].rotated = 0;
   };
 
-  Disk140.prototype.eject = function () { this.media = null; };
+  // One drive, or both when none is named — which is what emptying the machine
+  // wants.
+  Disk140.prototype.eject = function (drv) {
+    if (drv === undefined) this.disks[0] = this.disks[1] = null;
+    else this.disks[which(drv)] = null;
+  };
+
+  Disk140.prototype.mediaAt = function (drv) { return this.disks[which(drv)]; };
+
+  // Where one drive's head stands, for a lamp that draws both: `track` is the
+  // selected drive's, and the other drive's head is somewhere too.
+  Disk140.prototype.trackAt = function (drv) { return this.heads[which(drv)].track; };
 
   // The soft switches are cleared: motor off, drive 1, read mode. The stepper
   // magnets are all off too, which leaves the head wherever it stood.
@@ -69,6 +92,16 @@
   };
 
   Disk140.prototype.hasDisk = function () { return !!this.media; };
+
+  // The disk under the head — the selected drive's, and nothing at all when
+  // the program has selected a drive this machine was not fitted with. Every
+  // read and write inside the card goes through it, so the select line reaches
+  // the media by being the only way to name them.
+  Object.defineProperty(Disk140.prototype, 'media', {
+    get: function () {
+      return this.drv < this.drives ? this.disks[this.drv] : null;
+    },
+  });
 
   // Everything the rotation model needs to go on turning where it left off.
   // Both heads, because the head position is per drive and not per controller,
@@ -231,8 +264,10 @@
   // The drive lamp: 0 dark, 1 spinning, 2 transferring. The LED is on the motor
   // line, and the boot loop polls $C0EC about four times for every byte the
   // disk has actually turned far enough to give, so only a delivered byte —
-  // never a poll — counts as a transfer.
-  Disk140.prototype.lamp = function (now) {
+  // never a poll — counts as a transfer. `drv` asks about one drive of the two:
+  // the motor line reaches the selected drive alone, so the other is dark.
+  Disk140.prototype.lamp = function (now, drv) {
+    if (drv !== undefined && which(drv) !== this.drv) return 0;
     if (!this.media || !this.motor) return 0;
     return now - this.lastByteAt < LAMP_BUSY ? 2 : 1;
   };

@@ -834,6 +834,13 @@ control port at `$C0D3`. MouseGraf's driver raises the motor line and reads it
 straight back to decide whether there is a controller in the slot at all; a
 register that always answers `$00` sends it into a retry loop it never leaves.
 
+Bit 3 selects between two drives on the cable, as the 140K's `$C0EA`/`$C0EB` do.
+Which way round it reads is not established — agat-emulator's `fdd.c` ignores
+the bit, and nothing in `examples/` exercises it — so a controller fitted with
+one drive answers with the disk it has whatever the bit says, and the bit is
+consulted only where a container asked for a second drive. Set is taken as the
+second.
+
 One byte every 32 µs — 32.66 cycles — and the byte clock keeps its phase
 however often the CPU looks: a loop that polls every 50 cycles still sees 6250
 bytes go by in the 200 ms of a revolution. That is what TESTKOM9's speed check
@@ -921,6 +928,13 @@ A Disk II clone (`fdd/fdd1.c`), with the same GCR 6-and-2 sector encoding and
 The `Rotated` flag is what boot loops poll on: each track byte is handed out
 once, and a re-read before the next rotation tick returns bit 7 **clear**.
 Getting this wrong hangs every 140K disk with no diagnostic.
+
+`$C0EA`/`$C0EB` pick between **two drives on the cable**, and each has its own
+disk and its own head: `SAVE PROG,D2` writes to the disk in the second drive and
+leaves the first alone. A machine is fitted with one drive — that is what the
+Agats seen carried — and the second is a container's to ask for
+(`machine.slots.<n>.drives` in [AGC.md](AGC.md#machineslots)); selecting a drive
+that is not fitted finds no disk, as it does on the machine.
 
 #### Writing
 

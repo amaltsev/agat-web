@@ -155,10 +155,10 @@ function eq(what, got, want) {
   // What Save AGC calls its file. The clock is passed in, so the stamp is a
   // fact rather than whatever second the test ran in.
   const at = new Date(2026, 7, 25, 14, 30, 12);   // months are 0-based
-  const named = (name, sources) => {
+  const named = (name, disks) => {
     const app = mk({ model: 7 });
     app.fromAgc = name;
-    app.sources = sources || {};
+    app.disks = disks || [];
     return app.agcName(at);
   };
 
@@ -179,7 +179,7 @@ function eq(what, got, want) {
   // A first save off a bare image is not a re-save: no stamp, and the
   // extension is swapped as before.
   eq('agcName leaves a bare image unstamped',
-     named('', { 3: { name: 'game.dsk' } }), 'game.agc');
+     named('', [{ name: 'game.dsk' }]), 'game.agc');
 }
 
 // --- the mice ---------------------------------------------------------------
@@ -697,11 +697,11 @@ async function diskWriteTests() {
     // And out through the saving path, with no App around it: writeBack reads
     // the sources it is given and the card's media, and nothing else.
     const app = {
-      sources: { 6: { name: 'rise-out.dsk', bytes: s.payload, patches: [],
-                      kind: 'dsk140', offset: 0, prodos: s.prodos } },
+      disks: [{ name: 'rise-out.dsk', bytes: s.payload, patches: [],
+                kind: 'dsk140', offset: 0, prodos: s.prodos, media: card.media }],
       machine: { cards: { 6: card } },
     };
-    const back = A.App.prototype.writeBack.call(app, 6);
+    const back = A.App.prototype.writeBack.call(app, app.disks[0]);
     const want256 = new ctx.Uint8Array(s.payload);
     want256.set(wrote, 10 * 4096 + 3 * 256);
     eq('writeBack patches say what changed',
@@ -710,8 +710,8 @@ async function diskWriteTests() {
                        Buffer.from(want256))],
        ['rise-out.dsk', 1, 0]);
     eq('writeBack leaves the source alone, so saving twice is the same file',
-       [app.sources[6].patches.length,
-        JSON.stringify(A.App.prototype.writeBack.call(app, 6).patches) ===
+       [app.disks[0].patches.length,
+        JSON.stringify(A.App.prototype.writeBack.call(app, app.disks[0]).patches) ===
         JSON.stringify(back.patches)],
        [0, true]);
 
@@ -737,7 +737,7 @@ async function diskWriteTests() {
       if (media.bytes[t10 + i] === 0xd5 && media.bytes[t10 + i + 1] === 0xaa &&
           media.bytes[t10 + i + 2] === 0xad) { media.bytes[t10 + i + 2] = 0x96; break; }
     }
-    const fell = A.App.prototype.writeBack.call(app, 6);
+    const fell = A.App.prototype.writeBack.call(app, app.disks[0]);
     eq('an undecodable track saves as nibbles instead',
        [fell.name, fell.bytes.length, fell.patches.length],
        ['rise-out.nib', 35 * 6656, 0]);
@@ -896,16 +896,17 @@ async function disk840WriteTests() {
   // dsk840: patches against the sector image.
   {
     const { media, card } = rewrite(dskSrc);
-    const app = { sources: { 5: { name: 'Klondike.dsk', bytes: dsk, patches: [], kind: 'dsk840', offset: 0 } },
+    const app = { disks: [{ name: 'Klondike.dsk', bytes: dsk, patches: [], kind: 'dsk840',
+                            offset: 0, media: card.media }],
                   machine: { cards: { 5: card } } };
-    const back = A.App.prototype.writeBack.call(app, 5);
+    const back = A.App.prototype.writeBack.call(app, app.disks[0]);
     eq('dsk840 writeBack patches say what changed',
        [back.name, back.patches.length,
         Buffer.compare(Buffer.from(A.agc.applyPatches(back.bytes, back.patches)), Buffer.from(want))],
        ['Klondike.dsk', 1, 0]);
     eq('dsk840 writeBack leaves the source alone',
-       [app.sources[5].patches.length,
-        JSON.stringify(A.App.prototype.writeBack.call(app, 5).patches) === JSON.stringify(back.patches)],
+       [app.disks[0].patches.length,
+        JSON.stringify(A.App.prototype.writeBack.call(app, app.disks[0]).patches) === JSON.stringify(back.patches)],
        [0, true]);
     const file = await A.agc.build({ media: [{ name: back.name, bytes: back.bytes, patches: back.patches }] });
     const re = await A.agc.parse(Buffer.from(file, 'utf8'), 'Klondike.agc');
@@ -916,16 +917,17 @@ async function disk840WriteTests() {
     for (let i = 0; i < media.stride; i++) {
       if ((media.attrs[base + i] & 0x81) && media.bytes[base + i + 1] === 0x6a) { media.attrs[base + i] = 0; break; }
     }
-    const fell = A.App.prototype.writeBack.call(app, 5);
+    const fell = A.App.prototype.writeBack.call(app, app.disks[0]);
     eq('an undecodable 840K track saves as .aim instead',
        [fell.name, fell.bytes.length, fell.patches.length], ['Klondike.aim', 2068480, 0]);
   }
   // nib840: the records rebuilt from the sectors.
   {
     const { card } = rewrite(nibSrc);
-    const app = { sources: { 5: { name: 'Klondike.nib', bytes: nib, patches: [], kind: 'nib840', offset: 0 } },
+    const app = { disks: [{ name: 'Klondike.nib', bytes: nib, patches: [], kind: 'nib840',
+                            offset: 0, media: card.media }],
                   machine: { cards: { 5: card } } };
-    const back = A.App.prototype.writeBack.call(app, 5);
+    const back = A.App.prototype.writeBack.call(app, app.disks[0]);
     const out = A.agc.applyPatches(back.bytes, back.patches);
     const rec = (T * 21 + SEC) * aim.NIB_RECORD;
     let others = 0;
@@ -941,9 +943,10 @@ async function disk840WriteTests() {
   // aim840: the stream itself, as patches.
   {
     const { card, media } = rewrite(aimSrc);
-    const app = { sources: { 5: { name: 'Klondike.aim', bytes: aimSrc.payload, patches: [], kind: 'aim840', offset: 0 } },
+    const app = { disks: [{ name: 'Klondike.aim', bytes: aimSrc.payload, patches: [],
+                            kind: 'aim840', offset: 0, media: card.media }],
                   machine: { cards: { 5: card } } };
-    const back = A.App.prototype.writeBack.call(app, 5);
+    const back = A.App.prototype.writeBack.call(app, app.disks[0]);
     const out = A.agc.applyPatches(back.bytes, back.patches);
     const re = A.mount(A.sniff(out, 'Klondike.aim'));
     const got = aim.desectorizeTrack(re.bytes, re.attrs, re.trackBase(T), re.trackLen[T], T);
@@ -1025,6 +1028,109 @@ async function disk840WriteTests() {
        [c.lamp(T + 64), c.lamp(T + 64 + W - 1), c.lamp(T + 64 + W)], [2, 2, 1]);
     c.read(0xc, T + 64);                      // same instant: nothing new to give
     eq('140 lamp is not held up by a poll', c.lamp(T + 64 + W), 1);
+  }
+}
+
+// --- the second drive on the cable ------------------------------------------
+// Both controllers select between two drives, and a machine is fitted with one
+// unless a container asks for two. What this pins down is that the select line
+// reaches the media: a program that saves to D2 must not write to the disk in
+// D1, and on a machine with one drive it must write nowhere at all.
+{
+  const disk = (kind, stride, tracks) => {
+    const m = new A.Media({
+      kind, stride, tracks,
+      bytes: new ctx.Uint8Array(stride * tracks),
+      attrs: new ctx.Uint8Array(stride * tracks),
+    });
+    m.locked = false;
+    return m;
+  };
+
+  // One byte out of the 140K register file, the way DOS does it.
+  const put140 = (card, now, byte) => {
+    card.access(0x9, now);                    // $C0E9, motor on
+    card.read(0xf, now);                      // $C0EF, write mode
+    card.write(0xd, byte, now);               // $C0ED, latch
+    card.read(0xc, now);                      // $C0EC, shift out
+  };
+
+  {
+    const one = new A.Disk140({});
+    const d1 = disk('nib140', 6656, 35);
+    one.insert(d1);
+    one.access(0xb, 0);                       // $C0EB, select drive 2
+    put140(one, 100, 0x96);
+    eq('140K: a one-drive machine has no disk in D2',
+       [one.drives, one.media, d1.isWritten()], [1, null, false]);
+    one.access(0xa, 200);                     // $C0EA, back to drive 1
+    eq('...and D1 is still there', one.media, d1);
+  }
+
+  {
+    const two = new A.Disk140({ drives: 2 });
+    const d1 = disk('nib140', 6656, 35), d2 = disk('nib140', 6656, 35);
+    two.insert(d1);
+    two.insert(d2, 1);
+    eq('140K: two drives, each with its own disk',
+       [two.mediaAt(0) === d1, two.mediaAt(1) === d2, two.media === d1],
+       [true, true, true]);
+
+    two.access(0xb, 0);                       // select drive 2
+    put140(two, 100, 0x96);
+    eq('140K: a write to D2 lands on D2',
+       [d2.isWritten(), d1.isWritten()], [true, false]);
+
+    // The head is the drive's: stepping D2 in leaves D1 where it stood.
+    const was = (two.access(0xa, 200), two.track);
+    two.access(0xb, 300);
+    for (let p = 0; p < 8; p++) two.access(((p + 1) & 3) * 2 + 1, 300 + p);
+    const moved = two.track;
+    two.access(0xa, 400);
+    eq('140K: each drive keeps its own head', [moved !== was, two.track], [true, was]);
+
+    two.eject(1);
+    eq('140K: ejecting D2 leaves D1 alone',
+       [two.mediaAt(0) === d1, two.mediaAt(1)], [true, null]);
+  }
+
+  // The 840K controller's select line is port C bit 3. Its sense is not
+  // established, so a controller with one drive ignores it and reads the disk
+  // it has — which is what every container written until now depends on.
+  {
+    const one = new A.Disk840({});
+    const d1 = disk('aim840', 6464, 160);
+    one.insert(d1);
+    one.control(0x07);                        // port C bit 3 = 1
+    eq('840K: one drive answers whatever the select line says',
+       [one.drives, one.media === d1], [1, true]);
+  }
+
+  {
+    const two = new A.Disk840({ drives: 2 });
+    const d1 = disk('aim840', 6464, 160), d2 = disk('aim840', 6464, 160);
+    two.insert(d1);
+    two.insert(d2, 1);
+    eq('840K: the select line picks the disk',
+       [two.media === d1, (two.control(0x07), two.media === d1),
+        two.media === d2],
+       [true, false, true]);
+
+    // Motor and write mode, then a byte at +5 and enough time for the head to
+    // reach the slot it goes in.
+    two.control(0x0f);                        // port C bit 7 — motor
+    two.control(0x0d);                        // port C bit 6 — write mode
+    two.write(5, 0x5a, 1000);
+    two.read(6, 1000 + 10 * A.Disk840.CYCLES_PER_BYTE);
+    eq('840K: a write to D2 lands on D2',
+       [d2.isWritten(), d1.isWritten()], [true, false]);
+
+    // And each drive's head stands where that drive left it.
+    two.control(0x05);                        // port C bit 2 — step outward
+    two.write(9, 0, 2000);                    // step pulse, on D2
+    const moved = two.cyl;
+    two.control(0x06);                        // back to drive 1
+    eq('840K: each drive keeps its own cylinder', [moved, two.cyl], [1, 0]);
   }
 }
 
@@ -2290,7 +2396,7 @@ async function agcTests() {
       const plain = await load(stock);
       eq('a container builds the machine it names',
          [plain.model, plain.ramSize], [7, 0x10000]);
-      eq('...and boots its medium', [plain.drives[3].name, plain.machine.cpu.pc],
+      eq('...and boots its medium', [plain.diskIn(3, 0).name, plain.machine.cpu.pc],
          ['x.dsk', 0xc300]);
 
       const same = await load(stock, { model: 7, ramSize: 0x10000 });
@@ -2360,6 +2466,102 @@ async function agcTests() {
       eq('a container\'s cards move with the model',
          [seven.slots[4].card, seven.slots[6].card, seven.slots[2].card],
          ['xram', 'mouse-mars-rom', 'psrom']);
+
+      // --- more disks than drives -------------------------------------------
+      //
+      // A container carries a session's disks, and a machine holds two of them
+      // at the most. Which disk is in which drive is the order they are listed
+      // in, unless a medium says `in`; a machine has one drive per controller
+      // unless a slot says `drives`.
+
+      const disk140 = (n) => {
+        const b = new ctx.Uint8Array(143360);
+        b[0] = n;                            // so the three are told apart
+        return b;
+      };
+      const shelf = async (media, slots) => ctx.Uint8Array.from(Buffer.from(
+        await A.agc.build({ model: 7, ram: 64, slots: slots, media: media })));
+      const three = () => [{ name: 'a.dsk', bytes: disk140(1) },
+                           { name: 'b.dsk', bytes: disk140(2) },
+                           { name: 'c.dsk', bytes: disk140(3) }];
+      const inDrives = (app) => app.driveList().map(
+        (d) => (app.diskIn(d.slot, d.drv) || { name: '—' }).name);
+
+      const oneDrive = await load(await shelf(three()));
+      eq('one drive takes the first disk and the rest are still carried',
+         [inDrives(oneDrive), oneDrive.disks.length], [['—', 'a.dsk'], 3]);
+
+      const twoDrives = await load(await shelf(three(),
+        { 3: { card: 'fdd140', drives: 2 } }));
+      eq('a second drive on the cable takes the second disk',
+         [inDrives(twoDrives), twoDrives.machine.cards[3].drives],
+         [['—', 'a.dsk', 'b.dsk'], 2]);
+
+      // `in` beats the order, and `none` keeps a disk out of every drive.
+      const said = three();
+      said[0].mount = 'none';                // `in` in the file, `mount` in here
+      said[2].mount = 'fdd140:2';
+      said[2].writable = true;
+      const placed = await load(await shelf(said, { 3: { card: 'fdd140', drives: 2 } }));
+      eq('a medium says which drive it goes in',
+         [inDrives(placed), placed.diskIn(3, 1).media.locked],
+         [['—', 'b.dsk', 'c.dsk'], false]);
+
+      // And back out again. The arrangement is written only where the order
+      // would not produce it, so the plain container stays plain.
+      eq('a container of one disk says nothing about drives',
+         Object.keys(JSON.parse(await oneDrive.toAgc()).media[1]),
+         ['name', 'gz']);
+      const again = JSON.parse(await placed.toAgc());
+      // ...and says no more than it has to: with a.dsk kept out of the drives,
+      // the two that are in them are in the order they are listed.
+      eq('...and one that needs telling says it',
+         [again.machine.slots, again.media.map((m) => m['in'] || ''),
+          again.media.map((m) => !!m.writable)],
+         [{ 3: { card: 'fdd140', drives: 2 } }, ['none', '', ''],
+          [false, false, true]]);
+
+      // A disk moved by hand is told where it is, and only as much as it takes:
+      // with a.dsk out of the drives and b.dsk pinned to D2, c.dsk falls into
+      // D1 by itself.
+      twoDrives.mount(twoDrives.disks[2], 3, 0);
+      eq('a disk moved by hand is written down where it now is',
+         JSON.parse(await twoDrives.toAgc()).media.map((m) => m['in'] || ''),
+         ['none', 'fdd140:2', '']);
+
+      const round = await load(ctx.Uint8Array.from(Buffer.from(await placed.toAgc())));
+      eq('a saved arrangement comes back as it was',
+         [inDrives(round), round.disks.length, round.diskIn(3, 1).media.locked],
+         [['—', 'b.dsk', 'c.dsk'], 3, false]);
+
+      // A blank is zeros and nothing else — DOS's INIT is what formats it —
+      // and it goes into the drive it is put in like any other disk.
+      const blanked = await load(await shelf([{ name: 'a.dsk', bytes: disk140(1) }]));
+      const blank = blanked.blankDisk('dsk140');
+      eq('a blank disk is a disk of nothing, and unlocked',
+         [blank.bytes.length, blank.media.locked,
+          [...blank.bytes].some((b) => b !== 0)],
+         [143360, false, false]);
+      blanked.mount(blank, 3, 0);
+      eq('...and takes the drive from the disk that was in it',
+         [inDrives(blanked), blanked.mountedAt(blanked.disks[0])],
+         [['—', 'blank.dsk'], null]);
+
+      // One file into one drive, with the rest of the session standing: the
+      // other way a disk is opened replaces everything — see startOpen.
+      blanked.openInto(3, 0, disk140(9), 'later.dsk');
+      eq('a file opened into a drive leaves the session alone',
+         [inDrives(blanked), blanked.disks.length], [['—', 'later.dsk'], 3]);
+      eq('...and a disk the drive cannot read is refused',
+         (() => { try { blanked.openInto(3, 0, new ctx.Uint8Array(860160), 'big.dsk'); }
+                  catch (e) { return e.message; } return 'no error'; })(),
+         'big.dsk is a dsk840, which this drive cannot read');
+
+      // What a drive is called: the controller alone while it has one drive.
+      eq('a drive is named for its controller until there are two of them',
+         [oneDrive.driveLabel(3, 0), twoDrives.driveLabel(3, 0),
+          twoDrives.driveLabel(3, 1), oneDrive.driveLabel(5, 0)],
+         ['140K', '140K D1', '140K D2', '840K']);
 
       // --- and the machine it had got to ------------------------------------
       //

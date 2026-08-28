@@ -1391,23 +1391,24 @@ H.loadRoms(ctx).then(async (roms) => {
     const tracks = [];
     for (let t = 0; t < media.tracks; t++) if (media.written[t]) tracks.push(t);
     console.log('written    ' + (tracks.length ? 'tracks ' + tracks.join(' ') : 'nothing'));
-    // The save path itself, with no App around it: writeBack reads the sources
-    // it is handed and the card's media, and nothing else. A container is
-    // unwrapped by sniffFile, so its packed bytes are what a save writes back.
+    // The save path itself, with no App around it: writeBack reads the disk it
+    // is handed — the file as it arrived, and the media a drive has been
+    // writing to — and nothing else. A container is unwrapped by sniffFile, so
+    // its packed bytes are what a save writes back.
     const from = sniffed.agc && sniffed.agc.media[0];
-    const sources = {};
-    sources[slot] = {
+    const disk = {
       name: from ? from.name : path.basename(target),
       bytes: from ? from.bytes : new ctx.Uint8Array(fs.readFileSync(target)),
       patches: from ? from.patches : [],
       kind: sniffed.kind,
       offset: sniffed.offset || 0,
       prodos: !!sniffed.prodos,
+      media: media,
     };
-    const back = ctx.AGAT.App.prototype.writeBack.call({ sources, machine: m }, slot);
-    const off = sources[slot].offset;
+    const back = ctx.AGAT.App.prototype.writeBack.call({ machine: m }, disk);
+    const off = disk.offset;
     console.log('save       ' + back.name + ', ' +
-                (back.name === sources[slot].name
+                (back.name === disk.name
                    ? back.patches.length + ' patch' + (back.patches.length === 1 ? '' : 'es')
                    : 'as nibbles — a track would not decode back to sectors'));
     for (const p of back.patches.slice(0, 24)) {

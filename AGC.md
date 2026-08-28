@@ -150,6 +150,7 @@ puts there; `null` empties it.
 |---|---|
 | `card` | `"psrom"` (Agat-7 ЭмПЗУ), `"xram"` (Agat-7 ОЗУ expansion), `"xram9"` (Agat-9 ОЗУ expansion), `"fdd140"`, `"fdd840"`, `"mouse-nippel"`, `"mouse-mars"`, `"mouse-mars-rom"`, `"mouse-mm8031"` |
 | `ram` | **kilobytes**, for the memory cards: `16`, `32`, `48`, `64` or `128` |
+| `drives` | `2` for a second drive on a controller's cable. Both controllers select between two; a machine was as good as always fitted with one, which is what a slot that says nothing gets. |
 
 `card` is required: an entry that gives only a size names no card, and is
 ignored.
@@ -366,6 +367,8 @@ poked straight into memory.
 | field | |
 |---|---|
 | `name` | the original filename. The **format is detected by size, not by this** — Agat images in the wild are routinely misnamed. |
+| `in` | which drive it goes in. Optional; see below. |
+| `writable` | `true` and a program may write to this disk. Absent is locked, which is what every disk arrives as. |
 | `data` | base64, as an array of lines |
 | `gz` | the same bytes gzipped, then base64. `data` or `gz`, never both. |
 | `patches` | changes to apply after decoding, in order; hex, base64 or gzipped |
@@ -382,6 +385,28 @@ Anything the emulator takes, a container carries: `.aim`, `.dsk` and
 container is refused.  Each image goes into the drive its size implies,
 so a container can fill both drives. Several `.fil` programs are loaded
 in the order they are listed (and the last loaded runs).
+
+**A container may carry more disks than the machine has drives.** The drives are
+filled from the list, in order — the first 140K image to the 140K drive, the
+next to its second drive if one is fitted — and what is left over is carried
+without being in a drive. It is still a disk of this session: it can be put in a
+drive from the page, and it is saved with the rest. That is what makes an editor
+on one disk and the work on another one container.
+
+`in` says where a medium goes, when the order is not the answer:
+
+| | |
+|---|---|
+| `"fdd140"`, `"fdd840"` | that controller's first drive |
+| `"fdd140:2"` | its second, on a controller `drives` fitted one to |
+| `"slot:3"`, `"slot:3:2"` | by slot, for a machine with two of the same card |
+| `"none"` | carried, and in no drive |
+| absent | the fill order above |
+
+A medium naming a drive this machine has not got is read as saying nothing, and
+takes its turn with the rest. **Save writes the fewest of these it can**: the
+load is replayed against the list, and only a disk the order would put somewhere
+else is told where it is — so a container of one disk carries no `in` at all.
 
 Everything listed is loaded first, in order; then one thing starts. Without a
 `boot` that is **the first disk listed**, whichever drive it went into, and a
@@ -498,11 +523,12 @@ that carries one **resumes** when it is opened, instead of booting.
 | `machine` | the model and base RAM size it is for, every register `reset()` touches, and `ram` — base RAM, as a payload is written |
 | `slots` | one entry per fitted card, keyed by slot number |
 
-A slot entry is whatever that card holds, plus three fields the slot rather than
-the card contributes: `card` and `size`, which say what has to be in the slot
-for the snapshot to mean anything, and `locked`, the disk's write lock — which
-is the person's choice rather than the program's and would otherwise come back
-on.
+A slot entry is whatever that card holds, plus the fields the slot rather than
+the card contributes: `card`, `size` and `drives`, which say what has to be in
+the slot for the snapshot to mean anything, and `locked`, a drive each — the
+disk's write lock, which is the person's choice rather than the program's and
+would otherwise come back on. (A snapshot written before there were two drives
+carries one flag rather than a list, and it is the first drive's.)
 
 **The disk is not in here.** What a program wrote to it is carried by the
 medium's `patches`, as it is in any container, so a restored drive finds the

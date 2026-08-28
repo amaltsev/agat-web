@@ -163,6 +163,10 @@
         return 'the state wants ' + ((w.size || 0) >> 10) + 'K in slot ' + n +
                ' and this machine has ' + ((h.ram || 0) >> 10) + 'K';
       }
+      if ((w.drives || 1) !== (h.drives || 1)) {
+        return 'the state wants ' + (w.drives || 1) + ' drives on slot ' + n +
+               ' and this machine has ' + (h.drives || 1);
+      }
     }
     for (n in have) {
       if (!want[n]) {
@@ -213,16 +217,26 @@
   // One slot. The card's own fields come from the card, because only it knows
   // which of them is state — the same reason lamp() belongs to the card — and
   // what is added here is what the slot rather than the card is: which card is
-  // in it, how big it is, and whether the disk in it can be written to.
+  // in it, how big it is, how many drives hang off it, and whether the disk in
+  // each of them can be written to.
+  //
+  // `locked` is a drive each, and a snapshot taken before there were two
+  // carries the one flag — which is D1's, as it was then.
   function saveCard(app, n, card) {
-    var spec = app.slots[n], out = {}, k, own;
+    var spec = app.slots[n], out = {}, k, own, d;
     if (card && card.saveState) {
       own = card.saveState();
       for (k in own) out[k] = own[k];
     }
     out.card = spec.card;
     if (spec.ram) out.size = spec.ram;
-    if (card && card.media) out.locked = card.media.locked;
+    if (spec.drives > 1) out.drives = spec.drives;
+    if (card && card.mediaAt) {
+      out.locked = [];
+      for (d = 0; d < (card.drives || 1); d++) {
+        out.locked.push(card.mediaAt(d) ? card.mediaAt(d).locked : null);
+      }
+    }
     return out;
   }
 
@@ -278,9 +292,7 @@
       // patches already are the written disk, so a restored drive finds what it
       // was reading. What the state carries is the lock, which is the person's
       // choice rather than the program's and would otherwise come back on.
-      if (card.media && s.slots[n].locked !== undefined) {
-        card.media.locked = !!s.slots[n].locked;
-      }
+      setLocks(card, s.slots[n].locked);
     }
 
     copyFields(s.cpu, m.cpu, CPU_FIELDS);
@@ -293,6 +305,20 @@
     // the program left it.
     m.speakerEdges.length = 0;
     return s;
+  }
+
+  // The write locks, one per drive — or the single flag a snapshot taken
+  // before there were two carries, which is the first drive's.
+  function setLocks(card, locked) {
+    var list, d, media;
+    if (locked === undefined || locked === null || !card.mediaAt) return;
+    list = locked instanceof Array ? locked : [locked];
+    for (d = 0; d < list.length; d++) {
+      media = card.mediaAt(d);
+      if (media && list[d] !== null && list[d] !== undefined) {
+        media.locked = !!list[d];
+      }
+    }
   }
 
   // What the status line says about a resumed machine: where the program was,

@@ -86,13 +86,24 @@
   // load is visible at once.
   var LAMP_BUSY = AGAT.CPU_HZ / 20;
 
+  // One drive's head. The cable carries two, and where each of them stands is
+  // the drive's own business — a driver that switches drives and reads without
+  // seeking finds the head where it left it.
+  function Head() {
+    this.cyl = 0;                       // head cylinder, 0..79
+    this.pos = 0;                       // byte index within the track
+    this.lastWritePos = 0;              // the slot the last written byte went to
+  }
+
   function Disk840(opts) {
     opts = opts || {};
     this.rom = opts.rom || null;        // the card's $Cn00 boot ROM
-    this.media = null;
-    this.cyl = 0;                       // head cylinder, 0..79
+    // A drive each. Machines were as good as always fitted with one, so
+    // `drives` is 1 unless a container asks for two.
+    this.drives = opts.drives === 2 ? 2 : 1;
+    this.disks = [null, null];
+    this.heads = [new Head(), new Head()];
     this.side = 0;                      // 0 or 1
-    this.pos = 0;                       // byte index within the track
     this.syncSeen = false;              // a desync mark has passed since the strobe
     this.atIndex = false;               // head is inside an index mark
     this.ready = false;
@@ -103,22 +114,40 @@
     this.latch = 0;                     // the byte +5 stored, waiting for the boundary
     this.latched = false;
     this.latchMark = false;             // a +8 strobe arrived while it waited
-    this.lastWritePos = 0;              // the slot the last written byte went to
     this.trace = null;                  // set to a fn(reg, val, now) to log writes
 
     this.stepOutward = opts.stepOutward === undefined ? 1 : opts.stepOutward;
     if (opts.media) this.insert(opts.media);
   }
 
-  Disk840.prototype.insert = function (media) {
-    this.media = media;
-    this.pos = 0;
+  // Which drive, defaulting to the first: everything that does not care about
+  // the second says nothing and gets D1.
+  function which(drv) { return drv === 1 ? 1 : 0; }
+
+  Disk840.prototype.insert = function (media, drv) {
+    var d = which(drv);
+    this.disks[d] = media;
+    this.heads[d].pos = 0;
     this.ready = false;
     this.syncSeen = false;
     this.latched = false;
   };
 
-  Disk840.prototype.eject = function () { this.media = null; };
+  // One drive, or both when none is named — which is what emptying the machine
+  // wants.
+  Disk840.prototype.eject = function (drv) {
+    if (drv === undefined) this.disks[0] = this.disks[1] = null;
+    else this.disks[which(drv)] = null;
+  };
+
+  Disk840.prototype.mediaAt = function (drv) { return this.disks[which(drv)]; };
+
+  // Where one drive's head stands, for a lamp that draws both. The side is the
+  // controller's — one head select line goes to both drives — so only the
+  // cylinder is the drive's own.
+  Disk840.prototype.trackAt = function (drv) {
+    return this.heads[which(drv)].cyl * 2 + this.side;
+  };
 
   // Reset clears the 8255s, so the drive lines — motor, side, direction, select
   // — all drop. The head does not move: nothing drives the stepper, and the boot
@@ -131,6 +160,20 @@
     this.latched = false;
   };
 
+  // `cyl`, `pos` and `lastWritePos` are the selected drive's, read and written
+  // as if they were the controller's — which is what every line inside the card
+  // was written against, and what a driver switching drives means by them.
+  function head(name) {
+    Object.defineProperty(Disk840.prototype, name, {
+      get: function () { return this.heads[this.drv][name]; },
+      set: function (v) { this.heads[this.drv][name] = v; },
+    });
+  }
+
+  head('cyl');
+  head('pos');
+  head('lastWritePos');
+
   // Which of the 160 stored tracks is under the head: cylinder 0 side 0 is
   // track 0, cylinder 0 side 1 is track 1, cylinder 1 side 0 is track 2, and so
   // on — which is what lets a 140K disk be read as sectors 0-16 of the evens.
@@ -140,22 +183,48 @@
 
   Disk840.prototype.hasDisk = function () { return !!this.media; };
 
+  // Which drive port C has selected. Consulted only on a controller fitted with
+  // two: the line's sense is not established here — agat-emulator's fdd.c
+  // ignores bit 3 altogether, and nothing in `examples/` exercises it — so a
+  // machine with one drive reads the disk in it whatever the bit says, rather
+  // than resting on a guess. Bit set is taken as the second drive.
+  Object.defineProperty(Disk840.prototype, 'drv', {
+    get: function () {
+      return this.drives === 2 ? (this.portC >> PC_DRIVE) & 1 : 0;
+    },
+  });
+
+  // The disk under the head, and the head itself: both belong to the selected
+  // drive, so every read and write inside the card reaches one drive's disk
+  // only by naming them.
+  Object.defineProperty(Disk840.prototype, 'media', {
+    get: function () { return this.disks[this.drv]; },
+  });
+
   // The clock keeps turning in write mode on this controller, so a snapshot has
   // to carry the byte boundary's phase as well as the head: `nextByteAt` is a
   // float, a whole number of byte times ahead of the last one, and rounding it
   // would make the disk turn at the wrong speed. `side` and `writeMode` are not
   // here — both are bits of `portC` and come back with it.
+  //
+  // Both heads, because where each drive left its own is the drive's. The
+  // selected drive's three are written flat as well, which is what a snapshot
+  // taken before there were two carries and all a one-drive machine needs.
   Disk840.prototype.saveState = function () {
-    return { cyl: this.cyl, pos: this.pos, syncSeen: this.syncSeen,
-             atIndex: this.atIndex, ready: this.ready, data: this.data,
-             nextByteAt: this.nextByteAt, lastByteAt: this.lastByteAt,
-             portC: this.portC, latch: this.latch, latched: this.latched,
-             latchMark: this.latchMark, lastWritePos: this.lastWritePos };
+    var out = { cyl: this.cyl, pos: this.pos, syncSeen: this.syncSeen,
+                atIndex: this.atIndex, ready: this.ready, data: this.data,
+                nextByteAt: this.nextByteAt, lastByteAt: this.lastByteAt,
+                portC: this.portC, latch: this.latch, latched: this.latched,
+                latchMark: this.latchMark, lastWritePos: this.lastWritePos,
+                heads: [] };
+    for (var i = 0; i < this.heads.length; i++) {
+      out.heads.push({ cyl: this.heads[i].cyl, pos: this.heads[i].pos,
+                       lastWritePos: this.heads[i].lastWritePos });
+    }
+    return out;
   };
 
   Disk840.prototype.loadState = function (s) {
-    this.cyl = s.cyl;
-    this.pos = s.pos;
     this.syncSeen = !!s.syncSeen;
     this.atIndex = !!s.atIndex;
     this.ready = !!s.ready;
@@ -167,8 +236,21 @@
     this.latch = s.latch;
     this.latched = !!s.latched;
     this.latchMark = !!s.latchMark;
-    this.lastWritePos = s.lastWritePos;
     this.setPortC(s.portC);            // `side` follows it, as it does live
+    // The heads last, because which of them `cyl` and `pos` mean is decided by
+    // the port C that was just put back. A snapshot from before there were two
+    // carries the flat three alone, and they are the selected drive's.
+    var list = s.heads || [], i;
+    for (i = 0; i < this.heads.length && i < list.length; i++) {
+      this.heads[i].cyl = list[i].cyl;
+      this.heads[i].pos = list[i].pos;
+      this.heads[i].lastWritePos = list[i].lastWritePos;
+    }
+    if (!list.length) {
+      this.cyl = s.cyl;
+      this.pos = s.pos;
+      this.lastWritePos = s.lastWritePos;
+    }
   };
 
   var PC_DIR = 2;      // port C bit 2: step direction
@@ -327,7 +409,10 @@
   // hangs off the motor line, which the $C500 ROM raises before it does
   // anything else and never lowers; the bright state is what separates a drive
   // that is reading from one that is merely turning.
-  Disk840.prototype.lamp = function (now) {
+  // `drv` asks about one drive of the two: the motor line reaches the selected
+  // drive alone, so the other is dark.
+  Disk840.prototype.lamp = function (now, drv) {
+    if (drv !== undefined && which(drv) !== this.drv) return 0;
     if (!this.media || !((this.portC >> PC_MOTOR) & 1)) return 0;
     return now - this.lastByteAt < LAMP_BUSY ? 2 : 1;
   };

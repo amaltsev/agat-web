@@ -37,7 +37,9 @@ Files opened *together* belong together, though: **Open…** takes several and s
 does a drop, and that is how one container comes to name two disks — drop a
 140K and an 840K at once and both drives are filled. Several `.fil` programs
 opened together are poked into memory in that order, which is how a program that
-wants its data loaded first is packaged.
+wants its data loaded first is packaged. The one gesture that adds rather than
+replaces is **Open into drive…** on a drive's `⋯`: that changes the disk in one
+drive and leaves the machine running.
 
 Everything opened is loaded first, and then one thing starts: the first disk
 opened, or — with no disk among them — the last `.fil`. A container can say
@@ -92,7 +94,10 @@ The Agat-9's own 128K is fixed, but it takes a 128K ОЗУ expansion of its own 
 slot 2 — a different card, and MouseGraf will not start without it.
 
 Drives: 840K in slot 5 on both machines, 140K in slot 6 on the Agat-9 and slot 3
-on the Agat-7. A dropped image goes to whichever drive can read it.
+on the Agat-7, one drive on each. A dropped image goes to whichever drive can
+read it. Both controllers select between two drives, and a container can ask for
+the second — see [`.agc`](#agc--the-agat-container); then `SAVE PROG,D2` writes
+to the disk in it, and the lamps say `D1` and `D2`.
 
 Each drive has a **lamp** under the screen: dim while its motor line is up,
 bright while bytes are reaching the CPU, with the track its head is on beside it.
@@ -100,17 +105,22 @@ Hovering one names the disk in the drive and the format its image is in. Disks
 of this era take their time — a boot can be ten seconds of reading — and the
 lamp is what tells that apart from a hang.
 
-Beside each lamp is **RO / RW**, the drive's write lock. Every disk arrives
+Beside each lamp is **RO / RW**, the disk's write lock. Every disk arrives
 read-only and the drive tells the program so; click `RO` and the drive will
-write. That is what an Agat-9 system disk is asking for when it says «СИСТЕМА
+write. The lock is the disk's and travels with it from drive to drive. That is what an Agat-9 system disk is asking for when it says «СИСТЕМА
 ИСПОРЧЕНА», and what DOS needs before `SAVE` or `INIT` will work. Writes go to
 memory and nowhere else — the file on your disk is never touched, and closing
 the tab loses them; **Save AGC** lights up while there are any, and keeps them
 as patches on the image they came from. It can also keep the machine itself, if
 you tick the box it puts up — see [`.agc`](#agc--the-agat-container) below.
 
-The **⋯** beside the lock opens the disk's own catalog, and what a file can be
-taken off or put onto it with — see
+The **⋯** beside the lock opens the drive: which disk is in it, **Eject**,
+**Blank** — a disk of nothing, to `INIT` from DOS — and **Open into drive…**,
+which changes that one disk and leaves the rest of the session running. The list
+holds every disk the session has, including any a container carries that no
+drive is holding, so an editor booted from one disk can save to another. Under
+the rule, **View/Edit DOS files** is the disk's own catalog and what a file can
+be taken off or put onto it with — see
 [Files on a DOS disk](#files-on-a-dos-disk) below.
 
 The **⚙** holds the settings a machine is run under rather than driven by: the
@@ -346,8 +356,8 @@ rather than of the format, and a reader that expects it eats the first character
 of a file without one, so it is shown as a setting rather than guessed at:
 ticked for a file that already has one, and carried over to the next file typed.
 
-The same panel is on the emulator page, on the `⋯` beside each drive lamp: it
-edits the disk that is *in the drive*, so what is written there is what the
+The same panel is on the emulator page, under **View/Edit DOS files** on the
+`⋯` beside each drive lamp: it edits the disk that is *in the drive*, so what is written there is what the
 machine reads, and **Save AGC** keeps it as a patch like any other write. The
 machine is held while the panel is up, because what you are looking at should
 stop long enough to look at.
