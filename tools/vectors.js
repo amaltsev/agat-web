@@ -2614,13 +2614,40 @@ async function agcTests() {
 
       // One file into one drive, with the rest of the session standing: the
       // other way a disk is opened replaces everything — see startOpen.
-      blanked.openInto(3, 0, disk140(9), 'later.dsk');
+      await blanked.openInto(3, 0, disk140(9), 'later.dsk');
       eq('a file opened into a drive leaves the session alone',
          [inDrives(blanked), blanked.disks.length], [['—', 'later.dsk'], 3]);
       eq('...and a disk the drive cannot read is refused',
-         (() => { try { blanked.openInto(3, 0, new ctx.Uint8Array(860160), 'big.dsk'); }
-                  catch (e) { return e.message; } return 'no error'; })(),
+         await blanked.openInto(3, 0, new ctx.Uint8Array(860160), 'big.dsk')
+           .then(() => 'no error', (e) => e.message),
          'big.dsk is a dsk840, which this drive cannot read');
+
+      // A container opened into a drive gives up a medium and nothing else:
+      // the machine it asks for is not built, and what it says the program may
+      // write to travels with the disk.
+      const mixed = await shelf([{ name: 'big.dsk', bytes: new ctx.Uint8Array(860160) },
+                                 { name: 'small.dsk', bytes: disk140(4),
+                                   writable: true }]);
+      const took = await blanked.openInto(3, 0, mixed, 'mixed.agc');
+      eq('a container hands the drive the disk it can read',
+         [took.name, inDrives(blanked), took.media.locked, blanked.disks.length],
+         ['small.dsk', ['—', 'small.dsk'], false, 4]);
+      eq('...and one carrying nothing this drive reads says so',
+         await blanked.openInto(3, 0, await shelf(
+           [{ name: 'big.dsk', bytes: new ctx.Uint8Array(860160) }]), 'big.agc')
+           .then(() => 'no error', (e) => e.message),
+         'big.agc: carries no disk this drive can read');
+
+      // Where the container puts a disk beats where it stands in the list,
+      // which is the same rule a whole container is opened by.
+      const pinned = await shelf([{ name: 'p1.dsk', bytes: disk140(5) },
+                                  { name: 'p2.dsk', bytes: disk140(6),
+                                    mount: 'fdd140:2' }],   // `in` in the file
+                                 { 3: { card: 'fdd140', drives: 2 } });
+      eq('a container names the drive a disk goes in',
+         [(await twoDrives.openInto(3, 1, pinned, 'pinned.agc')).name,
+          (await twoDrives.openInto(3, 0, pinned, 'pinned.agc')).name],
+         ['p2.dsk', 'p1.dsk']);
 
       // What a drive is called: the controller alone while it has one drive.
       eq('a drive is named for its controller until there are two of them',

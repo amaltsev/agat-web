@@ -519,16 +519,63 @@
   // opens a file replaces the session — see startOpen — and this is the other
   // gesture: the disk in this drive, changed, while the machine goes on
   // running whatever it was running.
+  //
+  // A container is taken for its media and for nothing else: the machine it
+  // asks for, its title, its keys and the state it was saved in are what
+  // opening it as a session means, and this drive is not that. Asynchronous
+  // for the one reason `load` is — a container's payload may be gzipped.
   App.prototype.openInto = function (slot, drv, bytes, name) {
-    var s = AGAT.sniff(bytes, name);
-    if (s.kind === 'agc' || s.kind === 'fil' || !s.kind) {
-      throw new Error(name + ': not a disk image');
+    var self = this;
+    return Promise.resolve().then(function () {
+      var s = AGAT.sniff(bytes, name);
+      if (s.kind !== 'agc') {
+        if (!s.kind || s.kind === 'fil') throw new Error(name + ': not a disk image');
+        return self.putIn(slot, drv, { name: name, bytes: bytes, sniffed: s,
+                                       media: AGAT.mount(s), from: null });
+      }
+      return AGAT.agc.parse(bytes, name).then(function (c) {
+        // `looks` said this was a container and the JSON says otherwise.
+        if (!c) throw new Error(name + ': not a disk image');
+        var pick = self.mediumFor(c, slot, drv);
+        if (!pick) throw new Error(name + ': carries no disk this drive can read');
+        return self.putIn(slot, drv, pick);
+      });
+    });
+  };
+
+  // Which of a container's media goes in this drive: the one the container
+  // puts here, and the first the drive can read otherwise. What a medium is is
+  // read off its bytes as everywhere else, and mounting it is what says which
+  // controller it belongs to.
+  App.prototype.mediumFor = function (c, slot, drv) {
+    var fits = [], i, m, s, media, spot;
+    for (i = 0; i < c.media.length; i++) {
+      m = c.media[i];
+      s = AGAT.sniff(m.payload, m.name);
+      if (!s.kind || s.kind === 'agc' || s.kind === 'fil') continue;
+      media = AGAT.mount(s);
+      if (this.slotFor(media.kind) !== slot) continue;
+      spot = this.mountSpot(m.mount);
+      fits.push({ name: m.name, bytes: m.payload, sniffed: s, media: media,
+                  from: m,
+                  here: !!(spot && spot.slot === slot && spot.drv === drv) });
     }
-    var media = AGAT.mount(s);
-    if (this.slotFor(media.kind) !== slot) {
-      throw new Error(name + ' is a ' + s.kind + ', which this drive cannot read');
+    for (i = 0; i < fits.length; i++) if (fits[i].here) return fits[i];
+    return fits[0] || null;
+  };
+
+  // The disk in the drive, and in the session's list so a save keeps it. A
+  // medium out of a container brings its patches and its pristine bytes with
+  // it, and is locked unless the container said the program may write to it —
+  // the same rule loadOne follows.
+  App.prototype.putIn = function (slot, drv, item) {
+    if (this.slotFor(item.media.kind) !== slot) {
+      throw new Error(item.name + ' is a ' + item.sniffed.kind +
+                      ', which this drive cannot read');
     }
-    var entry = this.remember(name, bytes, null, s, media);
+    var entry = this.remember(item.name, item.bytes, item.from, item.sniffed,
+                              item.media);
+    if (item.from && item.from.writable) entry.media.locked = false;
     this.mount(entry, slot, drv);
     return entry;
   };

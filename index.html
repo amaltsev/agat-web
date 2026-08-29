@@ -1918,7 +1918,8 @@
     e.target.value = '';
     if (!file) return;
     app.fileBytes(file).then(function (bytes) {
-      var entry = app.openInto(slot, drv, bytes, file.name);
+      return app.openInto(slot, drv, bytes, file.name);
+    }).then(function (entry) {
       say(entry.name + ' in ' + app.driveLabel(slot, drv));
       showDisk();
     }, function (err) {
