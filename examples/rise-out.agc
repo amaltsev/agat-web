@@ -6,12 +6,13 @@
   "url": "https://github.com/amaltsev/agat-rise-out",
   "machine": {
     "model": 7,
-    "ram": 64
+    "ram": 32,
+    "slots": {
+      "5": null
+    }
   },
   "keys": {
-    "KeyW": {
-      "code": "^"
-    }
+    "KeyW": "^"
   },
   "controls": {
     "Play": {
