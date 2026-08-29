@@ -236,42 +236,42 @@ function slotSpecs(was) {
 // Everything a container says but its media, as `build` wants it: what the
 // flags say, over what the container already said. `was` is the empty
 // container for `make`, so one function decides both.
+//
+// src/agc.js's `respec` is what carries a field through unchanged, which is
+// every field no flag names — and `controls` and a `state` snapshot, which no
+// flag names at all.
 function spec(was) {
-  const text = (name) => {
+  const s = A.agc.respec(was);
+  for (const name of ['title', 'author', 'date', 'url', 'notes', 'info', 'hint']) {
     const v = value(name);
-    return v === undefined ? was[name] : String(v);
-  };
-  const m = was.machine;
-  const model = flags.model === undefined ? (m.model || 7) : Number(value('model'));
+    if (v !== undefined) s[name] = String(v);
+  }
+  const model = flags.model === undefined ? (s.model || 7) : Number(value('model'));
   if (model !== 7 && model !== 9) {
     throw new Error('--model=' + flags.model + ': the Agat-7 or the Agat-9');
   }
-  const ram = flags.ram === undefined ? (m.ram || (model === 9 ? 128 : 64))
+  const ram = flags.ram === undefined ? (s.ram || (model === 9 ? 128 : 64))
                                       : Number(value('ram'));
   if ([32, 64, 128].indexOf(ram) < 0) throw new Error('--ram=' + flags.ram + ': 32, 64 or 128');
-  const monitor = value('monitor') === undefined ? m.monitor : String(flags.monitor);
+  const monitor = value('monitor') === undefined ? s.monitor : String(flags.monitor);
   if (monitor && !A.MONITORS[monitor]) {
     throw new Error('--monitor=' + monitor + ': not a monitor — try ' +
                     Object.keys(A.MONITORS).join(', '));
   }
-  const boot = value('boot') === undefined ? m.boot : String(flags.boot);
+  const boot = value('boot') === undefined ? s.boot : String(flags.boot);
   if (boot && !A.agc.BOOT.test(boot)) {
     throw new Error('--boot=' + boot + ': try auto, none, monitor, fdd140, ' +
                     'fdd840 or slot:N');
   }
-  return {
-    title: text('title'), author: text('author'), date: text('date'),
-    url: text('url'), notes: text('notes'),
-    info: text('info'), hint: text('hint'),
-    model: model, ram: ram, monitor: monitor,
-    boot: boot === 'auto' ? '' : boot,
-    slots: slotSpecs(m.slots),
-    keys: keySpecs(was.keys),
-    controls: was.controls,
-    state: was.state,
-    width: Number(flags.width) || 0,
-    gz: gz,
-  };
+  s.model = model;
+  s.ram = ram;
+  s.monitor = monitor;
+  s.boot = boot === 'auto' ? '' : boot;
+  s.slots = slotSpecs(s.slots);
+  s.keys = keySpecs(s.keys);
+  s.width = Number(flags.width) || 0;
+  s.gz = gz;
+  return s;
 }
 
 // ---- containers ------------------------------------------------------------
@@ -389,38 +389,15 @@ function select(c, names, all) {
 async function write(c, media, to) {
   const s = spec(c);
   s.media = media;
-  const text = asItWas(await A.agc.build(s), c.path);
+  // Back in the order the container already had its fields — `make` starts
+  // from a container that has none, and gets the documented order.
+  const text = A.agc.reorder(await A.agc.build(s), c.order);
   if (to === '-') { process.stdout.write(text); return '-'; }
   fs.writeFileSync(to, text);
   return to;
 }
 
-// The fields back in the order the container already had them. src/agc.js
-// writes the documented order, which is what a new container should have and
-// what the page's Save button produces; a container that has been hand-edited
-// since is somebody's own arrangement, and an `edit` that changes one field and
-// silently shuffles the rest makes a diff nobody can read. `make` has no file
-// to take an order from and gets the documented one.
-//
-// A field the file did not have goes where the documented order puts it,
-// relative to whatever of that order survives around it.
-function asItWas(text, from) {
-  if (!from) return text;
-  const had = Object.keys(JSON.parse(fs.readFileSync(from, 'utf8')));
-  const o = JSON.parse(text);
-  const seq = had.filter((k) => k in o);
-  for (const k of Object.keys(o)) {
-    if (seq.indexOf(k) >= 0) continue;
-    // The nearest field ahead of this one that the file did have: the new field
-    // lands just after it, and first of all when there is none.
-    const before = Object.keys(o).slice(0, Object.keys(o).indexOf(k))
-                         .filter((p) => seq.indexOf(p) >= 0).pop();
-    seq.splice(before === undefined ? 0 : seq.indexOf(before) + 1, 0, k);
-  }
-  const out = {};
-  for (const k of seq) out[k] = o[k];
-  return JSON.stringify(out, null, 2) + '\n';
-}
+
 
 // «1 medium», «2 media» — the plural of the word the container uses.
 function count(n) {

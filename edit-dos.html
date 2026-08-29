@@ -39,7 +39,8 @@
   <button id="save" disabled title="Write the disk back">Save</button>
   <button id="saveas" title="Write the disk to a file of your choosing">Save as…</button>
   <select id="medium" title="Which medium of the container to work on" hidden></select>
-  <span class="sp"><a href="index.html">Emulator</a></span>
+  <span class="sp"><a href="index.html">Emulator</a> &middot;
+    <a href="edit-agc.html">Container</a></span>
 </div>
 
 <div class="panel" id="panel">
@@ -90,9 +91,9 @@
       was. Saving a container rewrites it, with the change as a patch on the
       medium and the image it carries left as it was found.
     </td></tr>
-    <tr><td><b>The same thing</b></td><td>
-      on a command line is <code>node tools/dos.js</code>, which does all of
-      this and globs names as well.
+    <tr><td><b>CLI</b></td><td>
+      <code>node tools/dos.js</code> does all of this on a command line, and
+      globs names as well.
     </td></tr>
   </table>
   <p>
@@ -320,25 +321,18 @@
     var patched = new Uint8Array(img.base);
     patched.set(img.data, img.inner.offset);
     var c = img.agc;
+    // Everything the container said, back as `build` takes it: this page edits
+    // one disk of it and has no business rewriting the rest.
+    var spec = A.agc.respec(c);
     // Only the medium that was edited is repatched. The others are handed back
     // the list they arrived with, so working on one disk of a container does
     // not quietly rewrite the record of another.
-    var media = c.media.map(function (m, i) {
-      return {
-        name: m.name, bytes: m.bytes,
-        patches: i === img.index ? A.agc.repatch(m.bytes, m.patches, patched)
-                                 : m.patches,
-      };
-    });
-    return A.agc.build({
-      title: c.title, author: c.author, date: c.date, url: c.url,
-      notes: c.notes, info: c.info, hint: c.hint,
-      model: c.machine.model, ram: c.machine.ram, monitor: c.machine.monitor,
-      boot: c.machine.boot, slots: c.machine.slots,
-      keys: c.keys, controls: c.controls, state: c.state,
-      media: media,
-    }).then(function (text) {
-      return new Blob([text], { type: 'application/json' });
+    spec.media[img.index].patches =
+      A.agc.repatch(c.media[img.index].bytes, c.media[img.index].patches, patched);
+    return A.agc.build(spec).then(function (text) {
+      // In the order the file already had its fields, so a disk edited here
+      // shows up in a diff as the disk and nothing else.
+      return new Blob([A.agc.reorder(text, c.order)], { type: 'application/json' });
     });
   }
 

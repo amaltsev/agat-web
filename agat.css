@@ -1,8 +1,8 @@
-/* What both pages are made of: the palette, the page, and the controls.
+/* What the three pages are made of: the palette, the page, and the controls.
    index.html keeps the emulator's own chrome — the screen, the lamps, the
-   keyboard — and edit-dos.html keeps the catalog's; this is what they share,
-   and it is linked rather than copied so that one of them cannot quietly stop
-   looking like the other. */
+   keyboard — edit-dos.html keeps the catalog's and edit-agc.html the
+   container's; this is what they share, and it is linked rather than copied so
+   that one of them cannot quietly stop looking like the others. */
 
 :root {
   color-scheme: dark;

@@ -305,9 +305,31 @@ node tools/agc.js make game.dsk --title="…" --author="…" --date=1989 \
 
 `--diff=<patched image>` works out the patches by comparing, and `--patch=AT:HEX`
 states one directly. The same tool reads and changes a container that exists:
-`info` says what one holds, `set` changes what it says, `get` writes a medium
+`info` says what one holds, `edit` changes what it says, `get` writes a medium
 back out as a file, `add` and `rm` put media in and take them out, and `merge`
 folds the patches into the image.
+
+### Editing one
+
+**[edit-agc.html](edit-agc.html)** is the same work in the browser, and the
+other front end over `src/agc.js`. Drop a container on it for what it says —
+the title and the provenance, the machine it asks for, the keys it is played
+with, and the media it carries; drop a `.dsk`, `.nib`, `.aim` or `.fil` on it
+instead and it starts a container that carries that image, which is how one is
+made without a command line.
+
+Every slot is listed with what would actually be fitted there, so a slot left at
+**stock** shows the card the model brings rather than nothing — and a card named
+in one slot is that card *moved*, not a second one beside it. Media are renamed,
+reordered, taken off as files, added to, and taken out; **in** overrides the
+drive a medium goes in and **writable** unlocks it; **Merge** folds a medium's
+patches into the image it carries, and says so first where a patch has
+somebody's note on it.
+
+Saving writes the payloads back byte for byte and keeps the fields in the order
+the file had them, so a container edited here shows up in a diff as the fields
+that were changed. As on the disk page, **Save** writes over the file that was
+opened where the browser allows it and downloads where it does not.
 
 ### Examples
 

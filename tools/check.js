@@ -19,6 +19,9 @@
 //                                                against a stub <select>
 //   node tools/check.js dosui                    the file manager, over a stub
 //                                                document and a real disk
+//   node tools/check.js agcui                    the container editor's own
+//                                                decisions, and a container
+//                                                edited and read back
 //   node tools/check.js dosnew                   a disk formatted here, written
 //                                                to by the DOS on TESTKOM9_840
 //                                                and read back; slow
@@ -86,7 +89,7 @@ if (cmd === 'modules') {
   // for. A module inserted before one of these and not before it here is the
   // "works in Node, blank page in the browser" bug on a page nobody looks at
   // as often.
-  for (const page of ['edit-dos.html']) {
+  for (const page of ['edit-dos.html', 'edit-agc.html']) {
     const p = scripts(page);
     let i = 0;
     const ok = p.list.every((f) => {
@@ -99,7 +102,7 @@ if (cmd === 'modules') {
   }
 
   // And the sheet they share, which is linked rather than copied.
-  for (const page of ['index.html', 'edit-dos.html']) {
+  for (const page of ['index.html', 'edit-dos.html', 'edit-agc.html']) {
     const has = /<link rel="stylesheet" href="agat.css">/.test(scripts(page).html);
     console.log(page + ' : agat.css ' + (has ? 'linked' : 'MISSING'));
     if (!has) bad = true;
@@ -151,7 +154,7 @@ if (cmd === 'pwa') {
   console.log('  ' + (shell.length - gone.length) + ' of ' + shell.length + ' present');
   if (gone.length) bad = true;
   // The pages themselves are the shell's reason for existing.
-  ['index.html', 'edit-dos.html', 'agat.css', 'roms/roms.js'].forEach((f) => {
+  ['index.html', 'edit-dos.html', 'edit-agc.html', 'agat.css', 'roms/roms.js'].forEach((f) => {
     need(say('sw.js precaches ' + f, shell.indexOf(f) >= 0));
   });
 
@@ -160,7 +163,7 @@ if (cmd === 'pwa') {
   need(say('index.html manifest link', /<link rel="manifest" href="manifest.json">/.test(idx)));
   need(say('index.html registers sw.js', /serviceWorker\.register\('sw\.js'\)/.test(idx)));
   need(say('index.html file handler', /launchQueue\.setConsumer/.test(idx)));
-  for (const page of ['index.html', 'edit-dos.html']) {
+  for (const page of ['index.html', 'edit-dos.html', 'edit-agc.html']) {
     const html = read(page);
     need(say(page + ' icon links',
              /<link rel="icon"/.test(html) && /<link rel="apple-touch-icon"/.test(html)));
@@ -621,6 +624,394 @@ function kbdmenuCmd(loaded) {
   applied = [];
   panel.el.fire('click', { target: panel.groups[0].el });
   eq('a tap after five reloads still fires once', applied, ['used:Play']);
+
+  console.log(pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+}
+
+// The container editor, driven without a document at all. `edit-agc.html` keeps
+// everything it decides in four functions that touch nothing but their
+// arguments — what a bare image becomes, what the slot rows and the key rows
+// mean, and where a moved medium lands — so they are lifted out of the page by
+// name and called here directly.
+//
+// That is the difference between this and `dosui`: there is no stub scope for a
+// control added to the page to fall out of, so this fails rather than crashes.
+// What it catches is the gap between what the page writes and what src/agc.js
+// reads back — a slot map the reader drops, a key shape it does not know, a
+// field lost on the way through a save.
+if (cmd === 'agcui') {
+  agcuiCmd().catch(die);
+  return;
+}
+
+async function agcuiCmd() {
+  const A = ctx.AGAT;
+  const page = fs.readFileSync(path.join(H.ROOT, 'edit-agc.html'), 'utf8');
+
+  // The named function out of the page, source and all. Same lift `kbdmenu`
+  // makes: the page is the thing under test, so its code is read rather than
+  // copied.
+  const grab = (name) => {
+    const at = page.indexOf('function ' + name + '(');
+    if (at < 0) throw new Error('edit-agc.html has no function ' + name);
+    let depth = 0;
+    for (let j = page.indexOf('{', at); j < page.length; j++) {
+      if (page[j] === '{') depth++;
+      else if (page[j] === '}' && --depth === 0) return page.slice(at, j + 1);
+    }
+    throw new Error(name + ' does not close');
+  };
+
+  const WANT = ['blankDoc', 'newMedium', 'slotOverrides', 'keyMap', 'moveMedium',
+                'codeOf', 'hintOf', 'keyRowsFrom'];
+  const lifted = new Function('A', WANT.map(grab).join('\n') +
+                              '\nreturn {' + WANT.join(', ') + '};')(A);
+  const { blankDoc, slotOverrides, keyMap, moveMedium, keyRowsFrom } = lifted;
+
+  let pass = 0, fail = 0;
+  const eq = (what, got, want) => {
+    const g = JSON.stringify(got), w = JSON.stringify(want);
+    if (g === w) { pass++; return; }
+    fail++;
+    console.log('FAIL ' + what + '\n  got  ' + g + '\n  want ' + w);
+  };
+  const throws = (what, fn) => {
+    try { fn(); } catch (e) { pass++; return; }
+    fail++;
+    console.log('FAIL ' + what + '\n  it did not throw');
+  };
+
+  // A container written the way the page writes one, and read back the way
+  // everything else reads one. This is the assertion that matters: the page's
+  // output has to survive src/agc.js's own reader.
+  const roundTrip = async (d) => {
+    const text = A.agc.reorder(await A.agc.build(A.agc.respec(d)), d.order);
+    return { text, back: await A.agc.parse(Buffer.from(text, 'utf8'), 'out.agc') };
+  };
+
+  // ---- a bare image, opened -------------------------------------------------
+  {
+    const bytes = new ctx.Uint8Array(143360);
+    bytes[0] = 0xa9;
+    const d = blankDoc('game.dsk', bytes);
+    eq('a dropped image is one medium', d.media.length, 1);
+    eq('and is carried under its own name', d.media[0].name, 'game.dsk');
+    eq('with nothing patched over it', d.media[0].patches.length, 0);
+    eq('and no field order to keep', d.order, []);
+
+    const { back } = await roundTrip(d);
+    eq('a made container names a machine', [back.machine.model, back.machine.ram],
+       [7, 64]);
+    eq('and carries the image byte for byte',
+       Buffer.compare(Buffer.from(back.media[0].payload), Buffer.from(bytes)), 0);
+  }
+
+  // The Agat-9's own size, which `build` used to write as the Agat-7's.
+  {
+    const d = blankDoc('game.dsk', new ctx.Uint8Array(143360));
+    d.machine.model = 9;
+    const { back } = await roundTrip(d);
+    eq('an Agat-9 that names no size keeps 128K', back.machine.ram, 128);
+  }
+
+  // ---- the slot rows --------------------------------------------------------
+  {
+    const rows = [];
+    for (let n = 0; n <= 7; n++) rows.push({ slot: n, card: '', ram: '', drives: false });
+    eq('a stock machine says nothing about its slots', slotOverrides(rows), null);
+
+    rows[6] = { slot: 6, card: 'fdd840', ram: '', drives: true };
+    rows[2] = { slot: 2, card: 'none', ram: '', drives: false };
+    rows[4] = { slot: 4, card: 'xram', ram: '64', drives: false };
+    eq('a card, a size, a second drive and an empty slot',
+       slotOverrides(rows),
+       { 2: null, 4: { card: 'xram', ram: 64 }, 6: { card: 'fdd840', ram: 0, drives: 2 } });
+
+    // What the page writes has to be what the reader keeps: `parseSlots` drops
+    // an entry it does not understand, and it does so silently.
+    const d = blankDoc('game.dsk', new ctx.Uint8Array(143360));
+    d.machine.slots = slotOverrides(rows);
+    const { back } = await roundTrip(d);
+    eq('and the reader keeps every one of them', back.machine.slots,
+       { 2: null, 4: { card: 'xram', ram: 64 }, 6: { card: 'fdd840', ram: 0, drives: 2 } });
+
+    // The controller moved to slot 6 is the machine's only one, which is the
+    // rule `resolveSlots` carries and the panel prints against.
+    const fitted = A.Machine.resolveSlots(7, A.agc.scaleSlots(back.machine.slots));
+    eq('a card named in a slot is that card moved, not a second one',
+       Object.keys(fitted).sort(), ['3', '4', '6']);
+  }
+
+  // ---- the key rows ---------------------------------------------------------
+  {
+    eq('the three shapes a key is written in',
+       keyMap([{ key: 'KeyW', code: '^', hint: '' },
+               { key: 'KeyA', code: '$5E', hint: 'Shoot right' },
+               { key: 'Space', code: '', hint: 'Jump' }]),
+       { KeyW: '^', KeyA: { code: '$5E', hint: 'Shoot right' }, Space: { hint: 'Jump' } });
+    eq('a row nobody has named yet is not a key',
+       keyMap([{ key: '', code: '^', hint: 'x' }]), {});
+    throws('a code that names nothing stops the save',
+           () => keyMap([{ key: 'KeyW', code: '$ZZ', hint: '' }]));
+
+    const d = blankDoc('game.dsk', new ctx.Uint8Array(143360));
+    d.keys = keyMap([{ key: 'KeyW', code: '^', hint: 'Shoot right' }]);
+    const { back } = await roundTrip(d);
+    eq('and a key survives the file', back.keys,
+       { KeyW: { code: '^', hint: 'Shoot right' } });
+
+    // The format spells the same key more than one way, and a save must not
+    // pick its own favourite: `{}` and `null` are both a bare declaration,
+    // `"^"` and `{"code":"^"}` both a remap. A row nobody changed goes back
+    // exactly as the file wrote it, or opening a container and saving it
+    // rewrites lines nobody touched.
+    const had = { ArrowUp: {}, Space: null, KeyW: { code: '^' }, KeyA: '←',
+                  KeyQ: { code: 'Up', hint: 'Climb' } };
+    eq('every spelling comes back as the file wrote it',
+       keyMap(keyRowsFrom(had)), had);
+
+    // Changed, though, and it is written the way this page writes one.
+    const edited = keyRowsFrom(had);
+    edited[0].hint = 'Jump';
+    eq('a row that was edited is written afresh',
+       keyMap(edited).ArrowUp, { hint: 'Jump' });
+    eq('and renaming a key is a new key, not the old spelling',
+       keyMap([Object.assign({}, keyRowsFrom(had)[1], { key: 'Enter' })]),
+       { Enter: null });
+  }
+
+  // ---- the media list -------------------------------------------------------
+  {
+    const l = ['a', 'b', 'c'];
+    eq('a medium moves up', moveMedium(l, 2, 1), ['a', 'c', 'b']);
+    eq('and down', moveMedium(l, 0, 2), ['b', 'c', 'a']);
+    eq('past the front it stops', moveMedium(l, 0, -1), ['a', 'b', 'c']);
+    eq('past the end it stops', moveMedium(l, 2, 3), ['a', 'b', 'c']);
+    eq('and the list it was given is left alone', l, ['a', 'b', 'c']);
+  }
+
+  // ---- a real container, edited ---------------------------------------------
+  //
+  // The whole point of the page: open one, change one field, save it. What has
+  // to come back is that field changed and nothing else touched — the media
+  // byte for byte, the patches with their notes, and the fields in the order
+  // the file had them.
+  {
+    const src = path.join(H.ROOT, 'examples', 'rise-out.agc');
+    const raw = fs.readFileSync(src);
+    const d = await A.agc.parse(new ctx.Uint8Array(raw), 'rise-out.agc');
+    const was = JSON.parse(raw.toString('utf8'));
+
+    d.title = 'ПУТЬ К ВЕРШИНЕ';
+    const { text, back } = await roundTrip(d);
+
+    eq('the field that was edited', back.title, 'ПУТЬ К ВЕРШИНЕ');
+    eq('the author is where it was', back.author, d.author);
+    eq('the machine is where it was',
+       [back.machine.model, back.machine.ram, back.machine.slots],
+       [d.machine.model, d.machine.ram, d.machine.slots]);
+    eq('the controls are carried through', back.controls, d.controls);
+    eq('the media are still there', back.media.length, d.media.length);
+    eq('and the payload is byte for byte',
+       Buffer.compare(Buffer.from(back.media[0].bytes),
+                      Buffer.from(d.media[0].bytes)), 0);
+    eq('where each one goes is kept',
+       back.media.map((m) => [m.name, m.mount, m.writable]),
+       d.media.map((m) => [m.name, m.mount, m.writable]));
+    eq('and the fields are in the order the file had them',
+       Object.keys(JSON.parse(text)), Object.keys(was));
+  }
+
+  // A container whose fields are in somebody's own order, which a save has to
+  // leave alone — `reorder` is the only thing standing between an edited field
+  // and a diff nobody can read.
+  {
+    const d = blankDoc('game.dsk', new ctx.Uint8Array(143360));
+    d.title = 'X';
+    d.author = 'Y';
+    d.order = ['agc', 'media', 'author', 'machine', 'title'];
+    const { text } = await roundTrip(d);
+    eq('a hand-arranged container keeps its arrangement',
+       Object.keys(JSON.parse(text)), ['agc', 'media', 'author', 'machine', 'title']);
+  }
+
+  // ---- and the page itself, run -------------------------------------------
+  //
+  // The four functions above are what the page decides; this is the page. It is
+  // the whole inline script, run against a stub document — because a page that
+  // decides correctly and throws while drawing is still a blank screen, and
+  // nothing above would have noticed.
+  //
+  // What it drives is one round of the actual work: open a container, change a
+  // field, save it, and read back what the Save button produced.
+  {
+    const js = page.slice(page.lastIndexOf('<script>') + 8, page.lastIndexOf('</script>'));
+
+    const el = (tag) => ({
+      tag, children: [], _l: [], parentNode: null,
+      className: '', title: '', type: '', value: '', placeholder: '',
+      checked: false, hidden: false, disabled: false, href: '', download: '',
+      files: [], _text: '',
+      // textContent replaces everything in the element, which is how each
+      // panel empties itself before redrawing. A stub that only kept the
+      // string would grow a second copy of the media list every draw.
+      set textContent(v) { this.children = []; this._text = String(v); },
+      get textContent() { return this._text; },
+      appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+      addEventListener(t, f) { this._l.push([t, f]); },
+      fire(t, ev) { for (const [tt, f] of this._l) if (tt === t) f(ev || {}); },
+      click() { this.fire('click', {}); },
+    });
+
+    const byId = {};
+    for (const id of ['status', 'save', 'saveas', 'empty', 'work',
+                      'program', 'machine', 'keys', 'media', 'file', 'openlab']) {
+      byId[id] = el('div');
+    }
+    // The page's own document-level listeners, kept so a drop can be fired at
+    // it: dropping is the one gesture that decides between opening and adding.
+    const docL = [];
+    const doc = {
+      addEventListener(t, f) { docL.push([t, f]); },
+      fire(t, ev) { for (const [tt, f] of docL) if (tt === t) f(ev); },
+      getElementById: (id) => {
+        // The page asking for an element this stub does not have is the bug
+        // this is here to catch, so it says so rather than handing back null.
+        if (!byId[id]) throw new Error('the page wants #' + id + ', which the page does not have');
+        return byId[id];
+      },
+      createElement: el,
+    };
+    let saved = null;
+    const win = { addEventListener() {}, confirm: () => true };
+    const url = { createObjectURL: () => 'blob:x', revokeObjectURL() {} };
+
+    // No picker and no origin: the file:// path, which is the one that saves by
+    // download and therefore the one whose output can be read back here.
+    new Function('document', 'window', 'location', 'Blob', 'URL', 'setTimeout',
+                 'AGAT', 'Uint8Array', js)(
+      doc, win, { protocol: 'file:' },
+      class extends Blob { constructor(p, o) { super(p, o); saved = this; } },
+      url, () => {}, A, ctx.Uint8Array);
+
+    // Everything under the panels, flattened: the page nests rows inside
+    // panels, and a driver has no business knowing how deep.
+    const all = (e, out = []) => {
+      out.push(e);
+      for (const c of e.children) all(c, out);
+      return out;
+    };
+    const inputs = (panel, type) =>
+      all(byId[panel]).filter((e) => e.tag === 'input' && e.type === type);
+
+    const raw = fs.readFileSync(path.join(H.ROOT, 'examples', 'rise-out.agc'));
+    const file = { name: 'rise-out.agc', arrayBuffer: async () => raw };
+
+    // Reading a container is a promise chain with a gzip stream in it, so the
+    // page is waited on rather than ticked: `until` gives up loudly, because a
+    // page that never finishes opening should not read as a page that opened
+    // and drew nothing.
+    const until = async (what, done) => {
+      for (let i = 0; i < 200; i++) {
+        if (done()) return;
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      throw new Error(what + ' — the page never got there. Status: ' +
+                      byId.status.textContent);
+    };
+
+    byId.file.files = [file];
+    byId.file.fire('change', { target: byId.file });
+    await until('opening rise-out.agc', () => !byId.empty.hidden === false);
+
+    eq('opening a container puts the panels up',
+       [byId.work.hidden, byId.empty.hidden], [false, true]);
+    eq('and there is nothing wrong to report', /err/.test(byId.status.className), false);
+    eq('the program panel drew its fields', inputs('program', 'text').length >= 4, true);
+    eq('the machine panel drew a row for every slot',
+       all(byId.machine).filter((e) => e.tag === 'select').length, 12);
+    eq('the media panel drew the medium', inputs('media', 'text').length, 1);
+    eq('and Save is not offered until something changes', byId.save.disabled, true);
+
+    // A field edited the way a person edits one.
+    const title = inputs('program', 'text')[0];
+    title.value = 'ПУТЬ К ВЕРШИНЕ';
+    title.fire('input', {});
+    eq('editing a field lights Save', byId.save.disabled, false);
+
+    byId.save.click();
+    await until('saving', () => /^saved /.test(byId.status.textContent));
+    eq('and saving says so', /^saved /.test(byId.status.textContent), true);
+
+    const text = await saved.text();
+    const out = JSON.parse(text);
+    const was = JSON.parse(raw.toString('utf8'));
+    eq('what the Save button wrote carries the edit', out.title, 'ПУТЬ К ВЕРШИНЕ');
+    eq('and everything else the file said', out.machine, was.machine);
+    eq('in the order the file had its fields', Object.keys(out), Object.keys(was));
+
+    // The media are compared decoded, not as they are written: gzip is free to
+    // pack the same bytes differently, and what has to survive a save is the
+    // disk rather than the spelling of it.
+    const from = await A.agc.parse(new ctx.Uint8Array(raw), 'rise-out.agc');
+    const now = await A.agc.parse(Buffer.from(text, 'utf8'), 'saved.agc');
+    eq('and its media, byte for byte',
+       now.media.map((m, i) => Buffer.compare(Buffer.from(m.payload),
+                                              Buffer.from(from.media[i].payload))),
+       from.media.map(() => 0));
+    eq('with their names and their drives',
+       now.media.map((m) => [m.name, m.mount, m.writable]),
+       from.media.map((m) => [m.name, m.mount, m.writable]));
+
+    // ---- the two gestures, which are not the same gesture -----------------
+    //
+    // Open… opens whatever it is given; a drop decides. An image reaching the
+    // button while a container is up must *replace* it, or the button lies.
+    const disk = { name: 'side-b.dsk',
+                   arrayBuffer: async () => Buffer.alloc(143360) };
+
+    doc.fire('drop', { preventDefault() {}, dataTransfer: { files: [disk] } });
+    await until('dropping an image on an open container',
+                () => /added/.test(byId.status.textContent));
+    eq('an image dropped on an open container is added to it',
+       inputs('media', 'text').length, 2);
+
+    byId.file.files = [disk];
+    byId.file.fire('change', { target: byId.file });
+    await until('opening an image', () => /^made a container/.test(byId.status.textContent));
+    eq('but the same image through Open… opens as a container of its own',
+       inputs('media', 'text').length, 1);
+
+    // ---- the second drive on a cable --------------------------------------
+    //
+    // `in` is one string and two controls, and the select has no `fdd140:2`
+    // option to show — so a medium on the second drive has to survive a save
+    // that never touched it.
+    const two = await A.agc.build({
+      media: [{ name: 'a.dsk', bytes: new ctx.Uint8Array(143360), mount: 'fdd140:2' },
+              { name: 'b.dsk', bytes: new ctx.Uint8Array(143360), mount: 'fdd840' }],
+    });
+    byId.file.files = [{ name: 'two.agc',
+                         arrayBuffer: async () => Buffer.from(two, 'utf8') }];
+    byId.file.fire('change', { target: byId.file });
+    await until('opening two.agc', () => /two\.agc/.test(byId.status.textContent));
+
+    const cables = all(byId.media).filter((e) => e.tag === 'select');
+    eq('the select shows the cable, not the drive on it',
+       cables.map((e) => e.value), ['fdd140', 'fdd840']);
+    eq('and the drive on it is a tick, drawn only where there is a cable',
+       all(byId.media).filter((e) => e.tag === 'input' && e.type === 'checkbox').length,
+       4);
+
+    // Saved without any of it being touched.
+    all(byId.program).filter((e) => e.tag === 'input')[0].fire('input', {});
+    byId.save.click();
+    await until('saving two.agc', () => /^saved /.test(byId.status.textContent));
+    const kept = await A.agc.parse(Buffer.from(await saved.text(), 'utf8'), 'two.agc');
+    eq('a medium on the second drive keeps it across a save',
+       kept.media.map((m) => m.mount), ['fdd140:2', 'fdd840']);
+  }
 
   console.log(pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

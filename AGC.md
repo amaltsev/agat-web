@@ -553,6 +553,16 @@ being saved arrived with a state already — see [Making one](#from-the-emulator
 
 ## Making one
 
+### From the container editor
+
+**[edit-agc.html](edit-agc.html)** is the page for the container itself. A
+`.dsk`, `.nib`, `.aim` or `.fil` dropped on it becomes a container carrying that
+image, with every field of this document as a control; an `.agc` dropped on it
+opens for editing. It writes through the same `src/agc.js` the emulator's **Save
+AGC** and `tools/agc.js` write through, so a container made any of the three
+ways is the same file — and it keeps the field order of whatever it opened, so
+a hand-arranged container stays arranged.
+
 ### From the emulator
 
 **Save AGC** writes a container from the machine as it stands: what was opened —
@@ -812,8 +822,11 @@ which is the machine having one `←`.
   the same bytes, so a reader must take whichever it is handed, and a writer
   that only ever emitted `data` would still produce files this one reads.
 
-The reference implementation is [`src/agc.js`](src/agc.js) — about 500 lines,
-no dependencies, and the same file reads and writes. Both directions are
+The reference implementation is [`src/agc.js`](src/agc.js) — about 600 lines,
+no dependencies, and the same file reads and writes. `respec` is the join
+between the two directions — a container as `parse` returned it, back as `build`
+takes it — and it is worth having rather than open-coding, because it is the one
+place a field that nothing edits gets carried across. Both directions are
 asynchronous there, because gzip in a browser is a stream; everything between
 them works in plain bytes, and a patch in memory is `{ at, bytes }`. `state`
 passes through it packed and untouched: what is inside a snapshot belongs to

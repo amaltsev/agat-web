@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="agat.css">
+<meta name="theme-color" content="#14161a">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/agat-180.png">
+<title>Agat container</title>
+<style>
+  /* Wider than the disk page and narrower than the emulator: the widest thing
+     here is a media row — a name, where it goes, and what is done to it — and
+     nothing on the page is a picture. */
+  :root { --page: 760px; }
+  .bar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    width: min(94vw, var(--page)); margin-bottom: 8px;
+  }
+  .bar .sp { margin-left: auto; }
+  #status { width: min(94vw, var(--page)); margin-top: 8px; min-height: 22px; }
+  #empty { color: var(--dim); text-align: center; padding: 22px 10px; }
+  /* A panel's own heading. The panels stack, and without one the machine's
+     slots read as a continuation of the media above them. */
+  .panel h2 {
+    font-size: 12.5px; font-weight: 600; color: var(--dim); margin: 0 0 8px;
+    text-transform: lowercase; letter-spacing: .04em;
+  }
+  .panel .row > .key { flex: none; }
+  .panel input[type=text] { flex: 1; min-width: 12ch; }
+  .panel input.k { flex: none; width: 7ch; text-align: right; }
+  .panel input.nm { flex: none; width: 24ch; }
+  .panel textarea {
+    flex: 1; min-width: 20ch; font: inherit; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--edge); border-radius: 5px;
+    padding: 4px 8px; resize: vertical; min-height: 3.2em;
+  }
+  .panel select { padding: 4px 8px; }
+  .panel button.sm { padding: 2px 9px; font-size: 12px; }
+  /* A slot or a medium the container does not speak about: the controls are
+     there, and what they are showing is the machine's rather than the file's. */
+  .panel .row.stock > .key { opacity: .6; }
+  .panel label.tick {
+    color: var(--dim); font-size: 12.5px; display: flex; gap: 4px;
+    align-items: center; cursor: pointer;
+  }
+  .help {
+    width: min(94vw, var(--page)); margin-top: 16px; color: var(--dim);
+    font-size: 12.5px; border-top: 1px solid var(--edge); padding-top: 12px;
+  }
+  .help b { color: var(--ink); font-weight: 600; }
+  .help table { border-collapse: collapse; margin: 8px 0; }
+  .help td { padding: 1px 14px 1px 0; vertical-align: top; }
+</style>
+</head>
+<body>
+
+<h1>Agat container</h1>
+
+<div class="bar">
+  <label class="file" id="openlab">Open… <input type="file" id="file"></label>
+  <button id="save" disabled title="Nothing open">Save</button>
+  <button id="saveas" disabled title="Write the container to a file of your choosing">Save as…</button>
+  <span class="sp"><a href="index.html">Emulator</a> &middot;
+    <a href="edit-dos.html">DOS files</a></span>
+</div>
+
+<div class="panel" id="empty">
+  <div>drop an <code>.agc</code> container here to change what it says, or a
+  <code>.dsk</code>, <code>.nib</code>, <code>.aim</code> or <code>.fil</code>
+  to start one that carries it — or <b>Open…</b> one</div>
+</div>
+
+<div id="work" hidden>
+  <div class="panel"><h2>program</h2><div id="program"></div></div>
+  <div class="panel"><h2>machine</h2><div id="machine"></div></div>
+  <div class="panel"><h2>keys</h2><div id="keys"></div></div>
+  <div class="panel"><h2>media</h2><div id="media"></div></div>
+</div>
+
+<div id="status" class="status">ready</div>
+
+<div class="help">
+  <table>
+    <tr><td><b>Takes</b></td><td>
+      An <code>.agc</code> container, to change what it says. Any image the
+      emulator takes — <code>.dsk</code>, <code>.nib</code>, <code>.aim</code>,
+      <code>.fil</code> — opens as a new container carrying it, which is how one
+      is made. Format is detected by size, not by extension.
+    </td></tr>
+    <tr><td><b>Program</b></td><td>
+      What the program is and where it came from. <b>Info</b> and <b>Hint</b>
+      are shown on the emulator's card under the controls: info is what the
+      program is, at whatever length it takes, and the hint is the one thing
+      whoever is about to play has to be told. <b>Notes</b> is the record —
+      provenance, credits, what a patch does — and nothing shows it.
+    </td></tr>
+    <tr><td><b>Machine</b></td><td>
+      The machine the container asks for. Every slot is listed with what would
+      actually be fitted there, so a slot left at <b>stock</b> shows the card
+      the model brings rather than nothing. A card named in one slot is that
+      card <i>moved</i>, not a second one: putting the 840K controller in slot 6
+      takes it out of slot 5.
+    </td></tr>
+    <tr><td><b>Keys</b></td><td>
+      A host key the program reads, and what it sends: <code>$5E</code>,
+      <code>^</code> or a name like <code>Up</code>. The hint says what the key
+      does and is printed beside it on the on-screen board. A key with a hint
+      and no code is declared as it already is.
+    </td></tr>
+    <tr><td><b>Media</b></td><td>
+      The images the container carries, in the order the drives are filled.
+      <b>in</b> overrides that — a drive, with <code>:2</code> for the second on
+      that cable, or <code>none</code> for a medium carried without being
+      mounted. Every medium is locked unless <b>writable</b> says otherwise.
+      <b>Merge</b> folds a medium's patches into the image it carries, which is
+      for a disk that has been written to and is not going back; a patch with a
+      note on it is somebody's writing, and merging says so first.
+    </td></tr>
+    <tr><td><b>Saving</b></td><td>
+      The payloads are written back as they were found, byte for byte, and the
+      fields keep the order the file had them in — so a container edited here
+      shows up in a diff as the fields that were changed. A field this reader
+      does not know is dropped rather than carried through.
+    </td></tr>
+    <tr><td><b>CLI</b></td><td>
+      <code>node tools/agc.js</code> does all of this on a command line, and
+      globs medium names as well.
+    </td></tr>
+  </table>
+  <p>
+    Part of <a href="https://github.com/amaltsev/agat-web">agat-web</a>.
+  </p>
+</div>
+
+<script src="src/chars.js"></script>
+<script src="src/videopal.js"></script>
+<script src="src/machine.js"></script>
+<script src="src/unpack.js"></script>
+<script src="src/agc.js"></script>
+<script src="src/image.js"></script>
+<script src="src/keyboard.js"></script>
+<script>
+(function () {
+  'use strict';
+  var A = AGAT;
+
+  // The container being edited, in the shape `parse` returns and `respec`
+  // takes back. Every control on the page writes into this and nothing else,
+  // so what is saved is what is on the screen and there is no second copy of
+  // the container to keep in step.
+  var doc = null;
+  var name = '';
+  var handle = null;
+  var dirty = false;
+
+  // The picker keeps a handle, so Save can write over the file that was opened
+  // instead of dropping a second copy in Downloads. It needs a served page: on
+  // file:// there is no origin to grant the permission to.
+  var CAN_PICK = !!window.showOpenFilePicker && location.protocol !== 'file:';
+
+  var statusEl = document.getElementById('status');
+  var saveEl = document.getElementById('save');
+  var saveAsEl = document.getElementById('saveas');
+  var emptyEl = document.getElementById('empty');
+  var workEl = document.getElementById('work');
+
+  function say(msg, isError) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (isError ? ' err' : '');
+  }
+
+  // ---- the model ----------------------------------------------------------
+  //
+  // The four functions below are the whole of what this page decides, and none
+  // of them touches the document: `check.js agcui` lifts them out of the file
+  // and drives them with plain objects. Everything else here is controls being
+  // wired to them.
+
+  // A bare image as the container that carries it — what `tools/agc.js make`
+  // starts from, with the one medium already in it. No field is set that the
+  // file did not say: an empty `order` is what tells a save to use the
+  // documented field order rather than somebody's arrangement.
+  function blankDoc(file, bytes) {
+    return {
+      version: A.agc.VERSION, name: '', order: [],
+      title: '', author: '', date: '', url: '', notes: '', info: '', hint: '',
+      machine: { model: 0, ram: 0, monitor: '', boot: '', slots: null },
+      keys: {}, controls: {}, state: null,
+      media: [newMedium(file, bytes)],
+    };
+  }
+
+  // One medium, as `parse` would have handed it over: the payload is the image
+  // as it stands, because nothing has patched it.
+  function newMedium(file, bytes) {
+    return { name: file, bytes: bytes, patches: [], payload: bytes,
+             mount: '', writable: false };
+  }
+
+  // The slot rows as `machine.slots` — what the container says its machine has
+  // that the model does not bring. `card` is '' for a slot it says nothing
+  // about, which is dropped, and 'none' for one it deliberately empties, which
+  // is written as null. Sizes are kilobytes here, as they are in the file.
+  //
+  // Null for a machine with nothing to say, so a stock container carries no
+  // field at all rather than an empty object.
+  function slotOverrides(rows) {
+    var out = {}, any = false, i, r, e;
+    for (i = 0; i < rows.length; i++) {
+      r = rows[i];
+      if (!r.card) continue;
+      if (r.card === 'none') { out[r.slot] = null; any = true; continue; }
+      if (!A.agc.CARDS[r.card]) continue;
+      e = { card: r.card, ram: Number(r.ram) || 0 };
+      if (r.drives) e.drives = 2;
+      out[r.slot] = e;
+      any = true;
+    }
+    return any ? out : null;
+  }
+
+  // What a `keys` value says, whichever of its spellings the file used.
+  function codeOf(v) { return typeof v === 'string' ? v : (v && v.code) || ''; }
+
+  function hintOf(v) { return (v && v.hint) || ''; }
+
+  // The key rows as `keys`. The three shapes are the ones the format has: a
+  // bare code where that is all there is to say, the long form where the key
+  // carries a hint, and null for a key declared as it already is — which is
+  // what a hint with no code means.
+  //
+  // A row nobody has changed goes back exactly as the file wrote it. Several of
+  // those shapes have more than one spelling — `null` and `{}` are both a bare
+  // declaration, `"^"` and `{"code":"^"}` both a remap — and a save that picked
+  // its own favourite would rewrite lines nobody touched. `wrote` is the value
+  // the file had, and it is preferred over the shape this would choose whenever
+  // the two say the same thing.
+  //
+  // A row with no key name at all is one somebody started and left, and is not
+  // a key; a code that resolves to nothing is refused, because a container that
+  // names a code wrong is a game with a dead key and nothing to say why.
+  function keyMap(rows) {
+    var out = {}, i, r, kept;
+    for (i = 0; i < rows.length; i++) {
+      r = rows[i];
+      if (!r.key) continue;
+      if (r.code && A.keyboard.resolveCode(r.code) < 0) {
+        throw new Error(r.key + ': ' + r.code +
+                        ' is not a code — try $5E, ^, or Up');
+      }
+      kept = r.key === r.was && codeOf(r.wrote) === r.code &&
+             hintOf(r.wrote) === r.hint;
+      out[r.key] = kept ? r.wrote
+                 : r.code ? (r.hint ? { code: r.code, hint: r.hint } : r.code)
+                 : (r.hint ? { hint: r.hint } : null);
+    }
+    return out;
+  }
+
+  // A medium moved within the list, which is what the drives being filled in
+  // order makes worth doing. Out of the list and back in at the new position,
+  // so moving down past the end and up past the front both stop rather than
+  // wrap: the first medium is the boot disk and an arrow key should not be able
+  // to make it the last one by accident.
+  function moveMedium(list, from, to) {
+    if (from === to || from < 0 || from >= list.length ||
+        to < 0 || to >= list.length) {
+      return list;
+    }
+    var out = list.slice();
+    out.splice(to, 0, out.splice(from, 1)[0]);
+    return out;
+  }
+
+  // ---- drawing ------------------------------------------------------------
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function row(into, label) {
+    var r = el('div', 'row');
+    r.appendChild(el('span', 'key', label));
+    into.appendChild(r);
+    return r;
+  }
+
+  function note(r, text) {
+    var n = el('span', 'note', text);
+    r.appendChild(n);
+    return n;
+  }
+
+  function select(r, options, value, onpick) {
+    var s = el('select'), i, o;
+    for (i = 0; i < options.length; i++) {
+      o = el('option', null, options[i][1]);
+      o.value = options[i][0];
+      s.appendChild(o);
+    }
+    s.value = value;
+    s.addEventListener('change', function () { onpick(s.value); });
+    r.appendChild(s);
+    return s;
+  }
+
+  function text(r, cls, value, placeholder, oninput) {
+    var t = el('input', cls);
+    t.type = 'text';
+    t.value = value || '';
+    if (placeholder) t.placeholder = placeholder;
+    t.addEventListener('input', function () { oninput(t.value); });
+    r.appendChild(t);
+    return t;
+  }
+
+  function tick(r, label, on, onpick) {
+    var l = el('label', 'tick'), b = el('input');
+    b.type = 'checkbox';
+    b.checked = !!on;
+    b.addEventListener('change', function () { onpick(b.checked); });
+    l.appendChild(b);
+    l.appendChild(el('span', null, label));
+    r.appendChild(l);
+    return b;
+  }
+
+  function button(r, label, title, onclick) {
+    var b = el('button', 'sm', label);
+    b.title = title;
+    b.addEventListener('click', onclick);
+    r.appendChild(b);
+    return b;
+  }
+
+  // A change that does not move any control: the field is already showing what
+  // it was given, so redrawing would only take the caret out of it.
+  function touch() {
+    dirty = true;
+    saveEl.disabled = false;
+    syncTitle();
+  }
+
+  // A change to the shape of something — a medium added, a key dropped, a card
+  // whose size field only exists for some cards. The panel is rebuilt.
+  function change(what) {
+    touch();
+    draw();
+    if (what) say(what);
+  }
+
+  function draw() {
+    drawProgram(document.getElementById('program'));
+    drawMachine(document.getElementById('machine'));
+    drawKeys(document.getElementById('keys'));
+    drawMedia(document.getElementById('media'));
+  }
+
+  var TEXTS = [
+    ['title', 'title', 'what the program is called'],
+    ['author', 'author', 'who wrote it'],
+    ['date', 'date', '1989, circa 1985, 1990-92'],
+    ['url', 'url', 'where it came from, or where it is written up'],
+  ];
+  var AREAS = [
+    ['info', 'info', 'what the program is — shown on the card under the controls'],
+    ['hint', 'hint', 'the one thing whoever is about to play has to be told'],
+    ['notes', 'notes', 'the record: provenance, credits, what a patch does'],
+  ];
+
+  function drawProgram(into) {
+    into.textContent = '';
+    TEXTS.forEach(function (f) {
+      var r = row(into, f[1]);
+      text(r, null, doc[f[0]], f[2], function (v) { doc[f[0]] = v; touch(); });
+    });
+    AREAS.forEach(function (f) {
+      var r = row(into, f[1]), t = el('textarea');
+      t.value = doc[f[0]] || '';
+      t.placeholder = f[2];
+      t.addEventListener('input', function () { doc[f[0]] = t.value; touch(); });
+      r.appendChild(t);
+    });
+    drawCarried(into);
+  }
+
+  // The two things the container may hold that nothing on this page edits: the
+  // control groups the emulator prints on its card, and a snapshot of the
+  // machine as it stood. Both are written back untouched — but a save that
+  // silently carries a megabyte of snapshot should say the megabyte is there.
+  function drawCarried(into) {
+    var groups = Object.keys(doc.controls || {});
+    if (groups.length) note(row(into, 'controls'), groups.join(', '));
+    if (doc.state) note(row(into, 'state'), 'the machine as it stood, kept as it is');
+  }
+
+  // Where a disk may be put, which is also where a machine may be told to boot
+  // from. Built rather than written out, because the slot list is the machine's
+  // and not this page's.
+  function drives(withOrder, withNone) {
+    var out = [], i;
+    if (withOrder) out.push(['', 'in order']);
+    if (withNone) out.push(['none', 'not mounted']);
+    out.push(['fdd140', 'fdd140'], ['fdd840', 'fdd840']);
+    for (i = 0; i <= 7; i++) out.push(['slot:' + i, 'slot ' + i]);
+    return out;
+  }
+
+  function drawMachine(into) {
+    into.textContent = '';
+    var m = doc.machine;
+    var model = m.model || 7;
+
+    var r = row(into, 'model');
+    select(r, [['7', 'Agat-7'], ['9', 'Agat-9']], String(model), function (v) {
+      m.model = Number(v);
+      // The size and the slots are the other model's now. Neither is cleared —
+      // a container that asks for 128K asks for it on either machine, and a
+      // card named in a slot is a fitting somebody wrote down — but what is
+      // fitted has changed under them, so the panel is redrawn to say so.
+      change('model: Agat-' + m.model);
+    });
+    if (!m.model) note(r, 'the file says nothing; saving writes it down');
+
+    r = row(into, 'ram');
+    select(r, [['32', '32K'], ['64', '64K'], ['128', '128K']],
+           String(m.ram || (model === 9 ? 128 : 64)), function (v) {
+      m.ram = Number(v);
+      touch();
+    });
+    note(r, 'base RAM, which is all the video controller can scan');
+
+    r = row(into, 'monitor');
+    var mons = [['', 'color16 (default)']], k;
+    for (k in A.MONITORS) if (k !== A.MONITOR_DEFAULT) mons.push([k, k]);
+    select(r, mons, m.monitor, function (v) { m.monitor = v; touch(); });
+    note(r, 'the monitor the program was drawn for');
+
+    r = row(into, 'boot');
+    select(r, [['', 'auto (default)'], ['none', 'none'], ['monitor', 'monitor']]
+              .concat(drives(false, false)),
+           m.boot, function (v) { m.boot = v; touch(); });
+    note(r, 'which drive starts');
+
+    drawSlots(into, model);
+  }
+
+  // Every slot, with what would actually be fitted there. A container leaves
+  // most of a machine unsaid, and a panel that showed only the overrides would
+  // make a stock Agat-9 — two controllers and an ОЗУ card — look like a machine
+  // with nothing in it.
+  function drawSlots(into, model) {
+    var named = doc.machine.slots || {};
+    var fitted = A.Machine.resolveSlots(model, A.agc.scaleSlots(named));
+    var cards = [['', 'stock'], ['none', 'empty']], c;
+    for (c in A.agc.CARDS) cards.push([c, c]);
+
+    for (var n = 0; n <= 7; n++) {
+      slotRow(into, n, named, fitted, cards);
+    }
+  }
+
+  function slotRow(into, n, named, fitted, cards) {
+    var own = n in named ? named[n] : undefined;
+    var r = row(into, 'slot ' + n);
+    if (own === undefined) r.className = 'row stock';
+
+    select(r, cards, own === undefined ? '' : own === null ? 'none' : own.card,
+           function (v) {
+      var slots = doc.machine.slots || {};
+      if (!v) delete slots[n];
+      else if (v === 'none') slots[n] = null;
+      else {
+        // A size and a drive count belong to the card that was there, not to
+        // the slot: a controller put where the ЭмПЗУ was is not a 32K
+        // controller. Both are kept only where the card has not changed.
+        slots[n] = { card: v, ram: own && own.card === v ? own.ram : 0 };
+        if (own && own.card === v && own.drives === 2) slots[n].drives = 2;
+      }
+      doc.machine.slots = Object.keys(slots).length ? slots : null;
+      change('slot ' + n + ': ' + (v || 'stock'));
+    });
+
+    if (own) {
+      text(r, 'k', own.ram ? String(own.ram) : '', 'K', function (v) {
+        own.ram = Number(v) || 0;
+        touch();
+      }).title = 'the card’s memory in K, blank for the card’s own';
+      if (own.card === 'fdd140' || own.card === 'fdd840') {
+        tick(r, '2 drives', own.drives === 2, function (on) {
+          if (on) own.drives = 2; else delete own.drives;
+          touch();
+        });
+      }
+    }
+
+    // What is in the slot once the model and the overrides are both accounted
+    // for — which is not what the select says whenever a card has been moved.
+    var s = fitted[n];
+    note(r, !s ? 'empty'
+              : s.card + (s.ram ? ', ' + (s.ram >> 10) + 'K' : '') +
+                (s.drives === 2 ? ', 2 drives' : ''));
+  }
+
+  // The keys are held as rows while the panel is up, rather than read back out
+  // of `doc.keys` on every keystroke: a key being renamed passes through the
+  // empty name and through names that collide with another row, and an object
+  // keyed by name cannot hold either without losing a row somebody is typing.
+  var keyRows = [];
+
+  // `was` and `wrote` are what the file had — the key's name and its value — so
+  // a row that comes back unchanged can be written back in the file's own
+  // spelling rather than this page's.
+  function keyRowsFrom(keys) {
+    var out = [], k;
+    for (k in keys) {
+      out.push({ key: k, code: codeOf(keys[k]), hint: hintOf(keys[k]),
+                 was: k, wrote: keys[k] });
+    }
+    return out;
+  }
+
+  // The rows back into the container, and the panel's own error line. A code
+  // that names nothing stops the save rather than the keystroke, so a half-typed
+  // `$5` is not an error message under the field somebody is still typing in.
+  function syncKeys(errEl) {
+    try {
+      doc.keys = keyMap(keyRows);
+      errEl.textContent = '';
+      errEl.className = 'note';
+    } catch (e) {
+      errEl.textContent = e.message;
+      errEl.className = 'note err';
+    }
+    touch();
+  }
+
+  function drawKeys(into) {
+    into.textContent = '';
+    var errEl = el('span', 'note');
+
+    keyRows.forEach(function (kr, i) {
+      var r = row(into, i ? '' : 'key');
+      text(r, 'nm', kr.key, 'KeyW', function (v) { kr.key = v; syncKeys(errEl); })
+        .title = 'the host key, as the browser names it: KeyW, Space, ArrowUp';
+      text(r, 'nm', kr.code, 'code', function (v) { kr.code = v; syncKeys(errEl); })
+        .title = 'what it sends: $5E, ^, or a name like Up. Blank leaves the key as it is';
+      text(r, null, kr.hint, 'what the key does', function (v) {
+        kr.hint = v;
+        syncKeys(errEl);
+      });
+      button(r, '✕', 'Drop this key', function () {
+        keyRows.splice(i, 1);
+        syncKeys(errEl);
+        change('dropped ' + (kr.key || 'a key'));
+      });
+    });
+
+    var r = row(into, keyRows.length ? '' : 'key');
+    if (!keyRows.length) note(r, 'the program reads none, or none worth naming');
+    button(r, 'Add key', 'Name a key the program reads', function () {
+      keyRows.push({ key: '', code: '', hint: '' });
+      change('');
+    });
+    r.appendChild(errEl);
+  }
+
+  function drawMedia(into) {
+    into.textContent = '';
+    doc.media.forEach(function (m, i) { mediumRow(into, m, i); });
+
+    var r = row(into, '');
+    var lab = el('label', 'file');
+    lab.textContent = 'Add medium… ';
+    var f = el('input');
+    f.type = 'file';
+    f.addEventListener('change', function () {
+      if (f.files.length) addFile(f.files[0]);
+      f.value = '';
+    });
+    lab.appendChild(f);
+    r.appendChild(lab);
+    note(r, 'an image, or another container’s media');
+  }
+
+  // Which cable a medium's `in` names, and whether it is the second drive on
+  // it. The field is one string — `fdd140:2` — because that is what the format
+  // says, and it is two controls here because that is what it means.
+  function mountCable(mount) {
+    return String(mount || '').replace(/:[12]$/, '');
+  }
+
+  function mountSecond(mount) {
+    return /:2$/.test(String(mount || ''));
+  }
+
+  function mediumRow(into, m, i) {
+    var s = A.sniff(m.payload, m.name);
+    var r = row(into, String(i));
+
+    text(r, 'nm', m.name, 'name', function (v) { m.name = v; touch(); })
+      .title = 'what this medium is called';
+
+    // The cable and the drive on it are two questions, and a `:2` hidden in a
+    // list of twenty-two options is a question nobody sees. The tick is drawn
+    // only where there is a cable for it to mean anything on.
+    var cable = mountCable(m.mount);
+    select(r, drives(true, true), cable, function (v) {
+      m.mount = v && v !== 'none' && mountSecond(m.mount) ? v + ':2' : v;
+      change('');
+    }).title = 'the drive it goes in; in order fills the drives as the media list';
+
+    if (cable && cable !== 'none') {
+      tick(r, '2nd drive', mountSecond(m.mount), function (on) {
+        m.mount = on ? cable + ':2' : cable;
+        touch();
+      });
+    }
+
+    tick(r, 'writable', m.writable, function (on) { m.writable = on; touch(); });
+
+    button(r, '↑', 'Earlier in the list', function () {
+      doc.media = moveMedium(doc.media, i, i - 1);
+      change(i > 0 ? 'moved "' + m.name + '" to ' + (i - 1) : '');
+    }).disabled = i === 0;
+    button(r, '↓', 'Later in the list', function () {
+      doc.media = moveMedium(doc.media, i, i + 1);
+      change(i < doc.media.length - 1 ? 'moved "' + m.name + '" to ' + (i + 1) : '');
+    }).disabled = i === doc.media.length - 1;
+
+    button(r, 'Get', 'Take this medium off as a file, patches and all',
+           function () { download(m.name, blobOf(m.payload)); });
+
+    if (m.patches.length) {
+      button(r, 'Merge', 'Fold the patches into the image', function () {
+        mergeMedium(m);
+      });
+    }
+
+    button(r, '✕', 'Take this medium out of the container', function () {
+      removeMedium(i);
+    }).disabled = doc.media.length < 2;
+
+    // The second line of a medium: what it is, rather than what to do with it.
+    var f = el('div', 'row');
+    f.appendChild(el('span', 'key', ''));
+    into.appendChild(f);
+    var annotated = m.patches.filter(A.agc.isAnnotated).length;
+    note(f, (s.kind || 'unrecognized') + ', ' + m.payload.length + ' bytes' +
+            (m.patches.length
+              ? ' · ' + m.patches.length + ' patch' +
+                (m.patches.length === 1 ? '' : 'es') +
+                (annotated ? ' (' + annotated + ' annotated)' : '')
+              : ''));
+  }
+
+  function removeMedium(i) {
+    // The CLI refuses the same thing: a container without a medium carries
+    // nothing, and there would be no way back to one from this page.
+    if (doc.media.length < 2) return;
+    var gone = doc.media[i];
+    if (!window.confirm('Take "' + gone.name + '" out of the container?')) return;
+    doc.media.splice(i, 1);
+    change('removed "' + gone.name + '"');
+  }
+
+  // The patches folded into the payload, so what the container carries is the
+  // disk as it now stands. What that loses is the record of what was changed,
+  // which is why an annotated patch asks first.
+  function mergeMedium(m) {
+    var annotated = m.patches.filter(A.agc.isAnnotated);
+    if (annotated.length &&
+        !window.confirm('The patch at ' + annotated[0].at + ' carries a note, ' +
+                        'which folding it in would lose. Merge anyway?')) {
+      return;
+    }
+    var n = m.patches.length;
+    m.bytes = m.payload;
+    m.patches = [];
+    change('merged ' + n + ' patch' + (n === 1 ? '' : 'es') + ' into "' + m.name + '"');
+  }
+
+  // ---- opening ------------------------------------------------------------
+
+  // A file dropped on the page, which is the one gesture that has to guess. A
+  // container is one to open; an image is one to put in the container that is
+  // open, and one to start a container from when none is. The two buttons never
+  // guess: Open… opens whatever it is given and Add medium… adds it.
+  function dropFile(file) {
+    return file.arrayBuffer().then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      if (doc && A.sniff(bytes, file.name).kind !== 'agc') {
+        return addBytes(file.name, bytes);
+      }
+      return openBytes(bytes, file.name, null);
+    }).catch(function (e) { say(e.message, true); });
+  }
+
+  function openFile(file, h) {
+    return file.arrayBuffer().then(function (buf) {
+      return openBytes(new Uint8Array(buf), file.name, h);
+    }).catch(function (e) { say(e.message, true); });
+  }
+
+  function openBytes(bytes, file, h) {
+    return Promise.resolve().then(function () {
+      // What it is first, and only then whether to throw away the unsaved
+      // changes: a file that cannot be opened is not worth asking about.
+      var s = A.sniff(bytes, file);
+      if (!s.kind) throw new Error(file + ': not a recognized Agat image (' +
+                                   bytes.length + ' bytes)');
+      if (dirty && !window.confirm(
+            'The container has been changed and not saved. Open another anyway?')) {
+        return undefined;
+      }
+      if (s.kind === 'agc') return openContainer(bytes, file, h);
+      // An image opened on its own is a container that carries it, which is
+      // what `agc.js make` does — and the name it is saved under follows the
+      // image rather than staying whatever was dropped.
+      doc = blankDoc(file, bytes);
+      name = file.replace(/\.[^.]*$/, '') + '.agc';
+      handle = null;
+      opened('made a container from ' + file);
+      return undefined;
+    });
+  }
+
+  function openContainer(bytes, file, h) {
+    return A.agc.parse(bytes, file).then(function (c) {
+      doc = c;
+      name = file;
+      handle = h || null;
+      opened(file + ' — ' + c.media.length +
+             (c.media.length === 1 ? ' medium' : ' media'));
+    });
+  }
+
+  function opened(msg) {
+    keyRows = keyRowsFrom(doc.keys);
+    dirty = false;
+    emptyEl.hidden = true;
+    workEl.hidden = false;
+    saveEl.disabled = true;
+    saveAsEl.disabled = false;
+    draw();
+    syncTitle();
+    say(msg);
+  }
+
+  function addFile(file) {
+    file.arrayBuffer().then(function (buf) {
+      return addBytes(file.name, new Uint8Array(buf));
+    }).catch(function (e) { say(e.message, true); });
+  }
+
+  // A file as media. A container contributes its media, its patches and where
+  // they go, and nothing else it says: what it said about its program is that
+  // container's own.
+  function addBytes(file, bytes) {
+    var s = A.sniff(bytes, file);
+    if (s.kind === 'agc') {
+      return A.agc.parse(bytes, file).then(function (c) {
+        if (!c.media.length) throw new Error(file + ': carries no media');
+        doc.media = doc.media.concat(c.media);
+        change('added ' + c.media.length + ' from ' + file);
+      });
+    }
+    if (!s.kind) {
+      throw new Error(file + ': not a recognized Agat image (' +
+                      bytes.length + ' bytes)');
+    }
+    doc.media.push(newMedium(file, bytes));
+    change('added "' + file + '"');
+    return undefined;
+  }
+
+  document.getElementById('file').addEventListener('change', function (e) {
+    if (e.target.files.length) openFile(e.target.files[0], null);
+    e.target.value = '';
+  });
+
+  // Open… through the picker where there is one, so that Save has somewhere to
+  // write back to. The label's own input is the fallback, and is what the click
+  // reaches when the picker is not there.
+  document.getElementById('openlab').addEventListener('click', function (e) {
+    if (!CAN_PICK) return;
+    e.preventDefault();
+    window.showOpenFilePicker({ multiple: false }).then(function (handles) {
+      var h = handles[0];
+      return h.getFile().then(function (f) { return openFile(f, h); });
+    }).catch(function (err) {
+      if (err.name !== 'AbortError') say(err.message, true);
+    });
+  });
+
+  ['dragenter', 'dragover'].forEach(function (t) {
+    document.addEventListener(t, function (e) { e.preventDefault(); });
+  });
+  document.addEventListener('drop', function (e) {
+    e.preventDefault();
+    if (e.dataTransfer && e.dataTransfer.files.length) {
+      dropFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  // ---- saving -------------------------------------------------------------
+
+  function syncTitle() {
+    saveEl.title = !doc ? 'Nothing open' :
+      handle ? 'Write the container back to ' + name :
+      'Download the container as ' + name;
+  }
+
+  function blobOf(bytes) {
+    return new Blob([bytes], { type: 'application/octet-stream' });
+  }
+
+  // The container as its file. Everything on the page has already been written
+  // into `doc`, so this is `respec` and the writer — and then the field order
+  // the file arrived with, so a container edited here shows up in a diff as the
+  // fields that were changed and not as a reshuffle.
+  function build() {
+    if (!doc) return Promise.reject(new Error('nothing open'));
+    var spec;
+    try {
+      doc.keys = keyMap(keyRows);
+      spec = A.agc.respec(doc);
+    } catch (e) {
+      return Promise.reject(e);
+    }
+    return A.agc.build(spec).then(function (text) {
+      return new Blob([A.agc.reorder(text, doc.order)],
+                      { type: 'application/json' });
+    });
+  }
+
+  function wrote(blob) {
+    dirty = false;
+    saveEl.disabled = true;
+    say('saved ' + name + ' — ' + Math.round(blob.size / 1024) + 'K');
+  }
+
+  function writeTo(h, blob) {
+    return h.createWritable().then(function (w) {
+      return w.write(blob).then(function () { return w.close(); });
+    });
+  }
+
+  saveEl.addEventListener('click', function () {
+    build().then(function (blob) {
+      if (!handle) {
+        download(name, blob);
+        wrote(blob);
+        return undefined;
+      }
+      return writeTo(handle, blob).then(function () { wrote(blob); });
+    }).catch(function (e) { say(e.message, true); });
+  });
+
+  saveAsEl.addEventListener('click', function () {
+    build().then(function (blob) {
+      if (!CAN_PICK || !window.showSaveFilePicker) {
+        download(name, blob);
+        wrote(blob);
+        return undefined;
+      }
+      return window.showSaveFilePicker({ suggestedName: name }).then(function (h) {
+        return writeTo(h, blob).then(function () {
+          // Saved somewhere else, so that is the file this page is editing now:
+          // a second Save should not go back to the first one.
+          handle = h;
+          name = h.name;
+          wrote(blob);
+          syncTitle();
+        });
+      });
+    }).catch(function (e) {
+      if (e.name !== 'AbortError') say(e.message, true);
+    });
+  });
+
+  function download(as, blob) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = as;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+  }
+
+  // The one thing here that cannot be got back.
+  window.addEventListener('beforeunload', function (e) {
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
+  if (!CAN_PICK && window.showOpenFilePicker) {
+    say('ready — served from a file:// address, so Save downloads');
+  }
+})();
+</script>
+</body></html>

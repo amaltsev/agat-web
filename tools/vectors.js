@@ -1852,6 +1852,72 @@ async function agcTests() {
      ['^', '$5E', '0x5e', 'Up', '↑', 'Ю', 'Space', 'nonsense']
        .map(K.resolveCode),
      [0x5e, 0x5e, 0x5e, 0x99, 0x99, 0x60, 0x20, -1]);
+
+  // `respec` is the bridge every editor crosses: `parse` flattens the machine
+  // into `machine` and `build` wants it spread across the spec, and a caller
+  // that spells the crossing out by hand is a caller that will one day spell
+  // one field short. What is pinned is that nothing is dropped — including the
+  // fields nothing edits, which are exactly the ones a hand-written bridge
+  // forgets.
+  {
+    const disk = new ctx.Uint8Array(1024);
+    const src2 = await A.agc.build({
+      title: 'T', author: 'A', date: '1989', url: 'u', notes: 'n',
+      info: 'i', hint: 'h', model: 9, ram: 128, monitor: 'gray',
+      boot: 'slot:6', slots: { 4: { card: 'xram', ram: 64 } },
+      keys: { KeyW: '^' }, controls: { Play: { '^': 'Shoot' } },
+      state: { of: 'the machine' },
+      media: [{ name: 'a.dsk', bytes: disk, patches: [patch(0, 'A9 60', { why: 'a note' })],
+                mount: 'fdd140:2', writable: true }],
+    });
+    const one = await A.agc.parse(Buffer.from(src2, 'utf8'), 'x.agc');
+    const two = await A.agc.parse(
+      Buffer.from(await A.agc.build(A.agc.respec(one)), 'utf8'), 'x.agc');
+    for (const k of ['title', 'author', 'date', 'url', 'notes', 'info', 'hint']) {
+      eq('respec carries ' + k, two[k], one[k]);
+    }
+    eq('respec carries the machine', two.machine, one.machine);
+    eq('respec carries the keys and the controls',
+       [two.keys, two.controls], [one.keys, one.controls]);
+    eq('respec carries a state snapshot nothing here understands',
+       two.state, one.state);
+    eq('respec carries where a medium goes and whether it may be written',
+       [two.media[0].mount, two.media[0].writable], ['fdd140:2', true]);
+    eq('respec keeps the payload as it was packed, not as it ran',
+       [...two.media[0].bytes], [...one.media[0].bytes]);
+    eq('respec keeps a patch and the note on it',
+       [two.media[0].patches[0].at, two.media[0].patches[0].why], [0, 'a note']);
+
+    // The Agat-9's own size where the container names none. The writer used to
+    // put the Agat-7's 64 there, which is a smaller machine than the one it was
+    // handed.
+    const nine = JSON.parse(await A.agc.build({ model: 9, media: [] }));
+    const seven = JSON.parse(await A.agc.build({ model: 7, media: [] }));
+    eq('a machine that names no size gets its model\'s own',
+       [nine.machine.ram, seven.machine.ram], [128, 64]);
+  }
+
+  // `reorder` is what keeps a save out of the way of whoever arranged the file.
+  // A container is meant to be hand-edited, and an editor that changes one
+  // field and shuffles the rest makes a diff nobody can read.
+  {
+    const doc = '{"agc":1,"media":[],"title":"T","machine":{"model":7,"ram":64}}';
+    const had = ['agc', 'media', 'title', 'machine'];
+    eq('the fields come back in the order the file had them',
+       Object.keys(JSON.parse(A.agc.reorder(doc, had))), had);
+    // A field the file did not have goes where the documented order puts it,
+    // relative to whatever of that order survives around it.
+    eq('a field the file did not have lands where it belongs',
+       Object.keys(JSON.parse(A.agc.reorder(
+         '{"agc":1,"title":"T","author":"A","media":[]}',
+         ['agc', 'title', 'media']))),
+       ['agc', 'title', 'author', 'media']);
+    eq('a file with no order of its own is left in the documented one',
+       A.agc.reorder(doc, []), doc);
+    eq('and an order naming fields that are gone skips them',
+       Object.keys(JSON.parse(A.agc.reorder(doc, ['url', 'agc', 'notes', 'media']))),
+       ['agc', 'media', 'title', 'machine']);
+  }
 }
 
 // --- the keyboard remap -----------------------------------------------------

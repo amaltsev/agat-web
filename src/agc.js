@@ -401,6 +401,11 @@
     var out = {
       version: c.agc,
       name: name || '',
+      // The field order the file was written in, for `reorder` to put a save
+      // back the way its reader arranged it. The keys of the file and not of
+      // this object: what a save has to preserve is somebody's own arrangement
+      // of the container, including the order of fields nothing here edits.
+      order: Object.keys(c),
       title: c.title || '',
       // Who wrote the program, when, and where it came from — the container is
       // often the only place that will still say so.
@@ -552,7 +557,11 @@
     if (spec.date) o.date = String(spec.date);
     if (spec.url) o.url = spec.url;
     if (spec.notes) o.notes = spec.notes;
-    o.machine = { model: spec.model === 9 ? 9 : 7, ram: spec.ram || 64 };
+    o.machine = { model: spec.model === 9 ? 9 : 7 };
+    // The model's own size where the container names none: 128K is what an
+    // Agat-9 is, and writing the Agat-7's 64 would be this writer inventing a
+    // smaller machine than the one it was handed.
+    o.machine.ram = spec.ram || (o.machine.model === 9 ? 128 : 64);
     // The default monitor is what a container that says nothing gets, so
     // naming it would only add noise to every file.
     if (spec.monitor && spec.monitor !== AGAT.MONITOR_DEFAULT) {
@@ -578,6 +587,60 @@
     });
   }
 
+  // A container as it was read, back as `build` takes it. `parse` and `build`
+  // are not each other's inverse in shape — one flattens the machine into
+  // `machine`, the other wants it spread across the spec — and everything that
+  // saves a container it opened has to bridge that. Here rather than in each of
+  // them, so a field this reader keeps and no editor touches — `controls`, a
+  // `state` snapshot — is carried through in one place instead of being spelled
+  // out again by every caller, which is how one of them comes to drop it.
+  //
+  // The media come across as the four things a medium *is*: what it is called,
+  // the payload as it was packed, the patches against it, and where it goes.
+  // The patched image is left behind, because a container carries what it came
+  // from and not what it ran.
+  function respec(c) {
+    var m = c.machine || {};
+    return {
+      title: c.title, author: c.author, date: c.date, url: c.url,
+      notes: c.notes, info: c.info, hint: c.hint,
+      model: m.model, ram: m.ram, monitor: m.monitor, boot: m.boot,
+      slots: m.slots,
+      keys: c.keys, controls: c.controls, state: c.state,
+      media: (c.media || []).map(function (md) {
+        return { name: md.name, bytes: md.bytes, patches: md.patches,
+                 mount: md.mount, writable: md.writable };
+      }),
+    };
+  }
+
+  // The fields back in the order the file already had them, `had` being the key
+  // order it was read with. `build` writes the documented order, which is what
+  // a new container should have; a container that has been hand-edited since is
+  // somebody's own arrangement, and a save that changes one field and silently
+  // shuffles the rest makes a diff nobody can read.
+  //
+  // A field the file did not have goes where the documented order puts it,
+  // relative to whatever of that order survives around it.
+  function reorder(text, had) {
+    if (!had || !had.length) return text;
+    var o = JSON.parse(text), keys = Object.keys(o), seq = [], i, k, before;
+    for (i = 0; i < had.length; i++) if (had[i] in o) seq.push(had[i]);
+    for (i = 0; i < keys.length; i++) {
+      k = keys[i];
+      if (seq.indexOf(k) >= 0) continue;
+      // The nearest field ahead of this one that the file did have: the new
+      // field lands just after it, and first of all when there is none.
+      before = keys.slice(0, i).filter(function (p) {
+        return seq.indexOf(p) >= 0;
+      }).pop();
+      seq.splice(before === undefined ? 0 : seq.indexOf(before) + 1, 0, k);
+    }
+    var out = {};
+    for (i = 0; i < seq.length; i++) out[seq[i]] = o[seq[i]];
+    return JSON.stringify(out, null, 2) + '\n';
+  }
+
   // A container's `machine.slots` as a machine takes it: kilobytes to bytes.
   // Sizes are kilobytes in the file, because that is how a fitting is spoken
   // of, and bytes everywhere they are used. `null` — a slot the container
@@ -598,6 +661,7 @@
 
   AGAT.agc = {
     looks: looks, parse: parse, build: build, scaleSlots: scaleSlots,
+    respec: respec, reorder: reorder,
     encode64: encode64, decode64: decode64,
     fromHex: fromHex, toHex: toHex,
     decodeBytes: decodeBytes, encodeBytes: encodeBytes,

@@ -31,6 +31,7 @@ var SHELL = [
   './',
   'index.html',
   'edit-dos.html',
+  'edit-agc.html',
   'agat.css',
   'manifest.json',
   'roms/roms.js',

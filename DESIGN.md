@@ -539,7 +539,7 @@ it held, so the formatter does not copy the reservation.
 `dosui.js` draws the catalog into whatever element it is handed and is told,
 per disk, whether writing is allowed. Two pages mount it:
 
-- **`edit-dos.html`** opens an image file. Thirteen of the modules and no ROMs
+- **`edit-dos.html`** opens an image file. Fifteen of the modules and no ROMs
   — no CPU, no video, no machine — which is why the page loads instantly and why
   `check.js modules` asserts its script list is a *subsequence* of the module
   list rather than equal to it. It saves through the File System Access API
@@ -647,6 +647,28 @@ document and clicked on, with the assertions against the `Dos33` underneath. It
 is the only way to test a module whose every operation is a click on something
 it drew, and it catches the gap that matters — a delete that leaves the row on
 the screen, a rename that reaches the wrong entry.
+
+### The container editor
+
+**`edit-agc.html`** is the third page, and the only one that does not mount
+`dosui.js` at all: what it edits is the container rather than any disk inside
+it. Seven modules — the character set, the palette, `machine.js` for what a slot
+would hold, `agc.js` and the sniffer, and `keyboard.js` to tell a code from a
+typo — and the same subsequence rule.
+
+Everything the page decides lives in four functions that touch nothing but their
+arguments: `blankDoc` (a dropped image as the container that carries it),
+`slotOverrides` and `keyMap` (the two panels whose rows are not what the file
+holds), and `moveMedium`. `check.js agcui` lifts them out of the HTML by name
+and calls them, so unlike `check.js dosui` there is no stub document for a new
+control to fall out of — a broken page fails there rather than crashing.
+
+The page holds one object, the container as `agc.parse` returned it, and every
+control writes into that and nothing else; a save is `agc.respec` and the
+writer. The keys are the one exception and are held as rows while the panel is
+up, because a key being renamed passes through the empty name and through names
+that collide, and an object keyed by name cannot hold either without losing a
+row somebody is typing.
 
 ---
 
