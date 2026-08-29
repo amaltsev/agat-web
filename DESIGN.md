@@ -456,8 +456,9 @@ the entry is renamed `.nib` (140K) or `.aim` (840K) — which loads again unaide
 because media are identified by size.
 
 The GCR encoder was verified **byte-for-byte against compiled `dsk2nib.c`** over
-all 232,960 bytes of a track set. That is the only exact external oracle in the
-project and it earned its keep: the 6-and-2 encoder's decrementing double loop
+all 232,960 bytes of a track set. It is one of the project's two exact external
+oracles — the other is `tools/goldens`, DOS's own INIT beside the formatter —
+and it earned its keep: the 6-and-2 encoder's decrementing double loop
 relies on `sind` being an unsigned char in C, and the wrap is load-bearing.
 
 The decoder has no such oracle, so what stands in for one is the encoder: over a
@@ -513,6 +514,27 @@ implements any of it: `describe` is what `ls -l` prints and what the panel puts
 in a row's length column and under an open row, `pack` is what `put` and **Add file…** both hand to
 `Dos33.create`, `unpack` is `get` and the download buttons. Nothing in it
 touches `fs` or the DOM.
+
+### A disk with nothing on it
+
+`Dos33.format` writes what INIT leaves behind minus the system: a VTOC, an empty
+catalog and a free map. The panel's **Empty DOS** and `dos.js new` are that one
+call, so the two produce the same disk.
+
+Nothing about the layout is invented. `tools/goldens` holds track 17 of two
+disks that the DOS booting `examples/TESTKOM9_840.agc` INIT'd itself under this
+emulator — an 840K one in its own drive, a 140K one in the other controller —
+and `vectors.js` compares the VTOC field by field, the catalog chain link by
+link and the free map track by track against them, in the only test of the
+format that does not run through the code being tested. `check.js dosnew` runs
+it the other way: that DOS is handed a disk made here, and catalogs it, saves a
+program to it and counts the free sectors before `dos33.js` reads back what it
+wrote.
+
+The exceptions the comparison names are the interesting part. Both 140K INITs
+seen here — that DOS and БЕЙСИК А7.1 on the hardware — hold sector 0 of the last
+track back for something neither of them says, and no disk in the collection has
+it held, so the formatter does not copy the reservation.
 
 `dosui.js` draws the catalog into whatever element it is handed and is told,
 per disk, whether writing is allowed. Two pages mount it:
@@ -1069,6 +1091,7 @@ node tools/check.js modules         # the pages vs tools/modules.js
 node tools/check.js kbdmenu         # the page's keyboard menu, load order and all
 node tools/check.js urlkeys         # the page's address, around the whole loop
 node tools/check.js dosui           # the file manager, over a stub document
+node tools/check.js dosnew          # a disk formatted here, given to a real DOS
 node tools/painters.js              # each video mode from a synthetic pattern
 
 node tools/check.js boot   <image>  # boot and report where it got to

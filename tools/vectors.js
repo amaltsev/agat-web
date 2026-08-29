@@ -2946,12 +2946,11 @@ async function dosTests() {
         small.dos.volume, small.dos.tsMax,
         small.dos.vtoc[3], small.dos.vtoc[0x36], small.dos.vtoc[0x37]],
        [0, 35, 16, 254, 122, 3, 0, 1]);
-    // Sector 15 down to 8 on the 140K disk and the interleave on the 840K one,
-    // which is what the disks in the collection carry at each size.
-    eq('the catalog is the chain that size uses',
+    // The evens and then the odds, the whole of track 17, at either size.
+    eq('the catalog is that interleave, as long as the track is',
        [small.dos.catalogSectors().map((c) => c.sector),
         big.dos.catalogSectors().map((c) => c.sector)],
-       [[15, 14, 13, 12, 11, 10, 9, 8],
+       [[2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15],
         [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19]]);
     // Held back: the boot track, the VTOC and the catalog, and on the 840K disk
     // the two sectors its free map continues into.
@@ -2959,7 +2958,7 @@ async function dosTests() {
        [small.dos.freeCount(), big.dos.freeCount(),
         small.dos.isFree(0, 0), small.dos.isFree(17, 15), small.dos.isFree(17, 7),
         big.dos.isFree(50, 0), big.dos.isFree(114, 0), big.dos.isFree(1, 0)],
-       [560 - 16 - 9, 3360 - 21 - 21 - 2, false, false, true, false, false, true]);
+       [560 - 16 - 16, 3360 - 21 - 21 - 2, false, false, false, false, false, true]);
     // And it holds a file, which is the whole point of formatting one.
     small.dos.create('ПРИВЕТ', A.Dos33.typeByte('T'),
                      ctx.Uint8Array.from([0xd0, 0xd2, 0xc9, 0x8d]));
@@ -2967,6 +2966,53 @@ async function dosTests() {
        [small.dos.list().length, small.dos.find('ПРИВЕТ').typeLetter,
         mapAgreesWithFiles(small.dos)],
        [1, 'T', { files: 1, checked: 2, wrong: 0 }]);
+  }
+
+  // The format against golden records: two disks INIT'd by the DOS that boots
+  // examples/TESTKOM9_840.agc — an 840K one in its own drive and a 140K one in
+  // the other controller — formatted by its own 6502 code under this emulator
+  // and kept in tools/goldens. `check.js dosnew` is the other direction, that
+  // DOS writing to a disk made here; this is what its INIT produces beside what
+  // we produce, and it is the only check on the format that does not go through
+  // the code being checked.
+  //
+  // What is not compared, and why: +$07-$26 is the disk's name, which that DOS
+  // fills with something of its own; +$30 is where the allocator stands, and it
+  // moved when INIT saved its greeting; the map for tracks 1-7 and 18, which is
+  // the system and the greeting INIT wrote and a disk with nothing on it does
+  // not have; and, on the 140K disk, sector 0 of the last track. That last one
+  // is a reservation both 140K INITs make — this one and БЕЙСИК А7.1's — for
+  // something neither says, and it is not copied here: no disk in the
+  // collection has that sector held, so nothing on them can be reading it.
+  for (const g of [{ file: 'tools/goldens/init140.agc', kind: 'dsk140',
+                     used: [1, 2, 3, 4, 5, 6, 7, 18, 34] },
+                   { file: 'tools/goldens/init840.agc', kind: 'dsk840',
+                     used: [1, 2, 3, 4, 5, 6, 7, 18] }]) {
+    const gold = (await open(g.file)).dos;
+    const geo = A.Sectors.KINDS[g.kind];
+    const data = new ctx.Uint8Array(geo.tracks * geo.perTrack * A.Dos33.SECSIZE);
+    const mine = A.Dos33.format(new A.Sectors(g.kind, data, {}));
+    const at = g.kind + ': ';
+    const fields = (v) => [].concat(
+      [...v.subarray(0, 7)], [...v.subarray(0x27, 0x30)], [...v.subarray(0x31, 0x38)]);
+    eq(at + 'the VTOC we write is the VTOC INIT writes',
+       fields(mine.vtoc), fields(gold.vtoc));
+    // The links, not the entries: INIT saved a greeting and its entry is in the
+    // first catalog sector, which a disk with nothing on it does not have.
+    const links = (d) => d.catalogSectors().map((c) => [c.sector, c.bytes[1], c.bytes[2]]);
+    eq(at + 'the catalog is chained the way INIT chains it', links(mine), links(gold));
+    eq(at + 'and every entry in it is empty',
+       mine.catalogSectors().every((c) => [...c.bytes.subarray(11)].every((b) => !b)),
+       true);
+    const skip = {};
+    for (const t of g.used) skip[t] = 1;
+    const map = (d) => {
+      const out = [];
+      for (let t = 0; t < d.tracks; t++) if (!skip[t]) out.push(d.mapWord(t));
+      return out;
+    };
+    eq(at + 'and the free map says the same about every track but its own system',
+       map(mine), map(gold));
   }
 
   // The three encodings, each read the same way. A 140K disk needs no map

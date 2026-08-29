@@ -534,27 +534,22 @@
   // free map that gives away everything else. The image comes in zeroed — a
   // blank floppy — and goes out a disk DOS will `CATALOG` and `SAVE` to.
   //
-  // The catalog is the size's own, counted over the 33 DOS disks in the
-  // collection at ~/src/agat/disks and in examples/:
+  // The catalog is the whole of track 17 in the interleave DOS itself writes:
+  // sector 2 and up the evens, then 1 and up the odds — 2,4..20,1,3..19 at
+  // 21 sectors and 2,4..14,1,3..15 at 16. One rule at both sizes, because two
+  // INITs write it at both: the DOS that boots examples/TESTKOM9_840.agc,
+  // formatting an 840K disk in its own drive and a 140K disk in the other
+  // controller, and БЕЙСИК А7.1 on the hardware. Eight of the 140K disks in the
+  // collection carry an older layout instead — 15 down to 8, seven sectors left
+  // over — which reads back here like any other chain.
   //
-  //   140K   sector 15 down to 8, and track 17's sectors 1-7 left free —
-  //          eight disks lay their catalog out that way, and basint.140.dsk
-  //          shows the seven spare sectors still free on a disk that has not
-  //          filled up. Two carry a longer chain, 15 down to 2 or 1.
-  //   840K   sector 2 and up the evens to 20, then 1 and up the odds to 19:
-  //          twenty sectors, the whole track. Fifteen disks of seventeen.
-  //
-  // Track 0 is held back on both. It is the boot track, and no allocator should
-  // hand it out; tracks 1 and 2, which a system disk spends on DOS, are free
-  // here because nothing is written to them.
+  // Track 0 is held back. It is the boot track, and no allocator should hand it
+  // out; tracks 1 and 2, which a system disk spends on DOS, are free here
+  // because nothing is written to them.
   function catalogChain(perTrack) {
     var out = [], s;
-    if (perTrack === 16) {
-      for (s = perTrack - 1; s >= 8; s--) out.push(s);
-      return out;
-    }
     for (s = 2; s < perTrack; s += 2) out.push(s);
-    for (s = 1; s < perTrack - 1; s += 2) out.push(s);
+    for (s = 1; s < perTrack; s += 2) out.push(s);
     return out;
   }
 
@@ -566,6 +561,11 @@
       }
     };
     var v = new Uint8Array(SECSIZE);
+    // Apple's layout has nothing at +$00, and every INIT here leaves $04 in it:
+    // fifteen disks in the collection, and the one this format is checked
+    // against. It travels with the release byte — the disks that write $00 there
+    // write $00 as the release too.
+    v[0] = 4;
     v[1] = VTOC_TRACK;
     v[2] = chain[0];
     v[3] = RELEASE;

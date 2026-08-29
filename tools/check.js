@@ -1088,9 +1088,9 @@ async function dosuiCmd() {
 // The greeting is deleted from a copy of the boot disk in memory, which is what
 // drops it to a `]` prompt instead of running the factory test.
 //
-// 840K only: nothing in examples/ boots a 140K disk to a prompt. The 140K
-// format was driven the same way against mycomp.140.dsk of the disk collection,
-// which saved and listed a file on it.
+// 840K only: nothing in examples/ boots a 140K disk to a prompt. Both sizes are
+// compared against a disk that DOS's own INIT wrote, in vectors.js — see
+// tools/goldens.
 //
 // Slow — it boots a machine and types at it, about fifteen seconds.
 if (cmd === 'dosnew') {
