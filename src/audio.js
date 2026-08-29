@@ -48,6 +48,11 @@
     this.lead = 0;
     this.resyncs = 0;
     this.volume = opts.volume === undefined ? 0.25 : opts.volume;
+    // Muting is a gain of zero rather than a stop: the flips still walk the
+    // buffers, so the cone's level and the DC blocker stay where the machine
+    // put them and unmuting picks the sound up mid-tone rather than with a
+    // click.
+    this.muted = !!opts.muted;
     this.enabled = false;
   }
 
@@ -59,7 +64,7 @@
     // manage; its own stage is on top of ours and is usually the larger half.
     this.ctx = new C({ latencyHint: 'interactive' });
     this.gain = this.ctx.createGain();
-    this.gain.gain.value = this.volume;
+    this.gain.gain.value = this.gainValue();
     this.gain.connect(this.ctx.destination);
     this.enabled = true;
   };
@@ -75,9 +80,18 @@
     }
   };
 
+  Speaker.prototype.gainValue = function () {
+    return this.muted ? 0 : this.volume;
+  };
+
   Speaker.prototype.setVolume = function (v) {
     this.volume = v;
-    if (this.gain) this.gain.gain.value = v;
+    if (this.gain) this.gain.gain.value = this.gainValue();
+  };
+
+  Speaker.prototype.setMuted = function (m) {
+    this.muted = !!m;
+    if (this.gain) this.gain.gain.value = this.gainValue();
   };
 
   // `edges` are CPU cycle counts of speaker flips within [fromCycle, toCycle).

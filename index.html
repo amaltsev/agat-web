@@ -506,6 +506,7 @@
   <div class="row">
     <span class="key">Volume</span>
     <input id="vol" type="range" min="0" max="100" value="25">
+    <label title="Silence the speaker without moving the slider; remembered by this browser"><input type="checkbox" id="mute"> mute</label>
   </div>
 </div>
 
@@ -597,8 +598,8 @@
       for a disk that is not in a drive.
     </td></tr>
     <tr><td><b>⚙</b></td><td>
-      Which Agat this is, its memory sizes, the mouse, the monitor and the
-      volume, with <b>Boot</b> and <b>Reset</b>.
+      Which Agat this is, its memory sizes, the mouse, the monitor, the
+      volume and <b>mute</b>, with <b>Boot</b> and <b>Reset</b>.
     </td></tr>
     <tr><td><b>Machine</b></td><td>
       The Agat-9 is 128K in 8K banks on the motherboard, plus a 128K
@@ -684,6 +685,7 @@
   var monitorSel = document.getElementById('monitor');
   var kbdSel = document.getElementById('kbd');
   var layoutBtn = document.getElementById('layout');
+  var muteEl = document.getElementById('mute');
   var gearBtn = document.getElementById('gear');
   var settingsEl = document.getElementById('settings');
   var saveEl = document.getElementById('save');
@@ -931,6 +933,23 @@
   readSettings();
   syncMemEnabled();
 
+  // Chrome the address does not carry, kept per browser instead: a bookmark
+  // describes a machine, and whether this browser's speaker is silenced is
+  // about the room it is in rather than about the program. localStorage is
+  // what an installed copy still has offline, and it is not there at all on
+  // some file:// origins and in some private windows — a preference that
+  // cannot be stored is simply not remembered.
+  function getPref(k) {
+    try { return localStorage.getItem('agat.' + k); } catch (e) { return null; }
+  }
+  function setPref(k, v) {
+    try {
+      if (v) localStorage.setItem('agat.' + k, v);
+      else localStorage.removeItem('agat.' + k);
+    } catch (e) {}
+  }
+  muteEl.checked = !!getPref('mute');
+
   var app = new AGAT.App({
     canvas: document.getElementById('canvas'),
     onStatus: say,
@@ -942,6 +961,7 @@
     onKeyUp: function (info) { if (kbView) kbView.light(info, 0, false); },
     onMods: function (m) { if (kbView) kbView.setMods(m); },
   });
+  app.speaker.setMuted(muteEl.checked);
 
   // The machine the App settled on, back into the controls and the tab. Worth
   // doing after a load as well as after a menu choice: a container names its
@@ -1437,6 +1457,11 @@
   document.getElementById('vol').addEventListener('input', function (e) {
     unlockAudio();
     app.speaker.setVolume(e.target.value / 100);
+  });
+  muteEl.addEventListener('change', function (e) {
+    unlockAudio();
+    app.speaker.setMuted(e.target.checked);
+    setPref('mute', e.target.checked ? '1' : '');
   });
   document.getElementById('trackpad').addEventListener('change', function (e) {
     app.mouseTrackpad = e.target.checked;
