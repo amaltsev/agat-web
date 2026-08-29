@@ -28,3 +28,19 @@
   copy — the shell revalidates behind the cache on every load, so a deploy is
   live on the second one — but the first fetch of each is still the HTTP
   cache's, and a checkout opened as a file has no worker at all.
+* Resume the session in an installed copy. Nothing keeps the machine today:
+  the fragment names a container and `agat.mute` is the only thing stored, so a
+  relaunch either comes up blank or cold-boots the container the address names
+  and looks like a resume while the disk writes are gone. A `display-mode:
+  standalone` probe, one IndexedDB record holding `app.toAgc({state:true})`
+  written on `visibilitychange` to hidden — the machine steps only inside
+  `requestAnimationFrame`, so a hidden page has already stopped and the snapshot
+  needs no hold — and `applyAgc` on that record at startup, which does the media,
+  the writes and the resume line already. A plain tab stores nothing. The
+  masthead's start over clears it through a synchronous flag, since
+  `location.replace` cannot await a delete.
+
+  The hard part is a file double-clicked in a file manager. It arrives through
+  `launchQueue` at an unpredictable moment after `init()`, so it races the
+  restore through `startOpen`/`finishOpen`, which are not reentrant — and the
+  double-clicked file is what the person actually asked for, so it has to win.
