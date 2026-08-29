@@ -518,7 +518,7 @@ touches `fs` or the DOM.
 ### A disk with nothing on it
 
 `Dos33.format` writes what INIT leaves behind minus the system: a VTOC, an empty
-catalog and a free map. The panel's **Empty DOS** and `dos.js new` are that one
+catalog and a free map. The panel's **Empty** and `dos.js new` are that one
 call, so the two produce the same disk.
 
 Nothing about the layout is invented. `tools/goldens` holds track 17 of two

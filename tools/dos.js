@@ -256,7 +256,7 @@ async function main() {
 // A disk with a VTOC and an empty catalog and nothing else. The size is the
 // only thing to say about it, since everything else a DOS disk has is either
 // the geometry's or the format's — src/dos33.js writes it, and the page's
-// Empty DOS button goes through the same call.
+// Empty button goes through the same call.
 function create(p) {
   const size = String(rest.shift() || '140').replace(/k$/i, '');
   const kind = { 140: 'dsk140', 840: 'dsk840' }[size];

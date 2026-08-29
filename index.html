@@ -420,8 +420,7 @@
     <button id="disklock">RO</button>
     <button id="diskrename" title="What this disk is called in the container; the format is read from its size, never from the name">Rename</button>
     <button id="diskeject" title="Take the disk out; it is still saved">Eject</button>
-    <button id="diskblank" title="A disk of nothing — INIT it from DOS">Blank</button>
-    <button id="diskdos" title="A formatted disk: a VTOC and an empty catalog, ready for files">Empty DOS</button>
+    <button id="diskdos" title="A DOS 3.3 formatted disk">Empty</button>
     <label class="file" title="Open a file into this drive, leaving the rest of the session alone">Open into drive…
       <input type="file" id="diskopen"></label>
     <button id="filesclose" class="sp">Close</button>
@@ -1902,14 +1901,6 @@
     var entry = app.diskIn(filesSlot, filesDrv);
     app.unmount(filesSlot, filesDrv);
     if (entry) say(entry.name + ' out of ' + app.driveLabel(filesSlot, filesDrv));
-    showDisk();
-  });
-
-  document.getElementById('diskblank').addEventListener('click', function () {
-    var entry = app.blankDisk(kindForDrive());
-    app.mount(entry, filesSlot, filesDrv);
-    say(entry.name + ' in ' + app.driveLabel(filesSlot, filesDrv) +
-        ' — INIT it from DOS');
     showDisk();
   });
 
