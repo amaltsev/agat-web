@@ -11,13 +11,6 @@
       "5": null
     }
   },
-  "keys": {
-    "ArrowUp": {},
-    "ArrowDown": {},
-    "ArrowLeft": {},
-    "ArrowRight": {},
-    "Space": {}
-  },
   "controls": {
     "Игра": {
       "Up Down Left Right": "Движение",
