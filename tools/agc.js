@@ -2,7 +2,7 @@
 //
 //   node tools/agc.js make  <image...> [flags]     a container from images
 //   node tools/agc.js info  <file.agc>             what one holds
-//   node tools/agc.js set   <file.agc> [flags]     change what it says
+//   node tools/agc.js edit  <file.agc> [flags]     change what it says
 //   node tools/agc.js get   <file.agc> [medium...] media out of it, as files
 //   node tools/agc.js add   <file.agc> <file...>   images, or another container's
 //                                                  media, into it
@@ -93,7 +93,7 @@
 // `--force` folds it in anyway.
 //
 // A field this reader does not know is dropped rather than carried through, so
-// a hand-written key on the container itself does not survive a `set`. Patch
+// a hand-written key on the container itself does not survive an `edit`. Patch
 // records are the exception: their annotations are kept. The fields that do
 // survive keep the order the file had them in, so a change to one shows up in a
 // diff as a change to one; a new container is written in the documented order.
@@ -104,7 +104,7 @@
 //   node tools/agc.js make game.dsk --title="RISE OUT" --author="…" \
 //     --date=1989 --model=7 --ram=64 --key="KeyW:^:Shoot right" > game.agc
 //   node tools/agc.js info  game.agc
-//   node tools/agc.js set   game.agc --hint="Press РУС at the title screen."
+//   node tools/agc.js edit  game.agc --hint="Press РУС at the title screen."
 //   node tools/agc.js get   game.agc 0 --out=/tmp
 //   node tools/agc.js add   game.agc side-b.dsk --in=fdd140:2
 //   node tools/agc.js merge game.agc '*.dsk'
@@ -149,7 +149,7 @@ function help(full) {
   return out.join('\n').replace(/\n+$/, '');
 }
 
-const COMMANDS = ['make', 'info', 'set', 'get', 'add', 'rm', 'merge'];
+const COMMANDS = ['make', 'info', 'edit', 'get', 'add', 'rm', 'merge'];
 if (!cmd || flags.help || cmd === 'help') {
   console.log(help(flags.help || cmd === 'help'));
   process.exit(0);
@@ -398,7 +398,7 @@ async function write(c, media, to) {
 // The fields back in the order the container already had them. src/agc.js
 // writes the documented order, which is what a new container should have and
 // what the page's Save button produces; a container that has been hand-edited
-// since is somebody's own arrangement, and a `set` that changes one field and
+// since is somebody's own arrangement, and an `edit` that changes one field and
 // silently shuffles the rest makes a diff nobody can read. `make` has no file
 // to take an order from and gets the documented one.
 //
@@ -439,7 +439,7 @@ async function main() {
   if (cmd === 'make') return make();
   const c = await read(rest.shift());
   if (cmd === 'info') return info(c);
-  if (cmd === 'set') return set(c);
+  if (cmd === 'edit') return edit(c);
   if (cmd === 'get') return get(c);
   if (cmd === 'add') return add(c);
   if (cmd === 'rm') return remove(c);
@@ -453,9 +453,9 @@ async function make() {
   if (where !== '-') said(where, media, 'made');
 }
 
-async function set(c) {
+async function edit(c) {
   const where = await write(c, c.media, value('out') === undefined ? c.path : String(flags.out));
-  said(where, c.media, 'set');
+  said(where, c.media, 'edited');
 }
 
 async function add(c) {

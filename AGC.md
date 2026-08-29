@@ -577,7 +577,7 @@ with a `-yyyymmdd-hhmmss` stamp on it, so `game.agc` saves as
 over it. An existing stamp is replaced rather than added to. One made from a
 bare image takes the image's name for both, unstamped — that save is a first
 one — so `game.dsk` saves as `game.agc` titled `game.dsk`. Rename either, and
-add an author, a date and the keys with `tools/agc.js set` or a text editor.
+add an author, a date and the keys with `tools/agc.js edit` or a text editor.
 
 ### From the command line
 
@@ -599,13 +599,13 @@ patch is usually arrived at. `--model`, `--ram`, `--monitor`, `--boot` and
 `--slot=N:CARD[:RAM[:DRIVES]]` are the machine; `--in` and `--writable` are the
 drive a medium goes in and whether a program may write to it.
 
-Every one of those flags means the same thing to `set`, which changes what an
+Every one of those flags means the same thing to `edit`, which changes what an
 existing container says and leaves its media alone — an empty value clears a
 field, and `--no-key=KEY` drops a key:
 
 ```sh
 node tools/agc.js info  game.agc                     # what it holds
-node tools/agc.js set   game.agc --date="1990-92" --url=
+node tools/agc.js edit  game.agc --date="1990-92" --url=
 node tools/agc.js get   game.agc 0 --out=/tmp        # the disk back out as a file
 node tools/agc.js add   game.agc side-b.dsk --in=fdd140:2
 node tools/agc.js rm    game.agc 'side-b*'
@@ -625,7 +625,7 @@ container meant to be hand-edited or read in a diff; `--gz` compresses even
 where the saving is slight. Left alone, the size rule decides.
 
 **A field this reader does not know is dropped rather than carried through**, so
-a hand-written key on the container itself does not survive a `set` — patch
+a hand-written key on the container itself does not survive an `edit` — patch
 records are the exception, and keep their annotations.
 
 ---
