@@ -73,7 +73,8 @@ var SHELL = [
   'icons/agat-512.png',
   'icons/agat-maskable-512.png',
   'icons/agat-180.png',
-  'icons/favicon.svg'
+  'icons/favicon.svg',
+  'icons/agat-logo.png'
 ];
 
 // The shell as absolute URLs, resolved once against this file's own location,

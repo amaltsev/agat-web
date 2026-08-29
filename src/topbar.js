@@ -20,10 +20,10 @@
   // href, face. An empty href is the page's own About, which is handled here.
   var ITEMS = [
     ['index.html', 'Emulator'],
-    ['edit-agc.html', 'Container editor'],
+    ['edit-agc.html', 'AGC/Container Editor'],
     ['edit-dos.html', 'DOS Viewer/Editor'],
     ['', 'About'],
-    ['https://github.com/amaltsev/agat-web', 'Source on GitHub']
+    ['https://github.com/amaltsev/agat-web', 'GitHub']
   ];
 
   // The page the menu is on gets a dim word rather than a link to itself.
@@ -31,7 +31,7 @@
     var btn = document.createElement('button');
     btn.className = 'burger';
     btn.type = 'button';
-    btn.title = 'The other pages, and what this one is';
+    btn.title = 'Navigation menu';
     btn.setAttribute('aria-haspopup', 'true');
     btn.setAttribute('aria-expanded', 'false');
     btn.setAttribute('aria-label', 'Menu');

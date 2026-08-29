@@ -35,7 +35,9 @@ a { color: var(--accent); }
   width: min(94vw, var(--page)); margin-bottom: 10px; position: relative;
   display: flex; align-items: center; gap: 9px;
 }
-.top .logo { display: block; width: 26px; height: 26px; border-radius: 5px; }
+/* The wordmark, laid on its own height: it is 230x80, and what has to line
+   up with the page name beside it is how tall it is. */
+.top .logo { display: block; height: 26px; width: auto; opacity: .85; }
 /* The logo is the way to the emulator, and on the emulator page it is the way
    back to a bare machine — where it carries the page's name with it, because
    there the masthead is the control. Neither is worth the page's link color
@@ -45,7 +47,7 @@ a { color: var(--accent); }
   color: inherit; text-decoration: none;
 }
 .top .brand:hover h1 { color: var(--accent); }
-.top .brand:hover .logo { box-shadow: 0 0 0 1px var(--accent); }
+.top .brand:hover .logo { opacity: 1; }
 .top .burger { margin-left: auto; padding: 4px 10px; line-height: 1.3; }
 .top .menu {
   position: absolute; top: 100%; right: 0; z-index: 5; margin-top: 5px;
