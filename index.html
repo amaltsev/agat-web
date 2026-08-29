@@ -1917,7 +1917,7 @@
     var file = e.target.files && e.target.files[0], slot = filesSlot, drv = filesDrv;
     e.target.value = '';
     if (!file) return;
-    app.readFile(file).then(function (bytes) {
+    app.fileBytes(file).then(function (bytes) {
       var entry = app.openInto(slot, drv, bytes, file.name);
       say(entry.name + ' in ' + app.driveLabel(slot, drv));
       showDisk();

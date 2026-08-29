@@ -1209,8 +1209,17 @@
 
   App.prototype.readFile = function (file) {
     var self = this;
+    return self.fileBytes(file).then(function (bytes) {
+      return self.load(bytes, file.name);
+    });
+  };
+
+  // The file's bytes and nothing more, for whoever is going to decide what to
+  // do with them — `openInto` puts one disk in one drive rather than replacing
+  // the session, and so cannot go through `load`.
+  App.prototype.fileBytes = function (file) {
     return file.arrayBuffer().then(function (buf) {
-      return self.load(new Uint8Array(buf), file.name);
+      return new Uint8Array(buf);
     });
   };
 
