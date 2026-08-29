@@ -1097,6 +1097,7 @@ node tools/dos.js get   <image> NAME [out]     # a file off it, as a .fil
 node tools/dos.js put   <image> FILE [NAME]    # a file onto it
 node tools/dos.js tget  <image> NAME           # ...as UTF-8 text
 node tools/dos.js rm|mv <image> …   # delete, rename
+node tools/dos.js new   <file> [140|840]       # a formatted disk with nothing on it
 
 node tools/tone.js "3,12,0" 16      # RISE OUT's PLAY500 handler on a bare machine
 python3 tools/mkirqtest.py [out]    # the cross-emulator interrupt & sound test

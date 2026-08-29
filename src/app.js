@@ -490,26 +490,36 @@
     return !!(entry && entry.media && this.slotFor(entry.media.kind) === slot);
   };
 
-  // A blank disk: the right number of zero bytes, and nothing else. There is no
-  // formatter here — DOS's own INIT is what puts a catalog on it, exactly as it
-  // did on the machine — so what this makes is an unformatted disk, which is
-  // what a box of new floppies held.
+  // A blank disk: the right number of zero bytes, and nothing else. What a box
+  // of new floppies held, and DOS's own INIT is what puts a catalog on it,
+  // exactly as it did on the machine.
+  App.prototype.blankDisk = function (kind) { return this.newDisk(kind, false); };
+
+  // The same disk with a VTOC and an empty catalog already on it, for the
+  // machine that has no DOS to INIT one with — a program saving its data, a
+  // disk built here and read on the hardware.
+  App.prototype.dosDisk = function (kind) { return this.newDisk(kind, true); };
+
+  // Formatted before it is mounted, so what the session carries and saves is
+  // the disk itself rather than a blank and a patch over it.
   //
   // It arrives unlocked, unlike every disk that comes from a file: there is
   // nothing on it to protect, and a locked blank is of no use to anybody.
-  App.prototype.blankDisk = function (kind) {
+  App.prototype.newDisk = function (kind, formatted) {
     var sizes = { dsk140: 143360, dsk840: 860160 };
     if (!sizes[kind]) throw new Error('no blank of kind ' + kind);
-    var name = 'blank.dsk', n = 1, i, taken = true;
+    var stem = formatted ? 'dos' : 'blank';
+    var name = stem + '.dsk', n = 1, i, taken = true;
     while (taken) {
       taken = false;
       for (i = 0; i < this.disks.length; i++) {
         if (this.disks[i].name === name) taken = true;
       }
-      if (taken) name = 'blank-' + (++n) + '.dsk';
+      if (taken) name = stem + '-' + (++n) + '.dsk';
     }
     var s = { kind: kind, name: name, payload: new Uint8Array(sizes[kind]),
               offset: 0, prodos: false };
+    if (formatted) AGAT.Dos33.format(new AGAT.Sectors(kind, s.payload, {}));
     var entry = this.remember(name, s.payload, null, s, AGAT.mount(s));
     entry.media.locked = false;
     return entry;

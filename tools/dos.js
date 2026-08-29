@@ -9,6 +9,7 @@
 //   node tools/dos.js put   <image> <file> [name]  a file onto it
 //   node tools/dos.js tget  <image> <name> [out]   the same, Agat text -> UTF-8
 //   node tools/dos.js tput  <image> <file> [name]  the same, UTF-8 -> Agat text
+//   node tools/dos.js new   <file> [140|840]       a formatted disk, empty
 //
 // `node tools/dos.js help` prints the flags, the details and some examples.
 //
@@ -45,6 +46,11 @@
 //   --medium=N     which medium of an .agc to work on; the first by default
 //   --vtoc=T/S     where the VTOC is, if it is not track 17 sector 0
 //
+// `new` writes what INIT leaves behind without the system: a VTOC, an empty
+// catalog and a free map, 140K unless the size says 840. There is no DOS on it,
+// so it does not boot; it holds files. It refuses to write over a file that is
+// already there, and `--force` says to anyway.
+//
 // Names are matched on what they *draw*: МАШИНИСТ finds the file whose name is
 // half Cyrillic and half Latin look-alikes, which is how they were really
 // typed. `*` and `?` glob. Since two different byte strings can draw the same
@@ -70,6 +76,7 @@
 //   node tools/dos.js tput disk.dsk src.txt ИCXOД --lead
 //   node tools/dos.js rm   disk.dsk 'OLD.*'
 //   node tools/dos.js mv   disk.dsk KLAWA КЛАВА
+//   node tools/dos.js new  data.dsk 840
 const fs = require('fs');
 const path = require('path');
 const H = require('./harness');
@@ -107,7 +114,7 @@ function help(full) {
   return out.join('\n').replace(/\n+$/, '');
 }
 
-const COMMANDS = ['ls', 'rm', 'mv', 'lock', 'unlock', 'get', 'put', 'tget', 'tput'];
+const COMMANDS = ['ls', 'rm', 'mv', 'lock', 'unlock', 'get', 'put', 'tget', 'tput', 'new'];
 if (!cmd || flags.help || cmd === 'help') {
   console.log(help(flags.help || cmd === 'help'));
   process.exit(0);
@@ -223,6 +230,7 @@ main().catch(die);
 async function main() {
   const p = rest.shift();
   if (!p) throw new Error(cmd + ': need an image');
+  if (cmd === 'new') return create(p);
   const img = await load(p);
   const sec = new A.Sectors(img.kind, img.data,
                             { prodos: img.inner.prodos, name: img.inner.name });
@@ -243,6 +251,25 @@ async function main() {
   if (cmd === 'tget') return get(dos, true);
   if (cmd === 'put') return commit(img, sec, await put(dos, false));
   if (cmd === 'tput') return commit(img, sec, await put(dos, true));
+}
+
+// A disk with a VTOC and an empty catalog and nothing else. The size is the
+// only thing to say about it, since everything else a DOS disk has is either
+// the geometry's or the format's — src/dos33.js writes it, and the page's
+// Empty DOS button goes through the same call.
+function create(p) {
+  const size = String(rest.shift() || '140').replace(/k$/i, '');
+  const kind = { 140: 'dsk140', 840: 'dsk840' }[size];
+  if (!kind) throw new Error('new: 140 or 840, not "' + size + '"');
+  if (fs.existsSync(p) && !flags.force) {
+    throw new Error(p + ' is already there — --force to overwrite it');
+  }
+  const geo = A.Sectors.KINDS[kind];
+  const data = new ctx.Uint8Array(geo.tracks * geo.perTrack * A.Dos33.SECSIZE);
+  const dos = A.Dos33.format(new A.Sectors(kind, data, {}));
+  fs.writeFileSync(p, Buffer.from(data));
+  console.log('made ' + p + ', ' + kind + ', ' + dos.freeCount() + ' free sectors of ' +
+              geo.tracks * geo.perTrack);
 }
 
 async function commit(img, sec, said) {

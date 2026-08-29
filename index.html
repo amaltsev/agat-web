@@ -421,6 +421,7 @@
     <button id="diskrename" title="What this disk is called in the container; the format is read from its size, never from the name">Rename</button>
     <button id="diskeject" title="Take the disk out; it is still saved">Eject</button>
     <button id="diskblank" title="A disk of nothing — INIT it from DOS">Blank</button>
+    <button id="diskdos" title="A formatted disk: a VTOC and an empty catalog, ready for files">Empty DOS</button>
     <label class="file" title="Open a file into this drive, leaving the rest of the session alone">Open into drive…
       <input type="file" id="diskopen"></label>
     <button id="filesclose" class="sp">Close</button>
@@ -1905,13 +1906,25 @@
   });
 
   document.getElementById('diskblank').addEventListener('click', function () {
-    var kind = filesSlot === app.slotFor('nib140') ? 'dsk140' : 'dsk840';
-    var entry = app.blankDisk(kind);
+    var entry = app.blankDisk(kindForDrive());
     app.mount(entry, filesSlot, filesDrv);
     say(entry.name + ' in ' + app.driveLabel(filesSlot, filesDrv) +
         ' — INIT it from DOS');
     showDisk();
   });
+
+  document.getElementById('diskdos').addEventListener('click', function () {
+    var entry = app.dosDisk(kindForDrive());
+    app.mount(entry, filesSlot, filesDrv);
+    say(entry.name + ' in ' + app.driveLabel(filesSlot, filesDrv) +
+        ' — formatted, no DOS on it');
+    showDisk();
+  });
+
+  // Which disk this drive takes.
+  function kindForDrive() {
+    return filesSlot === app.slotFor('nib140') ? 'dsk140' : 'dsk840';
+  }
 
   document.getElementById('diskopen').addEventListener('change', function (e) {
     var file = e.target.files && e.target.files[0], slot = filesSlot, drv = filesDrv;

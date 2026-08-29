@@ -2600,7 +2600,10 @@ async function agcTests() {
          [['—', 'b.dsk', 'c.dsk'], 3, false]);
 
       // A blank is zeros and nothing else — DOS's INIT is what formats it —
-      // and it goes into the drive it is put in like any other disk.
+      // and it goes into the drive it is put in like any other disk. The
+      // formatted one is the same disk with a catalog on it already, written
+      // into the payload rather than over it, so what a save carries is the
+      // disk and not a blank with patches.
       const blanked = await load(await shelf([{ name: 'a.dsk', bytes: disk140(1) }]));
       const blank = blanked.blankDisk('dsk140');
       eq('a blank disk is a disk of nothing, and unlocked',
@@ -2612,11 +2615,17 @@ async function agcTests() {
          [inDrives(blanked), blanked.mountedAt(blanked.disks[0])],
          [['—', 'blank.dsk'], null]);
 
+      const formatted = blanked.dosDisk('dsk140');
+      eq('a formatted disk arrives with a catalog and nothing to patch',
+         [formatted.name, formatted.patches.length, formatted.media.locked,
+          new A.Dos33(new A.Sectors('dsk140', formatted.bytes, {})).list().length],
+         ['dos.dsk', 0, false, 0]);
+
       // One file into one drive, with the rest of the session standing: the
       // other way a disk is opened replaces everything — see startOpen.
       await blanked.openInto(3, 0, disk140(9), 'later.dsk');
       eq('a file opened into a drive leaves the session alone',
-         [inDrives(blanked), blanked.disks.length], [['—', 'later.dsk'], 3]);
+         [inDrives(blanked), blanked.disks.length], [['—', 'later.dsk'], 4]);
       eq('...and a disk the drive cannot read is refused',
          await blanked.openInto(3, 0, new ctx.Uint8Array(860160), 'big.dsk')
            .then(() => 'no error', (e) => e.message),
@@ -2631,7 +2640,7 @@ async function agcTests() {
       const took = await blanked.openInto(3, 0, mixed, 'mixed.agc');
       eq('a container hands the drive the disk it can read',
          [took.name, inDrives(blanked), took.media.locked, blanked.disks.length],
-         ['small.dsk', ['—', 'small.dsk'], false, 4]);
+         ['small.dsk', ['—', 'small.dsk'], false, 5]);
       eq('...and one carrying nothing this drive reads says so',
          await blanked.openInto(3, 0, await shelf(
            [{ name: 'big.dsk', bytes: new ctx.Uint8Array(860160) }]), 'big.agc')
@@ -2920,6 +2929,45 @@ async function dosTests() {
   eq('the letters go back to bytes',
      'TIABSRKD'.split('').map(A.Dos33.typeByte), [0, 1, 2, 4, 8, 0x10, 0x20, 0x40]);
   eq('a letter that is not one', A.Dos33.typeByte('Z'), -1);
+
+  // A disk with nothing on it, made here. What it has to be is a disk the
+  // reader agrees with and DOS itself can use — the second half of that is
+  // `check.js dosnew`, which hands one to the DOS on TESTKOM9_840 and has it
+  // save a file.
+  {
+    const fresh = (kind) => {
+      const geo = A.Sectors.KINDS[kind];
+      const data = new ctx.Uint8Array(geo.tracks * geo.perTrack * A.Dos33.SECSIZE);
+      return { data: data, dos: A.Dos33.format(new A.Sectors(kind, data, {})) };
+    };
+    const small = fresh('dsk140'), big = fresh('dsk840');
+    eq('a formatted 140K disk has an empty catalog and a VTOC that says so',
+       [small.dos.list().length, small.dos.tracks, small.dos.perTrack,
+        small.dos.volume, small.dos.tsMax,
+        small.dos.vtoc[3], small.dos.vtoc[0x36], small.dos.vtoc[0x37]],
+       [0, 35, 16, 254, 122, 3, 0, 1]);
+    // Sector 15 down to 8 on the 140K disk and the interleave on the 840K one,
+    // which is what the disks in the collection carry at each size.
+    eq('the catalog is the chain that size uses',
+       [small.dos.catalogSectors().map((c) => c.sector),
+        big.dos.catalogSectors().map((c) => c.sector)],
+       [[15, 14, 13, 12, 11, 10, 9, 8],
+        [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19]]);
+    // Held back: the boot track, the VTOC and the catalog, and on the 840K disk
+    // the two sectors its free map continues into.
+    eq('the free map gives away everything but what the disk is using',
+       [small.dos.freeCount(), big.dos.freeCount(),
+        small.dos.isFree(0, 0), small.dos.isFree(17, 15), small.dos.isFree(17, 7),
+        big.dos.isFree(50, 0), big.dos.isFree(114, 0), big.dos.isFree(1, 0)],
+       [560 - 16 - 9, 3360 - 21 - 21 - 2, false, false, true, false, false, true]);
+    // And it holds a file, which is the whole point of formatting one.
+    small.dos.create('ПРИВЕТ', A.Dos33.typeByte('T'),
+                     ctx.Uint8Array.from([0xd0, 0xd2, 0xc9, 0x8d]));
+    eq('a fresh disk takes a file',
+       [small.dos.list().length, small.dos.find('ПРИВЕТ').typeLetter,
+        mapAgreesWithFiles(small.dos)],
+       [1, 'T', { files: 1, checked: 2, wrong: 0 }]);
+  }
 
   // The three encodings, each read the same way. A 140K disk needs no map
   // sectors past the VTOC; the two 840K ones do, and one of them is an .aim,

@@ -19,6 +19,9 @@
 //                                                against a stub <select>
 //   node tools/check.js dosui                    the file manager, over a stub
 //                                                document and a real disk
+//   node tools/check.js dosnew                   a disk formatted here, written
+//                                                to by the DOS on TESTKOM9_840
+//                                                and read back; slow
 //   node tools/check.js urlkeys                  the page's address: a machine
 //                                                built from a fragment, and the
 //                                                fragment written back out
@@ -1076,6 +1079,87 @@ async function dosuiCmd() {
 // makes it worth a test rather than a browser is that every interesting case is
 // a *pair* — an address and the container it names — and the rule is that the
 // address carries only what the container will not supply on reopening.
+// A disk formatted by src/dos33.js, given to the DOS that boots
+// examples/TESTKOM9_840.agc. The point is the oracle: the format is tested
+// against 6502 code that has never seen ours, rather than against the reader
+// that wrote it. DOS catalogs the disk, saves a BASIC program to it, and
+// src/dos33.js reads back what DOS left behind.
+//
+// The greeting is deleted from a copy of the boot disk in memory, which is what
+// drops it to a `]` prompt instead of running the factory test.
+//
+// 840K only: nothing in examples/ boots a 140K disk to a prompt. The 140K
+// format was driven the same way against mycomp.140.dsk of the disk collection,
+// which saved and listed a file on it.
+//
+// Slow — it boots a machine and types at it, about fifteen seconds.
+if (cmd === 'dosnew') {
+  dosnewCmd().catch(die);
+  return;
+}
+
+async function dosnewCmd() {
+  const A = ctx.AGAT;
+  let pass = 0, fail = 0;
+  const eq = (what, got, want) => {
+    const g = JSON.stringify(got), w = JSON.stringify(want);
+    if (g === w) { pass++; return; }
+    fail++;
+    console.log('FAIL ' + what + '\n  got  ' + g + '\n  want ' + w);
+  };
+  const roms = await H.loadRoms(ctx);
+
+  const bytes = new ctx.Uint8Array(
+    fs.readFileSync(path.join(H.ROOT, 'examples/TESTKOM9_840.agc')));
+  const c = await A.agc.parse(bytes, 'TESTKOM9_840.agc');
+  const bootAt = A.sniff(c.media[0].payload, c.media[0].name);
+  const bootData = new ctx.Uint8Array(bootAt.payload);
+  const bootDos = new A.Dos33(new A.Sectors(bootAt.kind, bootData, {}));
+  bootDos.remove(bootDos.find('TEST'));
+
+  const geo = A.Sectors.KINDS.dsk840;
+  const data = new ctx.Uint8Array(geo.tracks * geo.perTrack * A.Dos33.SECSIZE);
+  const made = A.Dos33.format(new A.Sectors('dsk840', data, {}));
+  eq('a formatted disk holds a catalog and no files',
+     [made.list().length, made.freeCount(), made.volume,
+      made.catalogSectors().length],
+     [0, 3316, 254, 20]);
+
+  const media = A.mount({ kind: 'dsk840', payload: data, name: 'new.dsk' });
+  media.locked = false;
+  const slots = {};
+  slots[A.Machine.SLOTS[9].fdd840] = { card: 'fdd840', drives: 2 };
+  const m = H.makeMachine(ctx, roms, { model: 9, slots: slots });
+  const slot = H.insert(m, A.mount({ kind: bootAt.kind, payload: bootData,
+                                     name: 'boot.dsk' }), 0);
+  H.insert(m, media, 1);
+  m.reset();
+  m.bootSlot(slot);
+  const cpu = m.cpu, per = Number(flags.per) || 6e6;
+  const run = (n) => { const e = cpu.cycles + n; while (cpu.cycles < e && !cpu.halted) cpu.step(); };
+  run(per * 4);
+  for (const ch of '10 PRINT1~SAVE T,D2~CATALOG,D2~') { m.keyDown(H.keyCode(ch)); run(per); }
+  const screen = A.Video.dumpText(m);
+
+  // What DOS makes of the disk, off the screen: the volume it read out of our
+  // VTOC, the free count it worked out of our map, and the file it has just
+  // put in our catalog.
+  eq('DOS reads the disk it was given', /254/.test(screen), true);
+  eq('...counts the map the way we do', /3315/.test(screen), true);
+  eq('...and lists the file it saved', /A 002 T/.test(screen), true);
+  if (fail) console.log(screen);
+
+  // And what we make of the disk DOS wrote to.
+  const back = new A.Dos33(new A.Sectors(media.kind, null, { media: media }));
+  const file = back.find('T');
+  eq('the file DOS wrote reads back here',
+     [file ? file.typeLetter : '-', file ? file.sectors : 0, back.freeCount()],
+     ['A', 2, 3314]);
+
+  console.log(pass + ' passed, ' + fail + ' failed');
+  if (fail) process.exit(1);
+}
+
 if (cmd === 'urlkeys') {
   H.loadRoms(ctx).then(urlkeysCmd).catch(die);
   return;

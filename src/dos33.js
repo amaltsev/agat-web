@@ -60,6 +60,8 @@
   var MAP_IN_VTOC = (SECSIZE - MAP_AT) / 4;      // 50 tracks
   var MAP_PER_SECTOR = SECSIZE / 4;              // 64 tracks in a map sector
   var DELETED = 0xff;
+  var VOLUME = 254;                      // what INIT writes, on every disk here
+  var RELEASE = 3;                       // the DOS release the VTOC declares
   var TYPES = 'TIABSRKD';
 
   // Type byte <-> letter. The byte is a single bit, so the letter is which bit.
@@ -524,6 +526,96 @@
       raw: raw, sectors: nData + nList,
     });
     return { track: lists[0][0], sector: lists[0][1], sectors: nData + nList };
+  };
+
+  // ---- a disk with nothing on it -------------------------------------------
+  //
+  // What INIT leaves behind, minus the system: a VTOC, an empty catalog, and a
+  // free map that gives away everything else. The image comes in zeroed — a
+  // blank floppy — and goes out a disk DOS will `CATALOG` and `SAVE` to.
+  //
+  // The catalog is the size's own, counted over the 33 DOS disks in the
+  // collection at ~/src/agat/disks and in examples/:
+  //
+  //   140K   sector 15 down to 8, and track 17's sectors 1-7 left free —
+  //          eight disks lay their catalog out that way, and basint.140.dsk
+  //          shows the seven spare sectors still free on a disk that has not
+  //          filled up. Two carry a longer chain, 15 down to 2 or 1.
+  //   840K   sector 2 and up the evens to 20, then 1 and up the odds to 19:
+  //          twenty sectors, the whole track. Fifteen disks of seventeen.
+  //
+  // Track 0 is held back on both. It is the boot track, and no allocator should
+  // hand it out; tracks 1 and 2, which a system disk spends on DOS, are free
+  // here because nothing is written to them.
+  function catalogChain(perTrack) {
+    var out = [], s;
+    if (perTrack === 16) {
+      for (s = perTrack - 1; s >= 8; s--) out.push(s);
+      return out;
+    }
+    for (s = 2; s < perTrack; s += 2) out.push(s);
+    for (s = 1; s < perTrack - 1; s += 2) out.push(s);
+    return out;
+  }
+
+  Dos33.format = function (sectors) {
+    var chain = catalogChain(sectors.perTrack), i, t, s, buf;
+    var put = function (track, sector, bytes) {
+      if (!sectors.write(track, sector, bytes)) {
+        throw new Error('track ' + track + ' sector ' + sector + ' cannot be written');
+      }
+    };
+    var v = new Uint8Array(SECSIZE);
+    v[1] = VTOC_TRACK;
+    v[2] = chain[0];
+    v[3] = RELEASE;
+    v[6] = VOLUME;
+    v[0x27] = TS_PAIRS;
+    // Where the allocator stands: on the catalog track, moving outward, which
+    // is where INIT leaves it.
+    v[0x30] = VTOC_TRACK;
+    v[0x31] = 1;
+    v[0x34] = sectors.tracks;
+    v[0x35] = sectors.perTrack;
+    v[0x37] = 1;                                   // bytes per sector, $0100
+    put(VTOC_TRACK, VTOC_SECTOR, v);
+    for (i = 0; i < chain.length; i++) {
+      buf = new Uint8Array(SECSIZE);
+      if (i + 1 < chain.length) { buf[1] = VTOC_TRACK; buf[2] = chain[i + 1]; }
+      put(VTOC_TRACK, chain[i], buf);
+    }
+
+    // The map is laid down whole — every track free — and then the few sectors
+    // this disk is already using are taken back out of it. Whole, because the
+    // map of an 840K disk lives in three sectors and writing it a bit at a time
+    // is that many rewrites of each.
+    var dos = new Dos33(sectors);
+    var word = 0;
+    for (s = 0; s < sectors.perTrack; s++) word = (word | (1 << dos.bit(s))) >>> 0;
+    var held = [], sheets = {}, at, key;
+    for (t = 0; t < sectors.tracks; t++) {
+      at = dos.mapAt(t);
+      key = at.track + '/' + at.sector;
+      if (!sheets[key]) {
+        sheets[key] = { at: at, bytes: at.vtoc ? dos.vtoc : new Uint8Array(SECSIZE) };
+        // A map sector of its own is a sector the disk is spending.
+        if (!at.vtoc) held.push([at.track, at.sector]);
+      }
+      buf = sheets[key].bytes;
+      buf[at.off] = (word >>> 24) & 0xff;
+      buf[at.off + 1] = (word >>> 16) & 0xff;
+      buf[at.off + 2] = (word >>> 8) & 0xff;
+      buf[at.off + 3] = word & 0xff;
+    }
+    for (key in sheets) {
+      if (sheets[key].at.vtoc) dos.putVtoc();
+      else put(sheets[key].at.track, sheets[key].at.sector, sheets[key].bytes);
+    }
+    for (s = 0; s < sectors.perTrack; s++) held.push([0, s]);
+    held.push([VTOC_TRACK, VTOC_SECTOR]);
+    for (i = 0; i < chain.length; i++) held.push([VTOC_TRACK, chain[i]]);
+    for (i = 0; i < held.length; i++) dos.setFree(held[i][0], held[i][1], false);
+    return dos.reload();
   };
 
   Dos33.typeLetter = typeLetter;
