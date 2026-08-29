@@ -158,8 +158,6 @@ Settled, with evidence, and expensive to relearn:
   one and eats the first character of a file without one, ИКП's disks have 117
   of 144, Alice's have 0 of 3. It is a checkbox in the editor and `--lead` on
   `tput`, never a guess.
-- **DOS's «СВОБОДНО» is one more than the free sector count.** A disk `dos.js`
-  says has 0 free catalogs as `001 СВОБОДНО`. The off-by-one is DOS's.
 - The two fonts carry the **same 128 characters above `$80`**, so a catalog name
   and a `T` file read the same on both machines; below `$80` the Agat-7 mirrors
   its high half and the Agat-9 does not. `src/chars.js` is that set, and it is

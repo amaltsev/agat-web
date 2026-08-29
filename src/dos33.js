@@ -16,7 +16,8 @@
 //   +$27        T/S pairs per list sector, 122
 //   +$30 +$31   last track allocated, and which way the allocator was moving
 //   +$34 +$35   tracks, sectors per track
-//   +$36 +$37   bytes per sector, $0100
+//   +$36 +$37   bytes per sector, $0100 — or zero, on a disk INIT wrote no
+//               system to; nothing here reads the field
 //   +$38..      the free map, four bytes a track
 //
 // **The free map is a big-endian bit per sector, and sector `s` is bit
@@ -82,7 +83,12 @@
   Dos33.prototype.reload = function () {
     var v = this.sec.read(this.vtocAt.track, this.vtocAt.sector);
     if (!v) throw new Error('track ' + this.vtocAt.track + ' will not decode — no VTOC');
-    if (v[0x36] !== 0x00 || v[0x37] !== 0x01 || !v[0x34] || !v[0x35]) {
+    // What makes it a VTOC is the geometry and a catalog that could be on the
+    // disk. Bytes per sector is not asked about: an INIT that writes no system
+    // to the disk leaves +$36 and +$37 zero, and DOS reads such a disk back
+    // without complaint.
+    if (!v[0x34] || !v[0x35] ||
+        v[1] >= this.sec.tracks || v[2] >= this.sec.perTrack) {
       throw new Error('track ' + this.vtocAt.track + ' sector ' + this.vtocAt.sector +
                       ' is not a DOS 3.3 VTOC');
     }
