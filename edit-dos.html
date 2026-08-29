@@ -17,7 +17,6 @@
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
     width: min(94vw, var(--page)); margin-bottom: 8px;
   }
-  .bar .sp { margin-left: auto; }
   #status { width: min(94vw, var(--page)); margin-top: 8px; min-height: 22px; }
   /* Nothing open yet: the panel is the drop target, so it says so. */
   #empty { color: var(--dim); text-align: center; padding: 22px 10px; }
@@ -32,15 +31,16 @@
 </head>
 <body>
 
-<h1>Agat DOS 3.3 disk files</h1>
+<header class="top" id="topbar">
+  <a class="brand" href="index.html" title="The emulator"><img class="logo" src="icons/favicon.svg" alt="" width="26" height="26"></a>
+  <h1>Agat DOS 3.3 disk files</h1>
+</header>
 
 <div class="bar">
   <label class="file" id="openlab">Open… <input type="file" id="file"></label>
   <button id="save" disabled title="Write the disk back">Save</button>
   <button id="saveas" title="Write the disk to a file of your choosing">Save as…</button>
   <select id="medium" title="Which medium of the container to work on" hidden></select>
-  <span class="sp"><a href="index.html">Emulator</a> &middot;
-    <a href="edit-agc.html">Container</a></span>
 </div>
 
 <div class="panel" id="panel">
@@ -50,7 +50,7 @@
 
 <div id="status" class="status">ready</div>
 
-<div class="help">
+<div class="help" id="help">
   <table>
     <tr><td><b>Takes</b></td><td>
       Any disk the emulator takes — <code>.dsk</code>, <code>.nib</code> and
@@ -101,6 +101,7 @@
   </p>
 </div>
 
+<script src="src/topbar.js"></script>
 <script src="src/chars.js"></script>
 <script src="src/videopal.js"></script>
 <script src="src/drive.js"></script>
@@ -120,6 +121,9 @@
 (function () {
   'use strict';
   var A = AGAT;
+
+  // The rest of the top row: the menu the three pages share.
+  A.TopBar.mount(document.getElementById('topbar'), 'edit-dos.html');
   var statusEl = document.getElementById('status');
   var saveEl = document.getElementById('save');
   var saveAsEl = document.getElementById('saveas');

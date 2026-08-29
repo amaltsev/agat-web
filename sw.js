@@ -35,6 +35,7 @@ var SHELL = [
   'agat.css',
   'manifest.json',
   'roms/roms.js',
+  'src/topbar.js',
   'src/chars.js',
   'src/cpu6502.js',
   'src/mem7.js',

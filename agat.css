@@ -24,13 +24,44 @@ body {
   display: flex; flex-direction: column; align-items: center;
   min-height: 100vh; padding: 12px 12px 32px;
 }
-h1 { font-size: 17px; font-weight: 600; margin: 0 0 10px; }
-/* A masthead, not a link to somewhere: it takes the page back to a bare
-   machine, which is worth a hover and not worth the page's link color above
-   the picture. */
-h1 a { color: inherit; text-decoration: none; }
-h1 a:hover { color: var(--accent); }
+h1 { font-size: 17px; font-weight: 600; margin: 0; }
 a { color: var(--accent); }
+
+/* ---- the top row, on all three pages ------------------------------------
+   The logo, then the page's name, then at the far right the one button that
+   leads to the other two pages. src/topbar.js builds the button and its menu;
+   the masthead beside it is the page's own. */
+.top {
+  width: min(94vw, var(--page)); margin-bottom: 10px; position: relative;
+  display: flex; align-items: center; gap: 9px;
+}
+.top .logo { display: block; width: 26px; height: 26px; border-radius: 5px; }
+/* The logo is the way to the emulator, and on the emulator page it is the way
+   back to a bare machine — where it carries the page's name with it, because
+   there the masthead is the control. Neither is worth the page's link color
+   above the picture, so both say so by hovering instead. */
+.top .brand {
+  display: flex; align-items: center; gap: 9px;
+  color: inherit; text-decoration: none;
+}
+.top .brand:hover h1 { color: var(--accent); }
+.top .brand:hover .logo { box-shadow: 0 0 0 1px var(--accent); }
+.top .burger { margin-left: auto; padding: 4px 10px; line-height: 1.3; }
+.top .menu {
+  position: absolute; top: 100%; right: 0; z-index: 5; margin-top: 5px;
+  display: flex; flex-direction: column; min-width: 14em; padding: 4px;
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 6px;
+  box-shadow: 0 6px 18px #0008;
+}
+/* The class's own display beats the [hidden] attribute's, as in .panel .row. */
+.top .menu[hidden] { display: none; }
+.top .menu a, .top .menu .here {
+  padding: 5px 9px; border-radius: 4px; white-space: nowrap;
+}
+.top .menu a { color: var(--ink); text-decoration: none; }
+.top .menu a:hover { background: #ffffff12; color: var(--accent); }
+/* The page the menu is on, which is a word and not a link to itself. */
+.top .menu .here { color: var(--dim); }
 
 select, button, label.file {
   font: inherit; color: var(--ink); background: var(--panel);

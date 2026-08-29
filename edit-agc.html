@@ -17,7 +17,6 @@
     display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
     width: min(94vw, var(--page)); margin-bottom: 8px;
   }
-  .bar .sp { margin-left: auto; }
   #status { width: min(94vw, var(--page)); margin-top: 8px; min-height: 22px; }
   #empty { color: var(--dim); text-align: center; padding: 22px 10px; }
   /* A panel's own heading. The panels stack, and without one the machine's
@@ -55,14 +54,15 @@
 </head>
 <body>
 
-<h1>Agat container</h1>
+<header class="top" id="topbar">
+  <a class="brand" href="index.html" title="The emulator"><img class="logo" src="icons/favicon.svg" alt="" width="26" height="26"></a>
+  <h1>Agat container</h1>
+</header>
 
 <div class="bar">
   <label class="file" id="openlab">Open… <input type="file" id="file"></label>
   <button id="save" disabled title="Nothing open">Save</button>
   <button id="saveas" disabled title="Write the container to a file of your choosing">Save as…</button>
-  <span class="sp"><a href="index.html">Emulator</a> &middot;
-    <a href="edit-dos.html">DOS files</a></span>
 </div>
 
 <div class="panel" id="empty">
@@ -80,7 +80,7 @@
 
 <div id="status" class="status">ready</div>
 
-<div class="help">
+<div class="help" id="help">
   <table>
     <tr><td><b>Takes</b></td><td>
       An <code>.agc</code> container, to change what it says. Any image the
@@ -133,6 +133,7 @@
   </p>
 </div>
 
+<script src="src/topbar.js"></script>
 <script src="src/chars.js"></script>
 <script src="src/videopal.js"></script>
 <script src="src/machine.js"></script>
@@ -144,6 +145,9 @@
 (function () {
   'use strict';
   var A = AGAT;
+
+  // The rest of the top row: the menu the three pages share.
+  A.TopBar.mount(document.getElementById('topbar'), 'edit-agc.html');
 
   // The container being edited, in the shape `parse` returns and `respec`
   // takes back. Every control on the page writes into this and nothing else,

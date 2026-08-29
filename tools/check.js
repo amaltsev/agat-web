@@ -852,20 +852,23 @@ async function agcuiCmd() {
       tag, children: [], _l: [], parentNode: null,
       className: '', title: '', type: '', value: '', placeholder: '',
       checked: false, hidden: false, disabled: false, href: '', download: '',
-      files: [], _text: '',
+      files: [], _text: '', attrs: {},
       // textContent replaces everything in the element, which is how each
       // panel empties itself before redrawing. A stub that only kept the
       // string would grow a second copy of the media list every draw.
       set textContent(v) { this.children = []; this._text = String(v); },
       get textContent() { return this._text; },
       appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+      setAttribute(k, v) { this.attrs[k] = String(v); },
+      getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; },
+      contains(n) { for (let p = n; p; p = p.parentNode) if (p === this) return true; return false; },
       addEventListener(t, f) { this._l.push([t, f]); },
       fire(t, ev) { for (const [tt, f] of this._l) if (tt === t) f(ev || {}); },
       click() { this.fire('click', {}); },
     });
 
     const byId = {};
-    for (const id of ['status', 'save', 'saveas', 'empty', 'work',
+    for (const id of ['status', 'save', 'saveas', 'empty', 'work', 'topbar',
                       'program', 'machine', 'keys', 'media', 'file', 'openlab']) {
       byId[id] = el('div');
     }
@@ -884,6 +887,10 @@ async function agcuiCmd() {
       createElement: el,
     };
     let saved = null;
+    // The same stub to the src/ modules the page calls into: the top row is
+    // drawn by src/topbar.js, which reaches for `document` in its own scope
+    // and not through the page's.
+    ctx.document = doc;
     const win = { addEventListener() {}, confirm: () => true };
     const url = { createObjectURL: () => 'blob:x', revokeObjectURL() {} };
 

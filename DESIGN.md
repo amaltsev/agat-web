@@ -81,6 +81,7 @@ Load order matters only in that a module's dependencies must already be on
 
 | | |
 |---|---|
+| `topbar.js` | the top row's menu, which is the same menu on all three pages |
 | `chars.js` | the Agat character set, both ways, and the fold two names are matched on |
 | `cpu6502.js` | NMOS 6502. Passes the Klaus Dormann functional test. |
 | `mem7.js` | Agat-7 16K window decode |

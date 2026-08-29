@@ -3,6 +3,7 @@
 // two agree — otherwise it is entirely possible to have something that works
 // headlessly and renders a blank page in the browser.
 const MODULES = [
+  'src/topbar.js',
   'src/chars.js',
   'src/cpu6502.js',
   'src/mem7.js',

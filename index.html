@@ -357,7 +357,12 @@
 </head>
 <body>
 
-<h1><a href="#" id="home">Agat Web Emulator</a></h1>
+<header class="top" id="topbar">
+  <a class="brand" href="#" id="home">
+    <img class="logo" src="icons/favicon.svg" alt="" width="26" height="26">
+    <h1>Agat Web Emulator</h1>
+  </a>
+</header>
 
 <div class="screen empty" id="screen">
   <canvas id="canvas" width="512" height="256"></canvas>
@@ -514,7 +519,7 @@
 <div id="controls"></div>
 <div id="info"></div>
 
-<div class="help">
+<div class="help" id="help">
   <p>
     Drop an Agat image into the window and it starts running, or click one of
     the <a href="#examples" id="tolist">bundled examples</a> below.
@@ -641,6 +646,7 @@
 </div>
 
 <script src="roms/roms.js"></script>
+<script src="src/topbar.js"></script>
 <script src="src/chars.js"></script>
 <script src="src/cpu6502.js"></script>
 <script src="src/mem7.js"></script>
@@ -1617,6 +1623,9 @@
     leaving = true;
     location.replace(location.pathname + location.search);
   });
+
+  // The rest of the top row: the menu the three pages share.
+  AGAT.TopBar.mount(document.getElementById('topbar'), 'index.html');
 
   // Closing the tab loses writes the same way, and the browser's generic
   // dialog is the only guard allowed there: beforeunload cannot carry a
