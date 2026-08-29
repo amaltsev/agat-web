@@ -1436,7 +1436,12 @@
     // where to look first if a save ever goes quiet on one.
     app.toAgc({ state: withState }).then(function (text) {
       var a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      // A container is JSON, but it is offered as octet-stream: a browser that
+      // believes the type over the name appends the extension the type calls
+      // for, and Chrome on Android saves `….agc.json`. octet-stream is the one
+      // type it treats as generic and leaves the name alone. `dosui`'s
+      // download() defaults to the same for the same reason.
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/octet-stream' }));
       a.download = name;
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
