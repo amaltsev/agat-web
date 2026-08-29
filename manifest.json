@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Agat-7 / Agat-9 emulator",
-  "short_name": "Agat",
-  "description": "A browser emulator for the Soviet Agat-7 and Agat-9 micros.",
+  "name": "АГАТ Web Emulator",
+  "short_name": "АГАТ",
+  "description": "A browser emulator for Agat-7 and Agat-9",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
