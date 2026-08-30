@@ -572,7 +572,9 @@
       var v = codeFor(s.scan, m.cyrillic ? RUS : LAT,
                       planeFor(s.ext, e.ctrlKey, e.shiftKey));
       if (v < 0) return;
-      m.kbdLatch = v & 0xff;
+      // Through the App where there is one: every input the machine gets has
+      // to pass one door, and only the App holds it. See App.key.
+      if (machine.key) machine.key(v); else m.keyDown(v);
       if (opts.onKey) opts.onKey(v, s);
       e.preventDefault();
     }

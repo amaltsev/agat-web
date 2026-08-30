@@ -841,9 +841,11 @@
   // rebuild the value.
   Machine.prototype.keyDown = function (code) { this.kbdLatch = (code | 0x80) & 0xff; };
 
-  // ЛАТ / РУС. Software reads which is active at $C063.
-  Machine.prototype.toggleLayout = function () {
-    this.cyrillic = !this.cyrillic;
+  // ЛАТ / РУС. Software reads which is active at $C063. Set rather than
+  // toggled, because which layout the board is in is the input and a toggle is
+  // only how a person asks for it.
+  Machine.prototype.setLayout = function (rus) {
+    this.cyrillic = !!rus;
     return this.cyrillic;
   };
 

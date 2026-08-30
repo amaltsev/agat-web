@@ -21,6 +21,11 @@
   // MouseGraf zeroes the Ниппель counters through $C0nC after reading them,
   // and a fraction kept inside the counter would be thrown away every time it
   // did — which measures as roughly a third of the movement going missing.
+  //
+  // Returns the whole counts it came to, which is the movement as the machine
+  // will see it: host pixels are the page's units and the sub-count remainder
+  // lives here, so `[ix, iy]` is the smallest thing that can be written down
+  // and handed back to the card later.
   function accumulate(m, dx, dy) {
     var ix, iy;
     m.fx += dx;
@@ -32,7 +37,13 @@
     m.moves++;                         // both tallies are for mouseReport(),
     m.counts += Math.abs(ix) + Math.abs(iy);   // which is the only way to see
     m.step(ix, iy);                            // which side of the card is dead
+    return [ix, iy];
   }
+
+  // The two buttons, set together: bit 0 is A and bit 1 is B, and one door for
+  // them means a press is one thing that happened rather than a field somebody
+  // wrote. Shared by every card here; see App.mouseButton.
+  function setBtn(v) { this.btn = v & 3; }
 
   // What every card carries for App.mouseReport(): what the host has put in,
   // and what the machine has taken out, per register. A mouse that does nothing
@@ -100,7 +111,8 @@
     this.y = (this.y - iy) & 0x7f;
   };
 
-  MouseNippel.prototype.move = function (dx, dy) { accumulate(this, dx, dy); };
+  MouseNippel.prototype.move = function (dx, dy) { return accumulate(this, dx, dy); };
+  MouseNippel.prototype.setBtn = setBtn;
 
   MouseNippel.prototype.read = function (reg) {
     this.polls++;
@@ -171,7 +183,8 @@
     this.slot = -1;
   }
 
-  Parallel.prototype.move = function (dx, dy) { accumulate(this, dx, dy); };
+  Parallel.prototype.move = function (dx, dy) { return accumulate(this, dx, dy); };
+  Parallel.prototype.setBtn = setBtn;
 
   // Buttons are active low and live in the top two bits, and they are the live
   // part of the reading: mouse9.c refreshes them on the read rather than at the
@@ -466,8 +479,7 @@
     }
 
     canvas.addEventListener('mousedown', function (e) {
-      var c = card();
-      if (!c) return;
+      if (!card()) return;
       // The click that hands the pointer over is still a click. Swallowing it
       // makes a program that is waiting for a button look dead, and MouseGraf's
       // title screen already looks dead: it draws no cursor until the button
@@ -478,23 +490,22 @@
       }
       // Button 2 is the middle one; the Agat's mice have two, so it is left
       // alone rather than folded into either.
-      if (e.button === 0) c.btn |= 1;
-      if (e.button === 2) c.btn |= 2;
+      if (e.button === 0) app.mouseButton(0, true);
+      if (e.button === 2) app.mouseButton(1, true);
       e.preventDefault();
     });
 
     // On the window, not the canvas: a button released after the pointer has
     // been let go would otherwise stay down for the program forever.
     window.addEventListener('mouseup', function (e) {
-      var c = card();
-      if (!c) return;
-      if (e.button === 0) c.btn &= ~1;
-      if (e.button === 2) c.btn &= ~2;
+      if (!card()) return;
+      if (e.button === 0) app.mouseButton(0, false);
+      if (e.button === 2) app.mouseButton(1, false);
     });
 
     window.addEventListener('mousemove', function (e) {
-      var c = card(), s, g;
-      if (!c) return;
+      var s, g;
+      if (!card()) return;
       // Captured, the pointer is the ball, 1:1. On the trackpad setting it is
       // a finger on a pad instead: scaled down, and listened to only over the
       // canvas, because the same pointer still has the rest of the page to
@@ -503,7 +514,7 @@
       else if (app.mouseTrackpad && e.target === canvas) g = TRACKPAD_GAIN;
       else return;
       s = scale();
-      c.move((e.movementX || 0) * s[0] * g, (e.movementY || 0) * s[1] * g);
+      app.mouseMove((e.movementX || 0) * s[0] * g, (e.movementY || 0) * s[1] * g);
     });
 
     // ---- touch, trackpad-style always ---------------------------------------
@@ -521,14 +532,13 @@
     var lastTap = 0;        // when the last tap ended, for the drag window
 
     function releaseA() {
-      var c = card();
       clickTimer = null;
-      if (c) c.btn &= ~1;
+      app.mouseButton(0, false);
     }
 
     canvas.addEventListener('touchstart', function (e) {
-      var c = card(), t, i;
-      if (!c) return;
+      var t, i;
+      if (!card()) return;
       e.preventDefault();
       app.mouseTouch = true;
       for (i = 0; i < e.changedTouches.length; i++) {
@@ -541,7 +551,7 @@
             // down instead of releasing and pressing again.
             if (clickTimer !== null) { clearTimeout(clickTimer); clickTimer = null; }
             finger.drag = true;
-            c.btn |= 1;
+            app.mouseButton(0, true);
           }
         } else if (bFingerId === null) {
           // The second finger is button B for as long as it is down — MouseGraf
@@ -549,14 +559,14 @@
           // first finger as half of a pair, which is not a tap when it lifts.
           bFingerId = t.identifier;
           finger.two = true;
-          c.btn |= 2;
+          app.mouseButton(1, true);
         }
       }
     }, { passive: false });
 
     canvas.addEventListener('touchmove', function (e) {
-      var c = card(), s, t, i, dx, dy;
-      if (!c || finger === null) return;
+      var s, t, i, dx, dy;
+      if (!card() || finger === null) return;
       e.preventDefault();
       for (i = 0; i < e.changedTouches.length; i++) {
         t = e.changedTouches[i];
@@ -567,7 +577,7 @@
         finger.y = t.clientY;
         finger.moved += Math.abs(dx) + Math.abs(dy);
         s = scale();
-        c.move(dx * s[0] * TRACKPAD_GAIN, dy * s[1] * TRACKPAD_GAIN);
+        app.mouseMove(dx * s[0] * TRACKPAD_GAIN, dy * s[1] * TRACKPAD_GAIN);
       }
     }, { passive: false });
 
@@ -579,17 +589,17 @@
         t = e.changedTouches[i];
         if (bFingerId !== null && t.identifier === bFingerId) {
           bFingerId = null;
-          c.btn &= ~2;
+          app.mouseButton(1, false);
         } else if (finger !== null && t.identifier === finger.id) {
           if (finger.drag) {
-            c.btn &= ~1;
+            app.mouseButton(0, false);
           } else if (!finger.two && e.type === 'touchend' &&
                      e.timeStamp - finger.t0 <= TAP_MS &&
                      finger.moved <= TAP_SLOP &&
                      !(c.btn & 1)) {
             // The last test is the on-screen A button: a tap while it is held
             // must not schedule a release the button's own finger still owns.
-            c.btn |= 1;
+            app.mouseButton(0, true);
             clickTimer = setTimeout(releaseA, CLICK_MS);
             lastTap = e.timeStamp;
           }
@@ -608,9 +618,8 @@
     });
 
     doc.addEventListener('pointerlockchange', function () {
-      var c = card();
       app.mouseCaptured = captured();
-      if (c && !app.mouseCaptured) c.btn = 0;   // nothing to release it later
+      if (!app.mouseCaptured) app.mouseButtons(0);   // nothing to release it later
     });
   };
 

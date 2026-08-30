@@ -370,8 +370,12 @@ function eq(what, got, want) {
   const hadListener = ctx.window.addEventListener;
   ctx.window.addEventListener = on(bags.win);
 
+  // The real App's input doors over a machine of one card: attachMouse reaches
+  // the card through them, so a stub of its own would test a path the page
+  // does not have.
   const card = new A.MouseNippel();
-  const app = { mouseCard: () => card, mouseCaptured: false };
+  const app = Object.assign(Object.create(A.App.prototype),
+                            { machine: { cards: [card] }, mouseCaptured: false });
   A.attachMouse(canvas, app);
 
   // The click that hands the pointer over is a press as well. Swallowing it
@@ -404,6 +408,47 @@ function eq(what, got, want) {
   eq('and stops the movement', card.read(8), 4);
 
   ctx.window.addEventListener = hadListener;
+}
+
+// --- the input doors --------------------------------------------------------
+// Everything a person does reaches the machine through four App calls, so that
+// a recorder can see each input once and a replay can produce it. These are
+// what the doors do; that nothing walks past them is a matter of nothing else
+// writing $C000 or a card's buttons.
+{
+  const machine = new A.Machine({ model: 9 });
+  const card = new A.MouseNippel();
+  machine.cards[4] = card;
+  const app = Object.assign(Object.create(A.App.prototype), { machine: machine });
+
+  app.key(0x41);
+  eq('a key is the byte in $C000, bit 7 and all', machine.kbdLatch, 0xc1);
+
+  eq('the layout is set, and a toggle is one way of asking',
+     [app.setLayout(true), machine.cyrillic, app.toggleLayout(), machine.cyrillic],
+     [true, true, false, false]);
+
+  // The counts, not the pixels: the remainder is the card's and stays there,
+  // which is what makes a movement worth writing down.
+  card.write(0xc);
+  eq('half a count is held back', app.mouseMove(0.5, 0), [0, 0]);
+  eq('and lands when the halves add up', [app.mouseMove(0.5, 0), card.read(8)],
+     [[1, 0], 1]);
+
+  app.mouseButton(1, true);
+  app.mouseButton(0, true);
+  app.mouseButton(1, false);
+  eq('the buttons are set a bit at a time', card.btn, 1);
+  app.mouseButtons(0);
+  eq('...and dropped together', card.btn, 0);
+
+  // A host key through attachKeyboard, which takes an App or a bare Machine and
+  // has to reach the same door with either.
+  const keys = {};
+  const el = { addEventListener: (t, f) => { keys[t] = f; } };
+  A.attachKeyboard(el, app, {});
+  keys.keydown({ code: 'KeyB', preventDefault() {} });
+  eq('and a host key goes through the App as well', machine.kbdLatch, 0xc2);
 }
 
 // --- the info card ----------------------------------------------------------

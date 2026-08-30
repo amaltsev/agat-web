@@ -136,6 +136,53 @@
     });
   };
 
+  // ---- input ---------------------------------------------------------------
+  //
+  // Every way a person reaches the machine, in four calls. Not tidiness: an
+  // action recorder has to see each input once and a replay has to be able to
+  // produce it, and neither is possible while a DOM handler writes $C000 or a
+  // card's button bits itself.
+  //
+  // What goes through here is what the machine can see — the byte in the
+  // keyboard latch, the ЛАТ/РУС bit at $C063, whole mouse counts and the two
+  // buttons — never host units. `mouseMove` takes pixels because the page has
+  // nothing else to offer, and hands back the counts they came to.
+
+  App.prototype.key = function (code) {
+    this.machine.keyDown(code);
+  };
+
+  // ЛАТ / РУС, which software reads at $C063 and the host keyboard reads to
+  // decide which plane a key is in.
+  App.prototype.setLayout = function (rus) {
+    return this.machine.setLayout(rus);
+  };
+
+  App.prototype.toggleLayout = function () {
+    return this.setLayout(!this.machine.cyrillic);
+  };
+
+  // Host pixels into the mouse counters, `[ix, iy]` back — the whole counts the
+  // card took, which is nothing at all for a movement smaller than a count.
+  // Null where no mouse is fitted.
+  App.prototype.mouseMove = function (dx, dy) {
+    var c = this.mouseCard();
+    return c ? c.move(dx, dy) : null;
+  };
+
+  // One button, by bit: 0 is A, 1 is B.
+  App.prototype.mouseButton = function (n, down) {
+    var c = this.mouseCard();
+    if (c) c.setBtn(down ? (c.btn | (1 << n)) : (c.btn & ~(1 << n)));
+  };
+
+  // Both at once — what letting go of the pointer does, since nothing will
+  // report the release of a button held while it goes.
+  App.prototype.mouseButtons = function (mask) {
+    var c = this.mouseCard();
+    if (c) c.setBtn(mask);
+  };
+
   // The mouse card, if one is fitted. All three answer move() and carry the
   // same two button bits, so nothing outside src/mouse.js has to know which.
   App.prototype.mouseCard = function () {
@@ -324,10 +371,6 @@
       spanMs: +((e[e.length - 1] - e[0]) / AGAT.CPU_HZ * 1000).toFixed(1),
       notes: out.slice(0, 40),
     };
-  };
-
-  App.prototype.toggleLayout = function () {
-    return this.machine.toggleLayout();
   };
 
   // Repaints rather than rebuilds: the monitor is on the far side of the RGB

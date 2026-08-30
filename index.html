@@ -1615,9 +1615,8 @@
   // nothing on a real phone.
   function mouseBtn(el, bit) {
     function up() {
-      var c = app.mouseCard();
       el.classList.remove('down');
-      if (c) c.btn &= ~bit;
+      app.mouseButton(bit, false);
     }
     el.addEventListener('pointerdown', function (e) {
       var c = app.mouseCard();
@@ -1627,14 +1626,14 @@
       // off the button — a button that stays down is a mouse gone mad.
       if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
       el.classList.add('down');
-      c.btn |= bit;
+      app.mouseButton(bit, true);
     });
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
-  mouseBtn(document.getElementById('mbtnA'), 1);
-  mouseBtn(document.getElementById('mbtnB'), 2);
+  mouseBtn(document.getElementById('mbtnA'), 0);   // button A, bit 0
+  mouseBtn(document.getElementById('mbtnB'), 1);
 
   // Only where there is a touchscreen and a card to press: a pointer with real
   // buttons has no use for painted ones.

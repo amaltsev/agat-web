@@ -933,7 +933,7 @@
       // plane has one byte per cap and the register does not divide it.
       if (this.ctrled() && d.code === undefined) code = ctrlCode(code);
     }
-    this.app.machine.kbdLatch = (code | 0x80) & 0xff;
+    this.app.key(code);
     // A latched modifier is a one-shot, as it has to be with one pointer.
     if (this.stick) { this.stick = 0; this.refresh(); } else this.sync();
   };

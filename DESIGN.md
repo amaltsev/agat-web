@@ -227,6 +227,26 @@ any two of them. Everything above the card deals in counts and nothing above it
 knows which mouse is fitted: `App.mouseCard()` finds it by `isMouse`, and all
 three answer `move()` and carry the same two button bits.
 
+### Input goes through four doors
+
+Everything a person does to the machine goes through `App.key`, `App.setLayout`,
+`App.mouseMove` and `App.mouseButton` (with `mouseButtons` for both at once).
+The host keyboard, the on-screen board, the pointer, the touchscreen and the
+page's own mouse buttons all call these rather than writing `kbdLatch` or a
+card's `btn` themselves.
+
+What crosses that line is what the machine can see: the byte in the keyboard
+latch, the ЛАТ/РУС bit software reads at `$C063`, whole mouse counts and the two
+buttons. `mouseMove` takes host pixels because the page has nothing else to
+offer, and hands back the counts they came to — the sub-count remainder is the
+card's `fx`/`fy` and stays there — so a caller that wants to write a movement
+down has the smallest form of it, in units no host DPI or trackpad gain can
+change.
+
+The doors exist for the action recorder: it has to see every input exactly once
+and a replay has to be able to produce the same one, and neither is possible
+while a DOM handler can reach a register itself.
+
 ### Reset has to reach the cards
 
 Loading an image resets the machine; it does not build a new one. So
