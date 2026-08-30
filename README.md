@@ -314,7 +314,7 @@ folds the patches into the image.
 **[edit-agc.html](edit-agc.html)** is the same work in the browser, and the
 other front end over `src/agc.js`. Drop a container on it for what it says —
 the title and the provenance, the machine it asks for, the keys it is played
-with, and the media it carries; drop a `.dsk`, `.nib`, `.aim` or `.fil` on it
+with, the controls its card prints, and the media it carries; drop a `.dsk`, `.nib`, `.aim` or `.fil` on it
 instead and it starts a container that carries that image, which is how one is
 made without a command line.
 

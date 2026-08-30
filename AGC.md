@@ -298,7 +298,9 @@ Two traps worth knowing:
 
 - **Do not name a group or a control with a bare digit.** JSON objects iterate
   integer-like keys first whatever the file says, so a control written `"1"`
-  jumps to the front of its group. Write it `"$31"`.
+  jumps to the front of its group. Write it `"$31"` — which is what
+  [edit-agc.html](edit-agc.html) writes for you, a group named with a digit
+  being the one thing it refuses.
 - **Two controls can land on one cap.** `K` and `К` are the unshifted and
   shifted halves of a single Agat cap, so a container naming both gets one key
   on the board. It is drawn with both halves underlined and names both in its

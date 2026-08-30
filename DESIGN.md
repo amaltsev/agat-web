@@ -657,19 +657,22 @@ it. Seven modules — the character set, the palette, `machine.js` for what a sl
 would hold, `agc.js` and the sniffer, and `keyboard.js` to tell a code from a
 typo — and the same subsequence rule.
 
-Everything the page decides lives in four functions that touch nothing but their
-arguments: `blankDoc` (a dropped image as the container that carries it),
-`slotOverrides` and `keyMap` (the two panels whose rows are not what the file
-holds), and `moveMedium`. `check.js agcui` lifts them out of the HTML by name
+Everything the page decides lives in a handful of functions that touch nothing
+but their arguments: `blankDoc` (a dropped image as the container that carries
+it), `slotOverrides`, `keyMap` and `controlMap` (the three panels whose rows are
+not what the file holds), and `move`. `check.js agcui` lifts them out of the HTML by name
 and calls them, so unlike `check.js dosui` there is no stub document for a new
 control to fall out of — a broken page fails there rather than crashing.
 
 The page holds one object, the container as `agc.parse` returned it, and every
 control writes into that and nothing else; a save is `agc.respec` and the
-writer. The keys are the one exception and are held as rows while the panel is
-up, because a key being renamed passes through the empty name and through names
+writer. The keys and the controls are the exception and are held as rows
+while their panels are up, because a key — or a control group, or the codes on
+one of its lines — being renamed passes through the empty name and through names
 that collide, and an object keyed by name cannot hold either without losing a
-row somebody is typing.
+row somebody is typing. A row nobody has touched is written back in the file's
+own spelling, so opening a container and saving it changes only what was
+edited.
 
 ---
 

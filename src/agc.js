@@ -591,8 +591,8 @@
   // are not each other's inverse in shape — one flattens the machine into
   // `machine`, the other wants it spread across the spec — and everything that
   // saves a container it opened has to bridge that. Here rather than in each of
-  // them, so a field this reader keeps and no editor touches — `controls`, a
-  // `state` snapshot — is carried through in one place instead of being spelled
+  // them, so a field this reader keeps and no editor touches — a `state`
+  // snapshot — is carried through in one place instead of being spelled
   // out again by every caller, which is how one of them comes to drop it.
   //
   // The media come across as the four things a medium *is*: what it is called,

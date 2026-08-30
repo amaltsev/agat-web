@@ -663,11 +663,13 @@ async function agcuiCmd() {
     throw new Error(name + ' does not close');
   };
 
-  const WANT = ['blankDoc', 'newMedium', 'slotOverrides', 'keyMap', 'moveMedium',
-                'codeOf', 'hintOf', 'keyRowsFrom'];
+  const WANT = ['blankDoc', 'newMedium', 'slotOverrides', 'keyMap', 'move',
+                'codeOf', 'hintOf', 'keyRowsFrom',
+                'has', 'labelOf', 'normCodes', 'controlMap', 'ctlGroupsFrom'];
   const lifted = new Function('A', WANT.map(grab).join('\n') +
                               '\nreturn {' + WANT.join(', ') + '};')(A);
-  const { blankDoc, slotOverrides, keyMap, moveMedium, keyRowsFrom } = lifted;
+  const { blankDoc, slotOverrides, keyMap, move, keyRowsFrom,
+          normCodes, controlMap, ctlGroupsFrom } = lifted;
 
   let pass = 0, fail = 0;
   const eq = (what, got, want) => {
@@ -781,13 +783,77 @@ async function agcuiCmd() {
        { Enter: null });
   }
 
+  // ---- the control groups ---------------------------------------------------
+  //
+  // Both levels of `controls` are ordered — the card prints the groups in file
+  // order and the rows under them in theirs — and both are edited by name, so
+  // what this has to hold is the order against the renaming.
+  {
+    const g = (name, rows) => ({ name, rows: rows.map(([c, l]) => ({ codes: c, label: l })) });
+
+    eq('a group, its rows, and a row with nothing to add',
+       controlMap([g('Play', [['Up Down Left Right', 'Движение'],
+                              ['^', 'Выстрел вправо'],
+                              ['Space', '']])]),
+       { Play: { 'Up Down Left Right': 'Движение', '^': 'Выстрел вправо',
+                 Space: true } });
+    eq('a group nobody has named yet is not a group',
+       controlMap([g('', [['^', 'x']])]), {});
+    eq('and neither is one whose rows say nothing',
+       controlMap([g('Play', [['', 'x']])]), {});
+    throws('a code that names nothing stops the save',
+           () => controlMap([g('Play', [['$ZZ', 'x']])]));
+    throws('and so does a row named twice, which JSON would swallow',
+           () => controlMap([g('Play', [['^', 'a'], ['^', 'b']])]));
+    throws('and a group named twice, which would swallow the first',
+           () => controlMap([g('Play', [['^', 'a']]), g('Play', [['Q', 'b']])]));
+
+    // JSON iterates integer-like keys first whatever the file says, so a bare
+    // digit is written as its code and a group that cannot be is refused.
+    eq('a digit is written as the code it is', normCodes('1 2'), '$31 $32');
+    eq('and only a digit — every other spelling is left as it was written',
+       normCodes('Up ^ $6B К'), 'Up ^ $6B К');
+    eq('so a row named with one keeps its place',
+       Object.keys(controlMap([g('Cheats', [['A', 'x'], ['1', 'y']])]).Cheats),
+       ['A', '$31']);
+    throws('a group named with a digit is refused, having no code to become',
+           () => controlMap([g('1', [['^', 'x']])]));
+
+    // The same rule the keys panel keeps: a row nobody touched is written back
+    // in the file's own spelling, or opening a container and saving it rewrites
+    // lines nobody changed.
+    const had = { Play: { 'Up Down': 'Движение', Space: true, Q: '' },
+                  Cheats: { K: 'Самоубийство' } };
+    eq('every spelling comes back as the file wrote it',
+       controlMap(ctlGroupsFrom(had)), had);
+
+    const edited = ctlGroupsFrom(had);
+    edited[0].rows[1].label = 'Стоп';
+    eq('a row that was edited is written afresh',
+       controlMap(edited).Play.Space, 'Стоп');
+
+    const renamed = ctlGroupsFrom(had);
+    renamed[0].name = 'Игра';
+    eq('and renaming a group is a new group, not the old spelling',
+       Object.keys(controlMap(renamed)), ['Игра', 'Cheats']);
+
+    const d = blankDoc('game.dsk', new ctx.Uint8Array(143360));
+    d.controls = controlMap(ctlGroupsFrom(had));
+    const { back } = await roundTrip(d);
+    eq('and the block survives the file, both orders intact',
+       [Object.keys(back.controls), Object.keys(back.controls.Play)],
+       [['Play', 'Cheats'], ['Up Down', 'Space', 'Q']]);
+    eq('with the emulator making the same of it as the file did',
+       A.keyboard.setControls(back.controls).rows, 4);
+  }
+
   // ---- the media list -------------------------------------------------------
   {
     const l = ['a', 'b', 'c'];
-    eq('a medium moves up', moveMedium(l, 2, 1), ['a', 'c', 'b']);
-    eq('and down', moveMedium(l, 0, 2), ['b', 'c', 'a']);
-    eq('past the front it stops', moveMedium(l, 0, -1), ['a', 'b', 'c']);
-    eq('past the end it stops', moveMedium(l, 2, 3), ['a', 'b', 'c']);
+    eq('a medium moves up', move(l, 2, 1), ['a', 'c', 'b']);
+    eq('and down', move(l, 0, 2), ['b', 'c', 'a']);
+    eq('past the front it stops', move(l, 0, -1), ['a', 'b', 'c']);
+    eq('past the end it stops', move(l, 2, 3), ['a', 'b', 'c']);
     eq('and the list it was given is left alone', l, ['a', 'b', 'c']);
   }
 
@@ -869,7 +935,8 @@ async function agcuiCmd() {
 
     const byId = {};
     for (const id of ['status', 'save', 'saveas', 'empty', 'work', 'topbar',
-                      'program', 'machine', 'keys', 'media', 'file', 'openlab']) {
+                      'program', 'machine', 'keys', 'controls', 'media',
+                      'file', 'openlab']) {
       byId[id] = el('div');
     }
     // The page's own document-level listeners, kept so a drop can be fired at
@@ -970,6 +1037,28 @@ async function agcuiCmd() {
     eq('with their names and their drives',
        now.media.map((m) => [m.name, m.mount, m.writable]),
        from.media.map((m) => [m.name, m.mount, m.writable]));
+
+    // ---- the controls panel, drawn and edited -----------------------------
+    //
+    // A field per group and two per row, and an edit that has to come back as
+    // that row changed and every other one spelled as the file spelled it.
+    const ctl = inputs('controls', 'text');
+    eq('the controls panel drew a field per group and two per row',
+       ctl.length, 3 + 2 * 11);
+
+    ctl[2].value = 'Ходьба';
+    ctl[2].fire('input', {});
+    eq('editing a control lights Save', byId.save.disabled, false);
+    byId.save.click();
+    // Save going back out is what says this save finished, rather than the
+    // status line: the line already says the last one did.
+    await until('saving the edited controls', () => byId.save.disabled);
+    const edited = JSON.parse(await saved.text());
+    eq('the row that was edited', edited.controls.Play['Up Down Left Right'], 'Ходьба');
+    eq('and the groups and rows are where the file had them',
+       [Object.keys(edited.controls), Object.keys(edited.controls.Cheats)],
+       [['Play', 'Cheats', 'Menu'],
+        ['K', '$75', '$64', '$6B']]);
 
     // ---- the two gestures, which are not the same gesture -----------------
     //

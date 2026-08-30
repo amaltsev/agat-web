@@ -71,6 +71,7 @@
   <div class="panel"><h2>program</h2><div id="program"></div></div>
   <div class="panel"><h2>machine</h2><div id="machine"></div></div>
   <div class="panel"><h2>keys</h2><div id="keys"></div></div>
+  <div class="panel"><h2>controls</h2><div id="controls"></div></div>
   <div class="panel"><h2>media</h2><div id="media"></div></div>
 </div>
 
@@ -103,6 +104,13 @@
       <code>^</code> or a name like <code>Up</code>. The hint says what the key
       does and is printed beside it on the on-screen board. A key with a hint
       and no code is declared as it already is.
+    </td></tr>
+    <tr><td><b>Controls</b></td><td>
+      What the program reads and what each code is for, in the groups the card
+      prints side by side. These are <b>Agat codes</b>, not host keys: a line is
+      one or more of them sharing a label, so <code>Up Down Left Right</code> is
+      one line rather than four. Groups and lines are printed in the order they
+      are in here.
     </td></tr>
     <tr><td><b>Media</b></td><td>
       The images the container carries, in the order the drives are filled.
@@ -258,12 +266,103 @@
     return out;
   }
 
-  // A medium moved within the list, which is what the drives being filled in
-  // order makes worth doing. Out of the list and back in at the new position,
-  // so moving down past the end and up past the front both stop rather than
-  // wrap: the first medium is the boot disk and an arrow key should not be able
-  // to make it the last one by accident.
-  function moveMedium(list, from, to) {
+  // A name this object was given, rather than one every object has: a group
+  // called `constructor` is a group, and `out.constructor` is a function.
+  function has(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+
+  // What a `controls` value says. `true` is a control worth naming with nothing
+  // to add, and reads here as no label at all.
+  function labelOf(v) {
+    return v === true || v === null || v === undefined ? '' : String(v);
+  }
+
+  // A row's codes, as the file should hold them: every spelling
+  // `resolveCode` takes, left as it was written — `^`, `Up` and `$5E` are
+  // somebody's deliberate spelling of the same kind of thing — with one
+  // exception. A bare digit is rewritten `$31`, because JSON objects iterate
+  // integer-like keys first whatever order the file has them in, and a row
+  // named `"1"` is drawn at the top of its group rather than where it was put.
+  function normCodes(s) {
+    var parts = String(s).split(/\s+/), out = [], i, t, c;
+    for (i = 0; i < parts.length; i++) {
+      t = parts[i];
+      if (!t) continue;
+      c = A.keyboard.resolveCode(t);
+      if (c < 0) throw new Error(t + ' is not a code — try $5E, ^, or Up');
+      out.push(/^[0-9]+$/.test(t)
+                 ? '$' + (c < 16 ? '0' : '') + c.toString(16).toUpperCase()
+                 : t);
+    }
+    return out.join(' ');
+  }
+
+  // The group rows as `controls`. A group with no name is one somebody started
+  // and left, and so is a row with no codes; a group left with no rows at all
+  // is not a group.
+  //
+  // A row nobody has changed goes back exactly as the file wrote it, for the
+  // reason `keyMap` does the same: `true` and `""` are both a control with
+  // nothing to add, and a save that picked its own favourite would rewrite
+  // lines nobody touched.
+  //
+  // Three things stop the save, because each is a container that would come
+  // back saying something other than what the panel shows: a code that names
+  // nothing, a name used twice — the second would swallow the first — and a
+  // group named with a digit, which JSON moves to the front of the block.
+  function controlMap(groups) {
+    var out = {}, i, j, g, r, rows, any, codes, kept;
+    for (i = 0; i < groups.length; i++) {
+      g = groups[i];
+      if (!g.name) continue;
+      if (/^[0-9]+$/.test(g.name)) {
+        throw new Error(g.name + ': a group named with a digit jumps to the ' +
+                        'front of the card — give it a word');
+      }
+      if (has(out, g.name)) throw new Error(g.name + ': named twice');
+      rows = {};
+      any = false;
+      for (j = 0; j < g.rows.length; j++) {
+        r = g.rows[j];
+        try {
+          codes = normCodes(r.codes);
+        } catch (e) {
+          throw new Error(g.name + ': ' + e.message);
+        }
+        if (!codes) continue;
+        if (has(rows, codes)) {
+          throw new Error(g.name + ': ' + codes + ' is named twice');
+        }
+        kept = g.name === g.was && codes === r.was && labelOf(r.wrote) === r.label;
+        rows[codes] = kept ? r.wrote : (r.label || true);
+        any = true;
+      }
+      if (any) out[g.name] = rows;
+    }
+    return out;
+  }
+
+  // A control group's rows, as the panel holds them while it is up. `was` and
+  // `wrote` are the file's own spelling of the row, as they are for a key.
+  function ctlGroupsFrom(controls) {
+    var out = [], name, rows, k;
+    for (name in controls) {
+      rows = [];
+      for (k in controls[name]) {
+        rows.push({ codes: k, label: labelOf(controls[name][k]),
+                    was: k, wrote: controls[name][k] });
+      }
+      out.push({ name: name, was: name, rows: rows });
+    }
+    return out;
+  }
+
+  // An item moved within a list, which is what an order that means something
+  // makes worth doing — the drives are filled in the media list's order, and
+  // the card prints the control groups in theirs. Out of the list and back in
+  // at the new position, so moving down past the end and up past the front both
+  // stop rather than wrap: the first medium is the boot disk and an arrow key
+  // should not be able to make it the last one by accident.
+  function move(list, from, to) {
     if (from === to || from < 0 || from >= list.length ||
         to < 0 || to >= list.length) {
       return list;
@@ -357,6 +456,7 @@
     drawProgram(document.getElementById('program'));
     drawMachine(document.getElementById('machine'));
     drawKeys(document.getElementById('keys'));
+    drawControls(document.getElementById('controls'));
     drawMedia(document.getElementById('media'));
   }
 
@@ -385,16 +485,13 @@
       t.addEventListener('input', function () { doc[f[0]] = t.value; touch(); });
       r.appendChild(t);
     });
-    drawCarried(into);
+    drawState(into);
   }
 
-  // The two things the container may hold that nothing on this page edits: the
-  // control groups the emulator prints on its card, and a snapshot of the
-  // machine as it stood. Both are written back untouched — but a save that
-  // silently carries a megabyte of snapshot should say the megabyte is there.
-  function drawCarried(into) {
-    var groups = Object.keys(doc.controls || {});
-    if (groups.length) note(row(into, 'controls'), groups.join(', '));
+  // The one thing the container may hold that nothing on this page edits: a
+  // snapshot of the machine as it stood, written back untouched — but a save
+  // that silently carries a megabyte of it should say the megabyte is there.
+  function drawState(into) {
     if (doc.state) note(row(into, 'state'), 'the machine as it stood, kept as it is');
   }
 
@@ -524,24 +621,39 @@
     return out;
   }
 
-  // The rows back into the container, and the panel's own error line. A code
-  // that names nothing stops the save rather than the keystroke, so a half-typed
-  // `$5` is not an error message under the field somebody is still typing in.
-  function syncKeys(errEl) {
+  // A panel's rows back into the container, under the panel's own error line.
+  // What the rows cannot say stops the save rather than the keystroke, so a
+  // half-typed `$5` is not an error message under the field somebody is still
+  // typing in — and the line is drawn from the rows as they stand, so an error
+  // survives the redraw that adding or dropping a row causes.
+  function show(errEl, fn) {
     try {
-      doc.keys = keyMap(keyRows);
+      fn();
       errEl.textContent = '';
       errEl.className = 'note';
     } catch (e) {
       errEl.textContent = e.message;
       errEl.className = 'note err';
     }
+  }
+
+  function sync(errEl, fn) {
+    show(errEl, fn);
     touch();
   }
+
+  function setKeys() { doc.keys = keyMap(keyRows); }
+
+  function setControls() { doc.controls = controlMap(ctlGroups); }
+
+  function syncKeys(errEl) { sync(errEl, setKeys); }
+
+  function syncControls(errEl) { sync(errEl, setControls); }
 
   function drawKeys(into) {
     into.textContent = '';
     var errEl = el('span', 'note');
+    show(errEl, setKeys);
 
     keyRows.forEach(function (kr, i) {
       var r = row(into, i ? '' : 'key');
@@ -561,12 +673,89 @@
     });
 
     var r = row(into, keyRows.length ? '' : 'key');
-    if (!keyRows.length) note(r, 'the program reads none, or none worth naming');
+    if (!keyRows.length) note(r, 'no keys remapped');
     button(r, 'Add key', 'Name a key the program reads', function () {
       keyRows.push({ key: '', code: '', hint: '' });
       change('');
     });
     r.appendChild(errEl);
+  }
+
+  // The groups are held as rows while the panel is up, for the reason the keys
+  // are: a group being renamed passes through the empty name and through names
+  // that collide with another group, and so does a row's codes within its
+  // group. Neither can be held by an object keyed on what is being typed.
+  var ctlGroups = [];
+
+  function drawControls(into) {
+    into.textContent = '';
+    var errEl = el('span', 'note');
+    show(errEl, setControls);
+
+    ctlGroups.forEach(function (g, gi) { groupRows(into, g, gi, errEl); });
+
+    var r = row(into, ctlGroups.length ? '' : 'group');
+    if (!ctlGroups.length) note(r, 'the program reads nothing worth a card');
+    button(r, 'Add group', 'A part of the program, and what it reads', function () {
+      ctlGroups.push({ name: '', rows: [{ codes: '', label: '' }] });
+      change('');
+    });
+    r.appendChild(errEl);
+  }
+
+  // A group: its own row, and then a row per control under it.
+  function groupRows(into, g, gi, errEl) {
+    var r = row(into, 'group');
+
+    text(r, 'nm', g.name, 'Play', function (v) { g.name = v; syncControls(errEl); })
+      .title = 'the part of the program these are the controls for';
+
+    button(r, '↑', 'Earlier on the card', function () {
+      ctlGroups = move(ctlGroups, gi, gi - 1);
+      change('');
+    }).disabled = gi === 0;
+    button(r, '↓', 'Later on the card', function () {
+      ctlGroups = move(ctlGroups, gi, gi + 1);
+      change('');
+    }).disabled = gi === ctlGroups.length - 1;
+
+    button(r, 'Add control', 'A code this part of the program reads', function () {
+      g.rows.push({ codes: '', label: '' });
+      change('');
+    });
+    button(r, '✕', 'Drop this group', function () {
+      ctlGroups.splice(gi, 1);
+      change('dropped ' + (g.name || 'a group'));
+    });
+
+    g.rows.forEach(function (cr, ri) { controlRow(into, g, cr, ri, errEl); });
+  }
+
+  function controlRow(into, g, cr, ri, errEl) {
+    var r = row(into, '');
+
+    text(r, 'nm', cr.codes, 'Up Down', function (v) {
+      cr.codes = v;
+      syncControls(errEl);
+    }).title = 'the codes it reads, spaces between them: Up Down Left Right, ^, $6B';
+    text(r, null, cr.label, 'what they do', function (v) {
+      cr.label = v;
+      syncControls(errEl);
+    });
+
+    button(r, '↑', 'Earlier in the group', function () {
+      g.rows = move(g.rows, ri, ri - 1);
+      change('');
+    }).disabled = ri === 0;
+    button(r, '↓', 'Later in the group', function () {
+      g.rows = move(g.rows, ri, ri + 1);
+      change('');
+    }).disabled = ri === g.rows.length - 1;
+
+    button(r, '✕', 'Drop this control', function () {
+      g.rows.splice(ri, 1);
+      change('');
+    });
   }
 
   function drawMedia(into) {
@@ -624,11 +813,11 @@
     tick(r, 'writable', m.writable, function (on) { m.writable = on; touch(); });
 
     button(r, '↑', 'Earlier in the list', function () {
-      doc.media = moveMedium(doc.media, i, i - 1);
+      doc.media = move(doc.media, i, i - 1);
       change(i > 0 ? 'moved "' + m.name + '" to ' + (i - 1) : '');
     }).disabled = i === 0;
     button(r, '↓', 'Later in the list', function () {
-      doc.media = moveMedium(doc.media, i, i + 1);
+      doc.media = move(doc.media, i, i + 1);
       change(i < doc.media.length - 1 ? 'moved "' + m.name + '" to ' + (i + 1) : '');
     }).disabled = i === doc.media.length - 1;
 
@@ -741,6 +930,7 @@
 
   function opened(msg) {
     keyRows = keyRowsFrom(doc.keys);
+    ctlGroups = ctlGroupsFrom(doc.controls);
     dirty = false;
     emptyEl.hidden = true;
     workEl.hidden = false;
@@ -828,6 +1018,7 @@
     var spec;
     try {
       doc.keys = keyMap(keyRows);
+      doc.controls = controlMap(ctlGroups);
       spec = A.agc.respec(doc);
     } catch (e) {
       return Promise.reject(e);
