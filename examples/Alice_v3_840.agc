@@ -14,6 +14,7 @@
   "machine": {
     "model": 9,
     "ram": 128,
+    "slots": { "6": null },
     "monitor": "color8"
   },
   "media": [
@@ -8340,31 +8341,6 @@
         "lastWritePos": 0,
         "card": "fdd840",
         "locked": true
-      },
-      "6": {
-        "drv": 0,
-        "motor": 0,
-        "writeMode": false,
-        "latch": 0,
-        "time": 28349587,
-        "last": 255,
-        "lastByteAt": null,
-        "seed": 625341585,
-        "heads": [
-          {
-            "phase": 19,
-            "track": 9,
-            "index": 7,
-            "rotated": 1
-          },
-          {
-            "phase": 20,
-            "track": 10,
-            "index": 0,
-            "rotated": 0
-          }
-        ],
-        "card": "fdd140"
       }
     }
   }
