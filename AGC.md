@@ -17,7 +17,7 @@ which for an Agat disk is by ten times or more. Drop one on
 [the emulator](https://amaltsev.github.io/agat-web/) and it runs.
 
 The easiest way to get started is to load a bare image into the emulator and
-press **Save AGC**: the container it writes is a text file you can edit.
+press **Save**: the container it writes is a text file you can edit.
 
 ---
 
@@ -433,7 +433,7 @@ A `boot` naming a card this machine was not built with cannot be honored — the
 is no slot to enter — so the default is taken and the page says why. A slot that
 is empty but real is entered as asked.
 
-The same rules cover what is opened by hand: a drop or an **Open…** of several
+The same rules cover what is opened by hand: a drop or a **Load** of several
 files is read as a container whose `media` are those files in that order.
 
 ### `patches`
@@ -548,8 +548,9 @@ says why. That is what makes `#agc=game.agc&model=9` do something sensible: the
 address asks for a machine the snapshot is not about, and the program starts
 from the beginning on it.
 
-Saving one is a checkbox on **Save AGC**, and it is off unless the container
-being saved arrived with a state already — see [Making one](#from-the-emulator).
+Saving one is a checkbox on **Save**'s file, and it is off unless the container
+being saved arrived with a state already. A save into the browser always carries
+one — see [Making one](#from-the-emulator).
 
 ---
 
@@ -567,7 +568,7 @@ a hand-arranged container stays arranged.
 
 ### From the emulator
 
-**Save AGC** writes a container from the machine as it stands: what was opened —
+**Save** writes a container from the machine as it stands: what was opened —
 what is in the drives, and any `.fil` poked into memory — the model and RAM, the
 live remap, and anything a program has written to an unlocked disk. What was
 opened and not what has been open: opening empties the drives first, so the
@@ -582,6 +583,12 @@ including every bare image.
 
 Nothing else is asked, including about compression, which is decided per
 payload, per patch and per snapshot by whether it pays.
+
+**Save in browser** writes the same container to IndexedDB instead of to a file,
+where the page's **Load** lists it and opens it again. It asks nothing: a save
+kept here is where somebody was, so the machine always goes in with it. What is
+stored is the container text itself, so a save is the file it would have been
+and reopening one is reopening a container.
 
 A container that was loaded from a file keeps its own title, and its filename
 with a `-yyyymmdd-hhmmss` stamp on it, so `game.agc` saves as
@@ -644,13 +651,13 @@ records are the exception, and keep their annotations.
 
 ## Loading one
 
-Drop it on the page, or use **Open…**, or name it in the address:
+Drop it on the page, or use **Load**, or name it in the address:
 
     index.html#agc=examples/rise-out.agc
     index.html#agc=https://example.org/games/tetris.agc
 
 The address form fetches the file, so it needs a served page — `fetch` is
-blocked on `file://`, where **Open…** is the way in. What it names is a path
+blocked on `file://`, where **Load** is the way in. What it names is a path
 beside the page or an `https://` URL to a container hosted anywhere that sends
 `Access-Control-Allow-Origin: *` header: a container is a program plus the machine it
 runs on, so a link to one somebody else hosts is a link to something that runs.

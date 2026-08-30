@@ -19,6 +19,9 @@
 //                                                against a stub <select>
 //   node tools/check.js dosui                    the file manager, over a stub
 //                                                document and a real disk
+//   node tools/check.js saveui                   the saves in the browser: the
+//                                                Load panel's list over the
+//                                                memory store
 //   node tools/check.js agcui                    the container editor's own
 //                                                decisions, and a container
 //                                                edited and read back
@@ -1555,6 +1558,170 @@ async function dosuiCmd() {
      t.dos.match('ALICE_RUN').length, 0);
   ui.setWritable(false, () => {});
   eq('and locking it again says so', byClass(host, 'dos-note')[0].hidden, false);
+
+  console.log(pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+}
+
+// The saves in the browser: the store, and the list the Load panel draws from
+// it. `src/store.js` is shipping code with two halves that cannot be tested the
+// same way — the IndexedDB backend needs a browser, and the list needs a
+// document — so this drives the list over the memory backend and a stub
+// document, which is the half where the bugs are: a delete that leaves the row
+// on the screen, a row that loads the wrong save, a list that says nothing at
+// all when there is nothing in it.
+//
+// The store itself is checked for the one property the page depends on: a
+// container put in comes back out byte for byte, so a save reopens as the file
+// it would have been.
+if (cmd === 'saveui') {
+  saveuiCmd().catch(die);
+  return;
+}
+
+async function saveuiCmd() {
+  const A = ctx.AGAT;
+
+  // ---- a document, to the extent one is needed ----------------------------
+  const el = (tag) => ({
+    tag, children: [], className: '', title: '', hidden: false,
+    attrs: {}, _l: [], _text: '',
+    set textContent(v) { this.children = []; this._text = String(v); },
+    get textContent() { return this._text; },
+    appendChild(c) { this.children.push(c); return c; },
+    setAttribute(k, v) { this.attrs[k] = v; },
+    addEventListener(t, f) { this._l.push([t, f]); },
+    fire(t, ev) { for (const [tt, f] of this._l) if (tt === t) f(ev || {}); },
+  });
+  ctx.document = { createElement: el };
+  let answer = true;                       // what confirm() says this time
+  ctx.confirm = () => answer;
+
+  let pass = 0, fail = 0;
+  const eq = (what, got, want) => {
+    const g = JSON.stringify(got), w = JSON.stringify(want);
+    if (g === w) { pass++; return; }
+    fail++;
+    console.log('FAIL ' + what + '\n  got  ' + g + '\n  want ' + w);
+  };
+
+  const all = (n, out) => {
+    out = out || [];
+    out.push(n);
+    (n.children || []).forEach((c) => all(c, out));
+    return out;
+  };
+  const byClass = (root, c) => all(root).filter((n) => n.className === c);
+  const rows = (root) => byClass(root, 'save');
+  const titles = (root) =>
+    rows(root).map((r) => byClass(r, 'save-name')[0].textContent);
+  const notes = (root) => byClass(root, 'note').map((n) => n.textContent);
+
+  // ---- a list, over a store with nothing in it ----------------------------
+  const host = el('div');
+  const said = [];
+  const loaded = [];
+  const list = new A.SaveList(host, {
+    onStatus: (m, bad) => said.push((bad ? '! ' : '') + m),
+    onLoad: (rec) => loaded.push(rec),
+  });
+
+  await list.mount(null);
+  eq('no store at all says so, and draws no rows',
+     [rows(host).length, notes(host).length > 0], [0, true]);
+
+  const store = A.Store.memory();
+  await list.mount(store);
+  eq('an empty store says that instead of nothing',
+     [rows(host).length, notes(host)], [0, ['Nothing saved here yet.']]);
+
+  // ---- two saves ----------------------------------------------------------
+  const made = await store.put({
+    name: 'snake-20260830-101500.agc', title: 'snake.fil',
+    model: 7, ram: 64, text: '{"agc":1}', saved: 1000,
+  });
+  eq('a put answers with the row it made, id and size and all',
+     [made.title, made.model, made.ram, made.size, !!made.id],
+     ['snake.fil', 7, 64, 9, true]);
+
+  await store.put({
+    name: 'alice.agc', title: 'Alice', model: 9, ram: 128,
+    text: '{"agc":1,"x":2}', saved: 2000,
+  });
+  await list.refresh();
+  eq('the newest is first, whatever order they went in',
+     titles(host), ['Alice', 'snake.fil']);
+  eq('and a row says which machine it is',
+     rows(host).map((r) => byClass(r, 'save-what')[0].textContent),
+     ['Agat-9 128K · 1K', 'Agat-7 64K · 1K']);
+  eq('which is on the row and the button too, for a screen too narrow to draw it',
+     [rows(host)[0].title, byClass(rows(host)[0], 'save-name')[0].title],
+     ['Agat-9 128K · 1K', 'Agat-9 128K · 1K']);
+
+  // How far into the program each one is, off the machine's clock: a save with
+  // no clock recorded reads 0:00 rather than blank, and the hour appears only
+  // when there is one.
+  const HZ = A.CPU_HZ;
+  const inAt = async (cycles) => {
+    const one = A.Store.memory();
+    await one.put({ name: 'x', title: 'x', model: 7, ram: 64,
+                    cycles: cycles, text: '{}' });
+    const seen = new A.SaveList(el('div'), {});
+    await seen.mount(one);
+    return byClass(seen.el, 'save-in')[0].textContent;
+  };
+  eq('a save with no clock reads as the start', await inAt(0), '0:00');
+  eq('seconds pad to two', await inAt(7 * HZ), '0:07');
+  eq('minutes do not', await inAt(250 * HZ), '4:10');
+  eq('and the hour shows up when there is one', await inAt(3700 * HZ), '1:01:40');
+
+  // ---- loading one --------------------------------------------------------
+  byClass(rows(host)[1], 'save-name')[0].fire('click');
+  eq('clicking the name hands back that row and not the one above it',
+     [loaded.length, loaded[0].title, loaded[0].name],
+     [1, 'snake.fil', 'snake-20260830-101500.agc']);
+  eq('and the text comes back out of the store under its id',
+     await store.get(loaded[0].id), '{"agc":1}');
+
+  // ---- deleting one -------------------------------------------------------
+  answer = false;
+  byClass(rows(host)[0], 'save-del')[0].fire('click');
+  await Promise.resolve();
+  eq('a delete that is refused leaves the row where it was',
+     titles(host), ['Alice', 'snake.fil']);
+
+  answer = true;
+  byClass(rows(host)[0], 'save-del')[0].fire('click');
+  // The row goes when the store says it has gone, which is a promise: the
+  // panel redraws from a fresh list() rather than from the row it just
+  // clicked, so what is on the screen is what the store holds.
+  await new Promise((r) => setTimeout(r, 0));
+  eq('and one that goes through takes the row with it',
+     [titles(host), said.slice(-1)], [['snake.fil'], ['deleted Alice']]);
+  eq('the store agrees', (await store.list()).map((r) => r.title), ['snake.fil']);
+
+  // ---- a real container, in and out ---------------------------------------
+  //
+  // What the page depends on and the memory backend cannot fake away: a save
+  // is the container text, unchanged, so what comes back parses as the file it
+  // was and carries the same media.
+  const src = fs.readFileSync(path.join(H.ROOT, 'examples/snake.agc'), 'utf8');
+  const rec = await store.put({
+    name: 'snake.agc', title: 'snake', model: 7, ram: 64, text: src,
+  });
+  const back = await store.get(rec.id);
+  eq('a container comes back out of the store as it went in', back === src, true);
+  const c = await A.agc.parse(new ctx.TextEncoder().encode(back), 'snake.agc');
+  eq('and parses as the container it was',
+     [c.media.length, c.media[0].name, c.machine.model],
+     [1, 'snake.fil', 7]);
+
+  // ---- a store that will not answer ---------------------------------------
+  const broken = A.Store.memory();
+  broken.list = () => Promise.reject(new Error('store failed'));
+  await list.mount(broken);
+  eq('a store that fails on the way in says so and draws nothing',
+     [rows(host).length, said.slice(-1)], [0, ['! store failed']]);
 
   console.log(pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

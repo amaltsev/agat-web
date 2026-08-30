@@ -68,6 +68,7 @@ var SHELL = [
   'src/disasm.js',
   'src/dosui.js',
   'src/state.js',
+  'src/store.js',
   'src/app.js',
   'icons/agat-192.png',
   'icons/agat-512.png',

@@ -105,6 +105,40 @@ input[type=text]:focus, textarea:focus { outline: 1px solid var(--accent); }
 /* The far end of a row: a Close that belongs to the panel rather than
    to the controls beside it. */
 .panel .sp { margin-left: auto; }
+/* A rule between two halves of a panel, at the weight of every other line in
+   it: the browser's own <hr> is a groove several pixels deep. */
+.panel hr { border: 0; border-top: 1px solid var(--edge); margin: 8px 0; }
+
+/* ---- the saves in the browser, in the Load panel ------------------------ */
+
+/* One row a save, scrolling inside the panel: the list is as long as somebody
+   has been playing, and the Open file… above it is what a long one is read
+   against. */
+.saves { margin-top: 6px; max-height: 40vh; overflow-y: auto; }
+.saves .note { display: block; color: var(--dim); font-size: 12.5px; padding: 4px 0; }
+.save { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+.save + .save { border-top: 1px solid var(--edge); }
+/* The name is the control: the row is loaded by clicking what it is called,
+   which is the thing being read anyway. */
+.save-name {
+  border: 0; background: none; padding: 3px 0; color: var(--ink);
+  text-align: left; flex: 1 1 12ch; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.save-name:hover { color: var(--accent); border-color: transparent; }
+.save-in, .save-when, .save-what { color: var(--dim); font-size: 12.5px; }
+.save-in, .save-what { flex: 0 0 auto; }
+/* The same middot the machine and the size are already joined by, so the whole
+   tail of the row reads as one list. Drawn rather than written into the text,
+   which keeps it out of what a narrow screen drops with .save-what. */
+.save-when::before, .save-what::before { content: '·'; margin-right: 6px; }
+/* The machine and the size are on the row's title as well, so a narrow screen
+   drops the column rather than wrapping the row onto two lines. */
+@media (max-width: 560px) {
+  .save-what { display: none; }
+}
+.save-del { border: 0; background: none; padding: 3px 6px; }
+.save-del:hover { border-color: transparent; }
 
 /* The status line: what just happened, in the font the machine's own bytes are
    written in. One row, cut rather than wrapped. */

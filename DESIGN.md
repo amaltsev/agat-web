@@ -114,6 +114,7 @@ Load order matters only in that a module's dependencies must already be on
 | `disasm.js` | a `B` file's bytes, back into 6502 instructions |
 | `dosui.js` | the file manager as a panel, mounted by `edit-dos.html` and by the emulator page |
 | `state.js` | the machine as a snapshot: the `.agc` `state` block, both ways |
+| `store.js` | saves in the browser: an IndexedDB of containers, and the list the Load panel draws |
 | `app.js` | browser glue: run loop, media routing, diagnostics |
 
 Flat `src/` on purpose: two consumers have to agree on the file set, and a flat
@@ -553,7 +554,7 @@ The second is what the `opts.media` arm of the `Sectors` constructor is for. A
 mounted disk has no image file behind it — the `Media` *is* the disk — so
 `data` is null, `pack()` returns null, and a write goes straight into the
 stream the controller is reading. It also calls `media.markWritten(t)`, which
-is what makes `App.writeBack` and the lit **Save AGC** button see the change:
+is what makes `App.writeBack` and the lit **Save** button see the change:
 a file deleted from the panel and a file deleted by a program running on the
 machine are the same event by the time they reach a save.
 
@@ -728,6 +729,44 @@ saves it, restores into a second, and then runs **both** the same distance again
 and requires them to still agree on the clock, the screen and every byte of RAM.
 Two machines that agree at the moment of the restore and drift a second later is
 exactly the failure this can have, and nothing cheaper catches it.
+
+---
+
+## Saves in the browser
+
+`store.js` is the emulator page keeping a program between sessions, and it adds
+no format to do it: a save is the container text `App.toAgc` already writes, put
+in IndexedDB instead of down a download. Loading one back calls `App.load` with
+those bytes, so a row in the Load panel and a file dropped on the screen take
+the identical path in — including the state block, which means a save resumes
+for the same reason a container does, and a snapshot that does not fit the
+machine it names is refused by `state.fits` with the same sentence. Anything the
+container learns to carry is in the saves for free.
+
+**IndexedDB rather than localStorage**, which is a five-megabyte budget of
+UTF-16 and would hold two 840K containers, and which is also the wrong kind of
+storage: `navigator.storage.persist()` is what marks an origin as one to keep
+rather than one to evict when the disk fills, and an installed copy is what a
+browser grants that to. It is asked for beside the first save rather than before
+it, and never waited on.
+
+**Two object stores.** `saves` holds what a row prints — title, machine, size,
+when — and `data` holds the container text under the same key. Drawing the list
+reads every record, and with one store that means dragging every megabyte off
+the disk to print a date.
+
+There is no fallback to memory. `Store.open()` probes, and resolves to `null`
+wherever the browser has no IndexedDB or will not open one; the panel then draws
+the file input and a sentence saying why, because a save that vanishes with the
+tab is not a save and offering one would be a lie. `Store.memory()` exists for
+`check.js saveui` and for nothing else.
+
+`SaveList` draws the rows into whatever element it is given, `dosui.js`-style,
+and holds nothing: every change redraws from a fresh `list()`, so what is on the
+screen is what the store just said rather than a cached copy of it. That is what
+`check.js saveui` tests — the list over the memory store and a stub document,
+which is where the bugs are: a delete that leaves the row, a row that loads the
+wrong save, an empty store that says nothing at all.
 
 ---
 
@@ -1075,7 +1114,7 @@ things that mean *run this*: the button, Boot, Reset, and a file arriving. The
 gear's settings deliberately do not; resizing a card is not an instruction to
 run.
 
-The Save AGC panel takes the same hold while it is open, so a snapshot is of the
+The Save panel takes the same hold while it is open, so a snapshot is of the
 moment the button was pressed rather than of wherever the program got to while
 the box was being read. It gives the hold back only if it took it — a machine
 already paused by hand stays paused when the panel closes.

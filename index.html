@@ -380,8 +380,8 @@
 
 <div class="bar">
   <span class="grp">
-    <label class="file">Open… <input type="file" id="file" multiple></label>
-    <button id="save" title="Save as AGC machine settings, initial media, and disk writes (optionally including full running state)">Save AGC</button>
+    <button id="load" title="Open a file, or a program saved in this browser" aria-expanded="false">Load</button>
+    <button id="save" title="Save the machine settings, media and disk writes — to a file, or into this browser" aria-expanded="false">Save</button>
     <button id="gear" title="The machine, its memory sizes, the mouse, the monitor and the volume" aria-expanded="false">⚙</button>
   </span>
   <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg></button>
@@ -396,21 +396,42 @@
   </span>
 </div>
 
-<!-- What Save AGC is about to write. One question, and only because the answer
-     is a different document either way: a container is a program to be handed
-     to somebody, and one person's session halfway through it is not. The disk
-     and its writes are not a question — they are what a container is — so the
-     panel is one checkbox and the two buttons. -->
+<!-- Where a program comes from: a file, or one this browser is keeping. Both
+     load the same way — a save here is an .agc, so a row and a dropped file
+     take the identical path in — and the panel exists because the second list
+     needs somewhere to be drawn. -->
+<div id="loadopts" class="panel" hidden>
+  <div class="row">
+    <span class="key">Load</span>
+    <label class="file">Open file… <input type="file" id="file" multiple></label>
+    <span class="note">.agc, .dsk, .aim, .nib or .fil</span>
+    <button id="loadclose" class="sp">Cancel</button>
+  </div>
+  <hr>
+  <div id="savelist" class="saves"></div>
+</div>
+
+<!-- What Save is about to write, and where. Two destinations, because they are
+     two different things to want: a file is a container to keep or to hand to
+     somebody, and a save in the browser is this machine still being here
+     tomorrow. The disk and its writes are not a question — they are what a
+     container is — so the rest of the panel is one checkbox.
+
+     The checkbox is the file's alone. A container without a state is a program
+     to hand over, which is a thing worth exporting and not a thing worth
+     keeping in a browser: a save that boots from the beginning is the program
+     over again, and the program is already wherever it came from. -->
 <div id="saveopts" class="panel" hidden>
   <div class="row">
-    <span class="key">Save AGC</span>
-    <label title="Include full machine state — so the container reopens where it was left"><input type="checkbox" id="savestate"> machine state</label>
-    <span class="note" id="savenote"></span>
+    <span class="key"></span>
+    <button id="savehere" title="Keep this machine in the browser, where Load finds it again">Save in browser</button>
+    <button id="savefile" title="Download an .agc container">Save file</button>
+    <button id="savecancel" class="sp">Cancel</button>
   </div>
   <div class="row">
     <span class="key"></span>
-    <button id="savego">Save</button>
-    <button id="savecancel">Cancel</button>
+    <label title="Include full machine state — so the container reopens where it was left"><input type="checkbox" id="savestate"> machine state, in the file</label>
+    <span class="note" id="savenote"></span>
   </div>
 </div>
 
@@ -529,7 +550,7 @@
       Holds the machine still. Nothing is saved and nothing is lost — the
       clock stops, and goes on from where it was. <b>Boot</b>, <b>Reset</b>
       and dropping a file all mean <i>run this</i>, so any of them starts a
-      paused machine again. <b>Save AGC</b> pauses for as long as its panel is
+      paused machine again. <b>Save</b> pauses for as long as its panel is
       up.
     </td></tr>
     <tr><td><b>Keyboard</b></td><td>
@@ -564,7 +585,7 @@
       a keyboard remap, the controls themselves, grouped, which is
       the card under the screen, and what the program is — title, author,
       date, where it came from, a description, and one line to whoever is
-      about to play, which is the card below that. <b>Save AGC</b> writes one from the
+      about to play, which is the card below that. <b>Save</b> writes one from the
       machine as it stands, and asks whether the machine itself should go in
       with it — the RAM, the CPU, the drive heads, so that the container
       reopens where it was left rather than booting. The format is written up in
@@ -582,7 +603,7 @@
     <tr><td><b>RO / RW</b></td><td>
       Disks are read-only by default. Click <code>RO</code> to allow
       writing.  Writes go to memory, and closing the tab loses them.
-      <b>Save AGC</b> keeps them, as patches on the disk they came from.
+      <b>Save</b> keeps them, as patches on the disk they came from.
       The lock is the disk's and follows it from drive to drive.
     </td></tr>
     <tr><td><b>⋯</b></td><td>
@@ -596,7 +617,7 @@
       <b>View</b> opens a file — as text, as a BASIC listing, as hex at the
       address it loads, or as the 6502 instructions there — and edits it if
       it is a <code>T</code> one. It edits the disk in the drive, so the
-      machine reads what is written and <b>Save AGC</b> keeps it — a running
+      machine reads what is written and <b>Save</b> keeps it — a running
       DOS re-reads the catalog for every command, so the next <code>CATALOG</code>
       shows the change. The machine is held while the panel is up. The same
       panel is a page of its own at <a href="edit-dos.html">edit-dos.html</a>,
@@ -679,6 +700,7 @@
 <script src="src/disasm.js"></script>
 <script src="src/dosui.js"></script>
 <script src="src/state.js"></script>
+<script src="src/store.js"></script>
 <script src="src/app.js"></script>
 <script>
 (function () {
@@ -697,6 +719,9 @@
   var gearBtn = document.getElementById('gear');
   var settingsEl = document.getElementById('settings');
   var saveEl = document.getElementById('save');
+  var loadEl = document.getElementById('load');
+  var loadOptsEl = document.getElementById('loadopts');
+  var saveListEl = document.getElementById('savelist');
   var pauseEl = document.getElementById('pause');
   var HOLD_FACE = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg>';
   var PLAY_FACE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.6 1 11.2 6 2.6 11z"/></svg>';
@@ -1071,11 +1096,12 @@
 
   function afterLoad() {
     closeFiles();                          // a different disk, if any
+    closeLoad();                           // whatever it was offering, this is it
     screen.classList.remove('empty');
     // The save panel is about the container that was loaded, down to which way
     // its checkbox starts, so a new one closes it rather than leaving it saying
     // something true of the program before.
-    heldForSave = false;
+    held = false;
     closeSaveOpts();
     // And a file arriving is an instruction to run it, however the machine came
     // to be standing still — the panel's hold, or the Pause button.
@@ -1118,7 +1144,7 @@
   }
 
   // Fetch a container the address names. Served pages only — fetch is blocked
-  // on file://, where Open… is the way in. `over` is what the rest of the
+  // on file://, where Load is the way in. `over` is what the rest of the
   // address said, for the load to build its machine with; a container reached
   // any other way is not the one the address describes and gets none.
   function loadUrl(path, over) {
@@ -1127,14 +1153,14 @@
     app.startOpen();
     // Fetching and reading fail for unrelated reasons, so each says its own
     // piece. A file that never arrived is named here, and is the only case
-    // Open… is an answer to; a file that arrived and would not read has named
-    // itself already, down to the media entry, and pointing at Open… would
+    // Load is an answer to; a file that arrived and would not read has named
+    // itself already, down to the media entry, and pointing at Load would
     // send the reader back for the same bytes.
     return fetch(path).then(function (r) {
       if (!r.ok) throw new Error(path + ': ' + r.status + ' ' + r.statusText);
       return r.arrayBuffer();
     }, function (e) {
-      throw new Error(path + ': ' + e.message + ' — on file:// use Open…');
+      throw new Error(path + ': ' + e.message + ' — on file:// use Load');
     }).then(function (b) {
       return app.load(new Uint8Array(b), path.split('/').pop(), null, over)
         .then(afterLoad);
@@ -1146,6 +1172,73 @@
     loadFiles(e.target.files);
     e.target.value = '';
   });
+
+  // ---- the saves this browser is keeping ------------------------------------
+  //
+  // A save is an .agc, so loading one back is loading a container: the bytes go
+  // through App.load exactly as a dropped file's do, and the machine it names,
+  // the drives it fills and the state it resumes from are all read by code that
+  // knows nothing about where the bytes came from. A snapshot that does not fit
+  // the machine it describes says so from in there and the program boots
+  // instead — the same answer a container off the disk gets.
+  var store = null;
+  var saveList = new AGAT.SaveList(saveListEl, {
+    onStatus: say,
+    onLoad: loadSaved,
+  });
+
+  // Probed once, at start: whether there is a store is a fact about the browser
+  // and not about the moment. A file:// checkout has IndexedDB in some browsers
+  // and not others, and a private window can have the object and refuse to open
+  // it, so this is a probe and never a test of the protocol. Where it comes
+  // back empty the panel is Open file… and a sentence saying why.
+  AGAT.Store.open().then(function (s) {
+    store = s;
+    return saveList.mount(s);
+  });
+
+  loadEl.addEventListener('click', function () {
+    if (!loadOptsEl.hidden) { closeLoad(); return; }
+    // The other two panels hold the machine still while they are up. This one
+    // does not — nothing here is a view of the machine — so they are closed
+    // rather than stacked, which also hands the hold back.
+    closeSaveOpts();
+    closeFiles();
+    loadOptsEl.hidden = false;
+    loadEl.setAttribute('aria-expanded', 'true');
+    // Redrawn on the way in rather than left as it was found: a save made since
+    // the panel was last up belongs in the list, and so does one deleted from
+    // another tab.
+    saveList.refresh();
+  });
+
+  document.getElementById('loadclose').addEventListener('click', closeLoad);
+
+  function closeLoad() {
+    if (loadOptsEl.hidden) return;
+    loadOptsEl.hidden = true;
+    loadEl.setAttribute('aria-expanded', 'false');
+  }
+
+  function loadSaved(rec) {
+    unlockAudio();
+    unstick();
+    closeLoad();
+    app.startOpen();
+    // A save is not what the address names, any more than a dropped file is:
+    // nothing in the fragment can reach into this browser's own store, so the
+    // machine is written out in full instead.
+    agcUrl = '';
+    return store.get(rec.id).then(function (text) {
+      return app.load(encode(text), rec.name).then(afterLoad);
+    }).then(function () { app.finishOpen(); },
+            function (e) { say(e.message, true); app.finishOpen(); });
+  }
+
+  // A container is JSON, and App.load takes the bytes of a file. TextEncoder is
+  // UTF-8, which is what agc.js wrote and what a container read off the disk
+  // arrives as.
+  function encode(text) { return new TextEncoder().encode(text); }
 
   ['dragenter', 'dragover'].forEach(function (t) {
     screen.addEventListener(t, function (e) {
@@ -1392,6 +1485,7 @@
     if (!saveOptsEl.hidden) { closeSaveOpts(); return; }
     if (!app.agcName()) { say('nothing loaded to save', true); return; }
     closeFiles();
+    closeLoad();
     saveStateBox.checked = !!app.agcState;
     saveNoteEl.textContent = app.agcState
       ? 'this container came with one' : '';
@@ -1432,7 +1526,7 @@
     held = false;
   }
 
-  document.getElementById('savego').addEventListener('click', function () {
+  document.getElementById('savefile').addEventListener('click', function () {
     var name = app.agcName();
     if (!name) { say('nothing loaded to save', true); return; }
     closeSaveOpts();
@@ -1455,6 +1549,38 @@
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
       say('saved ' + name + (withState ? ' with the machine' : '') +
           ' — ' + Math.round(text.length / 1024) + 'K');
+    }).catch(function (e) { say(e.message, true); });
+  });
+
+  // The same container, into the browser instead of down the wire. Always with
+  // the machine in it: a saved container that boots from the beginning is the
+  // program over again, and the program is already wherever it was opened
+  // from — what is worth keeping here is where this machine had got to.
+  document.getElementById('savehere').addEventListener('click', function () {
+    var name = app.agcName();
+    if (!name) { say('nothing loaded to save', true); return; }
+    if (!store) { say('this browser has no place to keep saves', true); return; }
+    closeSaveOpts();
+    var about = app.about();
+    app.toAgc({ state: true }).then(function (text) {
+      // Asked for beside the first save rather than before it. A browser grants
+      // persistence to a copy somebody is using and refuses a page nobody has
+      // touched, so the moment to ask is the moment somebody has just saved
+      // something; the answer is not waited on, because a store that is only
+      // best-effort is still the store.
+      AGAT.Store.persist();
+      return store.put({
+        name: name,
+        title: about.title || name,
+        model: app.model,
+        ram: app.ramSize >> 10,
+        cycles: app.machine.cpu.cycles,
+        text: text,
+      });
+    }).then(function (meta) {
+      say('kept "' + meta.title + '" in the browser — ' +
+          Math.round(meta.size / 1024) + 'K');
+      return saveList.refresh();
     }).catch(function (e) { say(e.message, true); });
   });
 
@@ -1619,7 +1745,7 @@
     ev.preventDefault();
     if (app.hasWrites() &&
         !confirm('A disk has been written to, and starting over loses ' +
-                 'the writes. Save AGC keeps them. Start over anyway?')) return;
+                 'the writes. Save keeps them. Start over anyway?')) return;
     leaving = true;
     location.replace(location.pathname + location.search);
   });
@@ -1671,7 +1797,7 @@
       : !d.canUnlock
         ? 'This disk cannot be written'
         : open
-          ? 'Writable. What a program writes stays in memory — Save AGC keeps it'
+          ? 'Writable. What a program writes stays in memory — Save keeps it'
           : 'Read-only. Click to let a program write to this disk' +
             (d.headerProtect ? ' (the image says it is write-protected)' : '');
     var cls = !d.name ? 'blank' : open ? 'rw' : '';
@@ -1697,7 +1823,7 @@
     if (!app.setLocked(entry, !entry.media.locked)) return;
     say(entry.name + (entry.media.locked
         ? ' is read-only again'
-        : ' can be written to — Save AGC keeps what is written'));
+        : ' can be written to — Save keeps what is written'));
     syncLamps();
     if (filesSlot === at.slot && filesDrv === at.drv) showDisk();
   }
@@ -1706,7 +1832,7 @@
   //
   // Which disk is in this drive, and what can be done to that disk. Under it,
   // folded away, the catalog of it: what is written there goes into the stream
-  // the controller is reading, so the machine sees it, and Save AGC keeps it as
+  // the controller is reading, so the machine sees it, and Save keeps it as
   // a patch like any other write.
   var filesEl = document.getElementById('files');
   var filesUI = null;
@@ -1728,7 +1854,7 @@
       return;
     }
     if (!saveOptsEl.hidden) closeSaveOpts();
-    // Held while the panel is up, for the same reason Save AGC holds: what is
+    // Held while the panel is up, for the same reason Save holds: what is
     // being looked at should stop long enough to look at. It does not make
     // editing safe under a booted DOS — that keeps its own copy of the catalog
     // in RAM — which is what the panel's own line says.
@@ -1770,7 +1896,7 @@
     diskLockEl.className = entry && !entry.media.locked ? 'rw' : '';
     diskLockEl.disabled = !entry;
     diskLockEl.title = entry && !entry.media.locked
-      ? 'Writable. What a program writes stays in memory — Save AGC keeps it'
+      ? 'Writable. What a program writes stays in memory — Save keeps it'
       : 'Read-only. Click to let a program write to this disk';
     document.getElementById('diskeject').disabled = !entry;
     document.getElementById('diskrename').disabled = !entry;
@@ -1902,7 +2028,7 @@
     if (!entry || !app.setLocked(entry, !entry.media.locked)) return;
     say(entry.name + (entry.media.locked
         ? ' is read-only again'
-        : ' can be written to — Save AGC keeps what is written'));
+        : ' can be written to — Save keeps what is written'));
     showDisk();
   });
 
@@ -2039,6 +2165,8 @@
     if (!saveOptsEl.hidden) marks.push('on');
     var pending = marks.join(' ');
     if (saveEl.className !== pending) saveEl.className = pending;
+    var opening = loadOptsEl.hidden ? '' : 'on';
+    if (loadEl.className !== opening) loadEl.className = opening;
     var held = app.paused ? 'on' : '';
     if (pauseEl.className !== held) pauseEl.className = held;
     // The face is what the click does, not what the machine is doing, and the

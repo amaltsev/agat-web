@@ -17,7 +17,7 @@ different memory banking and a video controller with its own set of modes.
 
 ## Using it
 
-Drag a file onto the screen, or use **Open…**. Formats are recognized **by
+Drag a file onto the screen, or use **Load**. Formats are recognized **by
 size, not by extension** — Agat images in the wild are routinely misnamed, and
 one of the system disks in circulation is called `.800.dsk` while actually being
 an `.aim`.
@@ -32,8 +32,8 @@ an `.aim`.
 
 **Opening replaces what was open.** The drives are emptied first, so a file
 opened after a session is a fresh start and not something added to it — and
-**Save AGC** writes what you opened rather than everything the machine has seen.
-Files opened *together* belong together, though: **Open…** takes several and so
+**Save** writes what you opened rather than everything the machine has seen.
+Files opened *together* belong together, though: **Load** takes several and so
 does a drop, and that is how one container comes to name two disks — drop a
 140K and an 840K at once and both drives are filled. Several `.fil` programs
 opened together are poked into memory in that order, which is how a program that
@@ -53,11 +53,30 @@ machine's button is ▶, and its border is lit. In the ⚙ popup, **Boot** is `P
 monitor, which is where you land with no disk in. All three of Boot, Reset and
 dropping a file mean *run this*, so any of them starts a paused machine again.
 
-**Save AGC** pauses too, for as long as its panel is up: a snapshot is of one
+**Save** pauses too, for as long as its panel is up: a snapshot is of one
 moment, and the moment worth keeping is the one that was on the screen when you
 pressed the button rather than wherever the program has got to by the time
 you have read the box. A machine you had already paused stays paused when the
 panel closes.
+
+It offers two places to put the machine. **Save in browser** keeps a container
+where **Load** will find it again tomorrow, and that one always carries the
+machine: a save that boots from the beginning is the program over again, and
+the program is already wherever it was opened from. **Save file** downloads the
+same container as an [`.agc`](#agc--the-agat-container) — one to keep, to hand
+to somebody, or to open here again — and the box below says whether the running
+machine goes into that one with the program.
+
+Saves in the browser are listed under **Load**, newest first, each with how far
+into the program it is — the machine's own clock, which a pause stops and an
+afternoon away does not move — and when it was taken. What machine it is for
+and what it weighs are on the row's tooltip, and drawn beside it where the
+screen is wide enough. Click the name to load one and ✕ to delete it. Nothing else empties the list. They are the browser's, not the page's — an
+installed copy and the same page in a tab share them, another browser has none
+of them, and clearing site data takes them all. An installed copy asks the
+browser to keep them rather than evict them when the disk fills up. A page
+opened where the browser will not keep anything — some `file://` origins, some
+private windows — says so and offers the file instead.
 
 Keys go through the Agat's own scancode table, so **ЛАТ/РУС** switches to a
 JCUKEN layout and Cyrillic comes from where a key sits, not from what your host
@@ -110,9 +129,9 @@ read-only and the drive tells the program so; click `RO` and the drive will
 write. The lock is the disk's and travels with it from drive to drive. That is what an Agat-9 system disk is asking for when it says «СИСТЕМА
 ИСПОРЧЕНА», and what DOS needs before `SAVE` or `INIT` will work. Writes go to
 memory and nowhere else — the file on your disk is never touched, and closing
-the tab loses them; **Save AGC** lights up while there are any, and keeps them
-as patches on the image they came from. It can also keep the machine itself, if
-you tick the box it puts up — see [`.agc`](#agc--the-agat-container) below.
+the tab loses them; **Save** lights up while there are any, and keeps them
+as patches on the image they came from, in a file or in the browser. It can
+also keep the machine itself — see [`.agc`](#agc--the-agat-container) below.
 
 The **⋯** beside the lock opens the drive: which disk is in it, **Rename**,
 **Eject**, **Empty** — a DOS 3.3 formatted disk with nothing on it — and **Open
@@ -206,7 +225,9 @@ installed copy opens in its own window and is the system's handler for `.agc`,
 
 It runs offline once visited: the emulator and both pages are kept, and an
 example is kept from the first time it is played, so a program played once stays
-playable with no network. One never opened still needs one.
+playable with no network. One never opened still needs one. **Save in browser**
+keeps a program and where you were in it, and an installed copy is the one a
+browser is most willing to hold on to rather than evict.
 
 A checkout opened as a file has none of this — it needs a served copy, the same
 way the examples do — and is otherwise exactly the same page.
@@ -259,7 +280,7 @@ copy of the disk.
 
 A container can also carry the machine **as it stood** — the RAM, the CPU's
 registers, the drive heads, the raster counter — and then it reopens where it
-was left instead of booting. That is the one thing **Save AGC** asks about,
+was left instead of booting. That is the one thing **Save** asks about,
 because the answer makes it a different document: a container without a state is
 a program to hand to somebody, and one with a state is where a particular person
 had got to. The box starts ticked for a container that arrived with a state and
@@ -339,7 +360,7 @@ Each is bundled as an `.agc` alongside the original image, so it comes up on the
 machine it wants. The links on the page need a served copy — `fetch` is blocked
 on `file://` — so they work on the
 [hosted build](https://amaltsev.github.io/agat-web/), and from a local
-file use **Open…** instead.
+file use **Load** instead.
 
 Three more come from [agatcomp.ru](https://agatcomp.ru/), and they are here for
 the mouse, which is the one thing about an Agat program that a disk cannot tell
@@ -399,7 +420,7 @@ ticked for a file that already has one, and carried over to the next file typed.
 
 The same panel is on the emulator page, under **View/Edit DOS files** on the
 `⋯` beside each drive lamp: it edits the disk that is *in the drive*, so what is written there is what the
-machine reads, and **Save AGC** keeps it as a patch like any other write. The
+machine reads, and **Save** keeps it as a patch like any other write. The
 machine is held while the panel is up, because what you are looking at should
 stop long enough to look at.
 

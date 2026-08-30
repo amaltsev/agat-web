@@ -609,14 +609,14 @@
     this.lastBoot = '';
   };
 
-  // One gesture — a drop, an Open…, a link, the address — is about to hand
+  // One gesture — a drop, a Load, a link, the address — is about to hand
   // over files, and whatever was open before is not part of what it says. The
   // clear cannot happen here, for two reasons: a gesture carries any number of
   // files and they belong together, and a file that turns out not to be an
   // image should leave the running machine alone rather than empty it. So this
   // only arms it, and `loadOne` spends it on the first file that loads.
   //
-  // Files together, not one after another: Open… takes several and so does a
+  // Files together, not one after another: Load takes several and so does a
   // drop, and that is how a container comes to name two disks — a system disk
   // and a blank for it to write on.
   App.prototype.startOpen = function () {

@@ -21,21 +21,12 @@
   AGC** still only ever appends a patch, which is right for a disk that is
   going back and wrong for one that is not. Add a "merge-in writes"
   option on save?
-* Rework how saving and loading works. Supporting both the saves in
-  browser normal flow, and persistence in the installed PWA app (which
-  intuitively feelds like it should be preserving because it's an app-like
-  UI, but currently it does not).
-  - "Open..." -> "Load". Unfolds a panel with options to open a file, or
-    load from internally saved states and the quick-save. Shows a
-    timestamp and some basic info for the quick save and internal saves
-    (need a better name for the internal save).
-  - "Save AGC" -> "Save". The panel offers to export as an AGC (current
-    functionality), or save the same into the PWA local storage (gated on
-    availability, not working in file:///).
-  - On hide (and on pressing "pause" in the ui) the current machine
-    state is saved into "quick save" slot, overriding it unconditionally.
-  - Need a way to trim old unused local storage saves - manually or
-    automatically? Probably just an explicit trash icon is the cleanest.
+* Quick saves: the machine snapshotted on hide, so a tab switch is not a
+  loss. The store, the panels and the container round trip are in place —
+  `src/store.js` and the Load panel — so what is left is the ring itself and
+  the questions in tmp/quick-save-open-questions.md: what a ring belongs to,
+  how it is evicted, which pause snapshots, whether loading snapshots first,
+  and splitting `written` so a save can quiet the leave dialogs.
 * Actions recorder, replayable in the emulator
   - A button to start recording. Saves the current machine state, then
     records input register changes for keyboard & mouse and CPU cycle on
