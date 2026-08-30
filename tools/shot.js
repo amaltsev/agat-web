@@ -128,8 +128,8 @@ H.loadRoms(ctx).then(async (roms) => {
   if (sniffed.kind === 'fil') {
     ctx.AGAT.loadFil(m, sniffed.payload);
   } else {
-    let slot = H.fddSlot(m);
-    if (sniffed.kind) slot = H.insert(m, ctx.AGAT.mount(sniffed));
+    const at = H.mountAll(ctx, m, sniffed);
+    const slot = at < 0 ? H.fddSlot(m) : at;
     m.reset();
     if (!flags.cold) m.bootSlot(slot);
     // A container that carries the machine it was saved in the middle of is

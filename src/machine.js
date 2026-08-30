@@ -82,6 +82,7 @@
     this.psromOfs = 0;
 
     this.cards = [];                       // cards[slot], see addCard()
+    this.slots = {};                       // the resolved map fit() was given
     this.psrom = null;                     // Agat-7 ЭмПЗУ, if fitted
     this.xram = null;                      // Agat-7 ОЗУ expansion, if fitted
     this.xram9 = null;                     // Agat-9 ОЗУ expansion, if fitted
@@ -354,6 +355,11 @@
   // the memory cards have none, their $Cn00 page being the register itself.
   Machine.prototype.fit = function (slots, roms) {
     roms = roms || {};
+    // Kept, not just read: which card is in which slot is a question asked of
+    // the machine long after it is built — where a disk goes, what a
+    // container's `in` means — and a caller holding the map separately is a
+    // caller that can hold the wrong one.
+    this.slots = slots || {};
     for (var n in slots) {
       var spec = slots[n], card = null;
       switch (spec.card) {
@@ -407,6 +413,55 @@
       if (card) this.addCard(Number(n), card);
     }
     return this;
+  };
+
+  // ---- where a disk goes -----------------------------------------------------
+  //
+  // The drives, as the machine rather than the page sees them. The page fills
+  // drives one way and the tools have to fill them the same way, which they can
+  // only do if the rules are somewhere both can reach: App.slotFor, App.place
+  // and App.mountSpot are these three, with the session's bookkeeping around
+  // them.
+
+  // The controller a medium of this kind belongs to, or -1. The media kind, not
+  // the file's: a .dsk and a .nib of one disk are the same drive's business.
+  // Statics, both of these, because a slot map is answer enough and the page
+  // asks before it has built the machine the map is for.
+  Machine.slotForKind = function (slots, kind) {
+    return Machine.slotOf(slots, kind === 'nib140' ? 'fdd140' : 'fdd840');
+  };
+
+  // A card name or `slot:N` as a slot of this map, -1 for a card it has not
+  // got. Both a container's `boot` and a medium's `in` are spelled this way.
+  Machine.slotNamed = function (slots, spec) {
+    var m = /^slot:([0-7])$/.exec(spec || '');
+    return m ? Number(m[1]) : Machine.slotOf(slots, spec);
+  };
+
+  // A medium's `in` as a drive: `undefined` where it said nothing, `null` for
+  // `none`, `{slot, drv}` otherwise. A drive this machine has not got reads as
+  // nothing said, and the medium takes its turn with the rest.
+  Machine.prototype.spotFor = function (spec) {
+    if (!spec) return undefined;
+    if (spec === 'none') return null;
+    var m = /^(.*?)(?::([12]))?$/.exec(spec);
+    var slot = Machine.slotNamed(this.slots, m[1]);
+    var card = slot < 0 ? null : this.cards[slot];
+    var drv = m[2] === '2' ? 1 : 0;
+    if (!card || !card.insert || drv >= (card.drives || 1)) return undefined;
+    return { slot: slot, drv: drv };
+  };
+
+  // The first empty drive a medium of this kind can go in, or null for a
+  // machine that has no such drive or none of them free.
+  Machine.prototype.freeSpot = function (kind) {
+    var slot = Machine.slotForKind(this.slots, kind), d;
+    var card = slot < 0 ? null : this.cards[slot];
+    if (!card || !card.insert) return null;
+    for (d = 0; d < (card.drives || 1); d++) {
+      if (!card.mediaAt(d)) return { slot: slot, drv: d };
+    }
+    return null;
   };
 
   // Called before every instruction. One line counter, running whether or not

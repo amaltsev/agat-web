@@ -350,7 +350,7 @@
   // ---- media ---------------------------------------------------------------
 
   App.prototype.slotFor = function (kind) {
-    return AGAT.Machine.slotOf(this.slots, kind === 'nib140' ? 'fdd140' : 'fdd840');
+    return AGAT.Machine.slotForKind(this.slots, kind);
   };
 
   // Every drive the machine is fitted with, in the order the lamps are drawn:
@@ -423,15 +423,13 @@
   // each disk back where it was. -1 when the machine has no such drive or every
   // one of them is full, and then the disk stays on the shelf.
   App.prototype.place = function (entry, want) {
-    var slot = this.slotFor(entry.media.kind), card = this.machine.cards[slot], d;
+    var slot = this.slotFor(entry.media.kind), card = this.machine.cards[slot];
     if (!card || !card.insert) return -1;
     if (want !== undefined && want < (card.drives || 1)) {
       return this.mount(entry, slot, want) ? slot : -1;
     }
-    for (d = 0; d < (card.drives || 1); d++) {
-      if (!card.mediaAt(d)) return this.mount(entry, slot, d) ? slot : -1;
-    }
-    return -1;
+    var spot = this.machine.freeSpot(entry.media.kind);
+    return spot && this.mount(entry, spot.slot, spot.drv) ? spot.slot : -1;
   };
 
   // What the drive lamps show: every drive the machine has, empty or not, so
@@ -673,12 +671,10 @@
                   ' from slot ' + slot + (note ? ' — ' + note : ''));
   };
 
-  // A `boot` value as a slot of the machine that got built: `slot:N` is that
-  // slot whether or not anything is in it, a card name is wherever this model
-  // puts that card. -1 for a card the machine has not got.
+  // A `boot` value as a slot of the machine that got built; -1 for a card it
+  // has not got. Machine.slotNamed is the rule.
   App.prototype.bootSlotOf = function (spec) {
-    var m = /^slot:([0-7])$/.exec(spec);
-    return m ? Number(m[1]) : AGAT.Machine.slotOf(this.slots, spec);
+    return AGAT.Machine.slotNamed(this.slots, spec);
   };
 
   // Reset and enter a slot's card ROM — ПР#n, and the whole of what starting a
@@ -803,18 +799,10 @@
     return out;
   };
 
-  // A container's `in`, as a drive of the machine that got built: `undefined`
-  // for a medium that said nothing, `null` for one that asked for no drive at
-  // all, and `{slot, drv}` otherwise. A drive this machine has not got reads as
-  // nothing said, and the medium takes its turn with the rest.
+  // A container's `in`, as a drive of the machine that got built. See
+  // Machine.spotFor: `undefined`, `null` and `{slot, drv}` are all answers.
   App.prototype.mountSpot = function (spec) {
-    if (!spec) return undefined;
-    if (spec === 'none') return null;
-    var m = /^(.*?)(?::([12]))?$/.exec(spec), slot = this.bootSlotOf(m[1]);
-    var card = slot < 0 ? null : this.machine.cards[slot];
-    var drv = m[2] === '2' ? 1 : 0;
-    if (!card || !card.insert || drv >= (card.drives || 1)) return undefined;
-    return { slot: slot, drv: drv };
+    return this.machine.spotFor(spec);
   };
 
   // One medium is in. Inside a gesture the boot waits for the rest of it; a
@@ -1174,7 +1162,7 @@
       }
     }
     for (pass = 0; pass <= this.disks.length; pass++) {
-      sim = this.replay(specs);
+      sim = this.mountMap(specs);
       bad = null;
       for (i = 0; i < this.disks.length && !bad; i++) {
         entry = this.disks[i];
@@ -1192,7 +1180,7 @@
   // `in` values on them, is opened: id -> {slot, drv} or null. The same rules
   // loadOne follows, including a disk that says `in` taking a drive from one
   // that did not.
-  App.prototype.replay = function (specs) {
+  App.prototype.mountMap = function (specs) {
     var out = {}, held = {}, i, entry, spot, slot, card, d, key;
     for (i = 0; i < this.disks.length; i++) {
       entry = this.disks[i];

@@ -135,6 +135,51 @@ function insert(m, media, drv) {
   return slot;
 }
 
+// Every medium of a container into the drives, the way the page fills them:
+// where a medium's `in` names a drive this machine has, it takes it; `none`
+// keeps it out of every drive; anything else takes the first free drive of its
+// size, in the order the container lists them. A `.fil` is loaded into RAM,
+// which is what a `.fil` is.
+//
+// The tools used to see media[0] and nothing else, so a container of two disks
+// ran with one drive empty and a container whose program lives on D2 ran with
+// no program at all.
+//
+// Returns the slot to boot: the one `machine.boot` names, else the first disk
+// that landed, else -1 for a container that mounted nothing. `boot` values that
+// are not a place — `auto`, `none`, `monitor` — are the caller's business, as
+// they are the page's.
+function mountAgc(ctx, m, agc) {
+  const A = ctx.AGAT;
+  const media = (agc && agc.media) || [];
+  let first = -1;
+  for (const med of media) {
+    const s = A.sniff(med.payload, med.name);
+    if (s.kind === 'fil') { A.loadFil(m, s.payload); continue; }
+    if (!s.kind || s.kind === 'agc') continue;
+    const mounted = A.mount(s);
+    const asked = m.spotFor(med.mount);
+    const at = asked === null ? null : asked || m.freeSpot(mounted.kind);
+    if (!at) continue;
+    m.cards[at.slot].insert(mounted, at.drv);
+    // Every disk arrives locked, as it does in the browser; the container says
+    // which of them the program may write to.
+    if (med.writable) mounted.locked = false;
+    if (first < 0) first = at.slot;
+  }
+  const named = A.Machine.slotNamed(m.slots, (agc && agc.machine.boot) || '');
+  return named >= 0 ? named : first;
+}
+
+// What a tool does with the file it was pointed at: a container fills the
+// drives whole, and a bare image goes in the drive its size belongs to. -1 when
+// nothing was mounted — a .fil, or a container of none — and then the caller's
+// own fallback decides where it boots.
+function mountAll(ctx, m, s) {
+  if (s.agc) return mountAgc(ctx, m, s.agc);
+  return s.kind && s.kind !== 'fil' ? insert(m, ctx.AGAT.mount(s)) : -1;
+}
+
 // The keystrokes a --keys= string sends. `~` is Return, `_` Space, `^` Escape,
 // and anything else is itself: enough to drive a menu or type a DOS command,
 // and short enough to sit in a shell argument without quoting.
@@ -153,6 +198,6 @@ function keyCode(c) {
 
 module.exports = {
   loadModules, loadRoms, sniffFile, mountFile, modelOf, makeMachine, insert,
-  fddSlot, keyCode, resume,
+  mountAgc, mountAll, fddSlot, keyCode, resume,
   ROOT, MODULES,
 };

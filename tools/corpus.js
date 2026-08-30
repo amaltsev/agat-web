@@ -76,9 +76,9 @@ H.loadRoms(ctx).then(async (roms) => {
         if (!ctx.AGAT.loadFil) { row.note = 'fil loader pending'; rows.push(row); continue; }
         ctx.AGAT.loadFil(m, s.payload);
       } else {
-        const slot = H.insert(m, ctx.AGAT.mount(s));
+        const at = H.mountAll(ctx, m, s);
         m.reset();
-        m.bootSlot(slot);
+        m.bootSlot(at < 0 ? H.fddSlot(m) : at);
       }
       const cpu = m.cpu;
       const run = (n) => { const e = cpu.cycles + n; while (cpu.cycles < e && !cpu.halted) cpu.step(); };

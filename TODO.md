@@ -8,14 +8,6 @@
   top-level or `media` field is dropped on load and gone from the next
   Save. AGC.md's implementer note asks a reader to carry through what it
   does not understand; only patch records do.
-* The CLI drives one medium of a container, on the machine that container's
-  `model` and `ram` name. `harness.js` unwraps an `.agc` to `media[0]`, and
-  nothing hands `makeMachine` the container's `machine.slots` — so a second
-  drive, a card the container asks for, and every medium after the first are
-  all invisible to `check.js`, `shot.js` and `corpus.js`, which fit cards only
-  from flags of their own. The page reads all of it, and where a disk goes is
-  `App.place`/`App.mountSpot`: it is `src/` already, but reachable only through
-  an `App`.
 * Merging patches from the *emulator* page. `edit-agc.html` does it per medium
   and `node tools/agc.js merge` on the command line; the emulator's own **Save
   AGC** still only ever appends a patch, which is right for a disk that is
@@ -50,3 +42,4 @@
   - The UI seems relatively complex, so should open as a
     panel... "Record"? "Time Machine"?
 * Printer support - a lot more details on https://gsqsoft.atlassian.net/browse/AGT-8
+* In "Load" saves overview, wall clock is not enough - should be a date.

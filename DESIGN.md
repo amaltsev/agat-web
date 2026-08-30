@@ -424,9 +424,16 @@ two disks at the most and a container may carry more.
 
 Which drive a container's medium goes in is `in` (`agc.js` reads it as `mount`),
 and on the way out `mountSpecs` writes the fewest of them that reproduce the
-arrangement: it replays the load, and any disk the fill order would put
-somewhere else is given an `in` and the replay is run again. A container of one
-disk therefore says nothing about drives at all.
+arrangement: it plays the load back through `mountMap`, and any disk the fill
+order would put somewhere else is given an `in` and it is played again. A
+container of one disk therefore says nothing about drives at all.
+
+The rules themselves are the machine's, not the App's — `Machine.slotForKind`
+for which controller a size belongs to, `slotNamed` for what a card name or
+`slot:N` means, `spotFor` for an `in`, `freeSpot` for the first drive going
+spare. `App.place` and `harness.js`'s `mountAgc` are the page's and the CLI's
+bookkeeping around those four, which is what lets `node tools/check.js boot` on
+a container of two disks fill both drives the way the browser does.
 
 ### Writing goes out the same door
 

@@ -2428,6 +2428,56 @@ async function agcTests() {
       eq('and a disk goes into the controller the container moved',
          H.insert(m9, A.mount({ kind: 'dsk840', payload: new ctx.Uint8Array(860160) })), 6);
 
+      // --- every medium of a container, in the drive it asks for --------------
+      // The CLI fills drives the way the page does. A parsed container is what
+      // these hand over, which is what mountAgc reads: name, payload, `in` and
+      // whether the program may write to it.
+      const medium = (name, size, spec, writable) => ({
+        name: name, payload: new ctx.Uint8Array(size),
+        mount: spec || '', writable: !!writable,
+      });
+      const box = (media, boot) => ({ machine: { boot: boot || '' }, media: media });
+      const held = (m) => {
+        const out = [];
+        for (let n = 0; n < 8; n++) {
+          const c = m.cards[n];
+          if (!c || !c.mediaAt) continue;
+          for (let d = 0; d < (c.drives || 1); d++) {
+            const md = c.mediaAt(d);
+            if (md) out.push(n + ':' + d + ' ' + md.name + (md.locked ? '' : ' rw'));
+          }
+        }
+        return out;
+      };
+
+      const pair = H.makeMachine(ctx, roms, { model: 9 });
+      eq('a container of two sizes fills both controllers',
+         [H.mountAgc(ctx, pair, box([medium('big.dsk', 860160),
+                                     medium('small.dsk', 143360)])),
+          held(pair)],
+         [5, ['5:0 big.dsk', '6:0 small.dsk']]);
+
+      const two = H.makeMachine(ctx, roms,
+        { model: 9, slots: { 5: { card: 'fdd840', drives: 2 } } });
+      eq('an `in` takes the drive it names, and `writable` unlocks it',
+         [H.mountAgc(ctx, two, box([medium('d2.dsk', 860160, 'fdd840:2', true),
+                                    medium('d1.dsk', 860160)])),
+          held(two)],
+         [5, ['5:0 d1.dsk', '5:1 d2.dsk rw']]);
+
+      const shelved = H.makeMachine(ctx, roms, { model: 9 });
+      eq('`none` keeps a medium out of every drive',
+         [H.mountAgc(ctx, shelved, box([medium('shelf.dsk', 860160, 'none'),
+                                        medium('run.dsk', 143360)])),
+          held(shelved)],
+         [6, ['6:0 run.dsk']]);
+
+      const named = H.makeMachine(ctx, roms, { model: 9 });
+      eq('and `boot` says which of them the tool starts',
+         H.mountAgc(ctx, named, box([medium('big.dsk', 860160),
+                                     medium('small.dsk', 143360)], 'fdd140')),
+         6);
+
       const plain = await A.agc.build({
         title: 'plain', model: 7, ram: 64,
         media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],

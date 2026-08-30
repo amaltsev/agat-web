@@ -2051,8 +2051,8 @@ async function stateCmd(roms) {
   const agc = sniffed.agc;
   const build = () => {
     const m = H.makeMachine(ctx, roms, { model: model, agc: agc });
-    let slot = H.fddSlot(m);
-    if (sniffed.kind && sniffed.kind !== 'fil') slot = H.insert(m, A.mount(sniffed));
+    const at = H.mountAll(ctx, m, sniffed);
+    let slot = at < 0 ? H.fddSlot(m) : at;
     if (flags.slot) slot = Number(flags.slot);
     m.reset();
     if (!flags.cold) m.bootSlot(slot);
@@ -2129,10 +2129,8 @@ H.loadRoms(ctx).then(async (roms) => {
   const model = flags.model ? Number(flags.model) : (H.modelOf(sniffed) || 9);
   const agc = sniffed.agc;
   const m = H.makeMachine(ctx, roms, { model: model, agc: agc });
-  let slot = H.fddSlot(m);
-  if (sniffed.kind && sniffed.kind !== 'fil') {
-    slot = H.insert(m, ctx.AGAT.mount(sniffed));
-  }
+  const at = H.mountAll(ctx, m, sniffed);
+  let slot = at < 0 ? H.fddSlot(m) : at;
   if (flags.slot) slot = Number(flags.slot);
   // The page makes this a click on the drive. Nothing writes until it happens,
   // so a `write` run that forgot it would report an honest but useless nothing.
