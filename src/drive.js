@@ -35,6 +35,10 @@
     // rather than per byte because saving works a track at a time: a written
     // track is decoded back to its 16 sectors whole.
     this.written = new Uint8Array(opts.tracks);
+    // How many times a track has been marked, which the per-track flags cannot
+    // say: a recorder has to notice a write to a track that was already
+    // written, and «has anything been written» has been true since the first.
+    this.writes = 0;
     // Per track: 0 not looked at, 1 no index mark, 2 index mark present. Filled
     // in by hasIndexMark().
     this.indexed = null;
@@ -49,6 +53,7 @@
 
   Media.prototype.markWritten = function (t) {
     this.written[t] = 1;
+    this.writes++;
     if (this.indexed) this.indexed[t] = 0;      // the attributes may have moved
   };
 

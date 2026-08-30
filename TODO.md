@@ -19,27 +19,25 @@
   the questions in tmp/quick-save-open-questions.md: what a ring belongs to,
   how it is evicted, which pause snapshots, whether loading snapshots first,
   and splitting `written` so a save can quiet the leave dialogs.
-* Actions recorder, replayable in the emulator
-  - A button to start recording. Saves the current machine state, then
-    records input register changes for keyboard & mouse and CPU cycle on
-    which they happen. Will also need to record the wall clock of when the
-    machine was started.
-  - If we extend "pause" / "play" analogy further, then there could be
-    "rewind" and "ff" buttons as well, going back or forward in recorded
-    time. Maybe one click is 10 seconds, several quick clicks in a row
-    progressively further, like youtube. Forward playing will likely
-    benefit from a speed control - normal by default, but also buttons
-    to slow down/speed up.
-  - The recording goes into the container on save. Should probably
-    design for several named recordings in one container.
-  - On load recordings are shown in blocks similar to how controls
-    show. Clicking a recording loads the state and starts playing. A
-    user can pause/rewind/forward the recording, or take over and start
-    controlling the machine at any point. To avoid accidental take
-    overs, maybe that works only from Pause state, or we have an
-    explicit control for take over and normally keyboard and mouse are
-    inactive.
-  - The UI seems relatively complex, so should open as a
-    panel... "Record"? "Time Machine"?
+* Actions recorder, replayable in the emulator. `src/record.js` and
+  `App.runTo` are in — a take is the snapshot plus every input stamped with
+  its cycle, a write or a machine change ends one, and `check.js record`
+  proves a replay lands each input on the cycle it was recorded on. What is
+  left:
+  - The recording into the container, one per container: an AGC field, the
+    reader, the writer, `edit-agc.html` and AGC.md together, or the editor
+    drops it on the next round trip. Sizing wants a rule — a take carries its
+    own gzipped RAM.
+  - The panel. On load a recording shows in a block like the controls do;
+    clicking it loads the state and plays. "Record"? "Time Machine"? Its
+    stub-document test goes beside `dosui` and `agcui`.
+  - Take over mid-replay. `stopPlaying` already hands the machine back live,
+    so what is missing is the control and the rule for it — only from Pause,
+    or an explicit button, since the doors are shut while a replay runs.
+  - Speed control, and then rewind: `runTo` is the seam for both. Rewind
+    wants keyframes — re-simulation runs about 15x real time, so a snapshot
+    every 30 s of machine time puts a 10-second step under a second.
+  - A write inside a take, which means carrying the medium's bytes as of its
+    start and keeping a replay's writes out of the patches that get saved.
 * Printer support - a lot more details on https://gsqsoft.atlassian.net/browse/AGT-8
 * In "Load" saves overview, wall clock is not enough - should be a date.

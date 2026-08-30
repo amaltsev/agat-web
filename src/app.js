@@ -27,6 +27,12 @@
     // be a pause that never lasted. What clears it is the things that mean "run
     // this": the button itself, Boot, Reset, and a file arriving.
     this.paused = false;
+    // The take being made and the take being played, at most one of each and
+    // never both: starting either stops the other. `recording` is the one this
+    // session holds — a container carries one, deliberately.
+    this.recorder = null;
+    this.player = null;
+    this.recording = null;
     this.model = opts.model === 9 ? 9 : 7;     // the commoner machine, and the
     var profile = AGAT.Machine.PROFILES[this.model];  // one most native
     this.ramSize = this.model === 9                   // software expects
@@ -149,12 +155,16 @@
   // nothing else to offer, and hands back the counts they came to.
 
   App.prototype.key = function (code) {
+    if (this.player) return;              // a replay owns the machine
     this.machine.keyDown(code);
+    if (this.recorder) this.recorder.add('k', code | 0x80);
   };
 
   // ЛАТ / РУС, which software reads at $C063 and the host keyboard reads to
   // decide which plane a key is in.
   App.prototype.setLayout = function (rus) {
+    if (this.player) return this.machine.cyrillic;
+    if (this.recorder) this.recorder.add('l', rus ? 1 : 0);
     return this.machine.setLayout(rus);
   };
 
@@ -167,20 +177,29 @@
   // Null where no mouse is fitted.
   App.prototype.mouseMove = function (dx, dy) {
     var c = this.mouseCard();
-    return c ? c.move(dx, dy) : null;
+    if (!c || this.player) return null;
+    var step = c.move(dx, dy);
+    // Only where it came to a count: a recording of every host pixel would be
+    // mostly zeroes, and zeroes the machine never saw.
+    if (this.recorder && (step[0] || step[1])) {
+      this.recorder.add('m', step[0], step[1]);
+    }
+    return step;
   };
 
   // One button, by bit: 0 is A, 1 is B.
   App.prototype.mouseButton = function (n, down) {
     var c = this.mouseCard();
-    if (c) c.setBtn(down ? (c.btn | (1 << n)) : (c.btn & ~(1 << n)));
+    if (c) this.mouseButtons(down ? (c.btn | (1 << n)) : (c.btn & ~(1 << n)));
   };
 
   // Both at once — what letting go of the pointer does, since nothing will
   // report the release of a button held while it goes.
   App.prototype.mouseButtons = function (mask) {
     var c = this.mouseCard();
-    if (c) c.setBtn(mask);
+    if (!c || this.player) return;
+    c.setBtn(mask);
+    if (this.recorder) this.recorder.add('b', c.btn);
   };
 
   // The mouse card, if one is fitted. All three answer move() and carry the
@@ -267,6 +286,7 @@
     // What is in which drive, as entries rather than slots: the 140K drive is
     // slot 6 on the Agat-9 and slot 3 on the Agat-7, and a disk stays in the
     // drive it was in — D2 of the old machine is D2 of the new one.
+    this.machineChanged();             // a rebuilt machine is not the one recorded
     var keep = [], i, at;
     for (i = 0; i < this.disks.length; i++) {
       at = this.mountedAt(this.disks[i]);
@@ -450,6 +470,7 @@
     // The media kind, not the file's: a .dsk and a .nib of the same disk are
     // one drive's business, and AGAT.mount normalized both to one of two.
     if (this.slotFor(entry.media.kind) !== slot) return false;
+    this.machineChanged();
     if (at) this.machine.cards[at.slot].eject(at.drv);
     card.insert(entry.media, drv);
     return true;
@@ -457,6 +478,7 @@
 
   App.prototype.unmount = function (slot, drv) {
     var card = this.machine.cards[slot];
+    this.machineChanged();
     if (card && card.eject) card.eject(drv);
   };
 
@@ -510,6 +532,7 @@
 
   App.prototype.setLocked = function (entry, locked) {
     if (!this.canUnlock(entry)) return false;
+    this.machineChanged();
     entry.media.locked = !!locked;
     return true;
   };
@@ -1311,6 +1334,74 @@
     });
   };
 
+  // ---- recording -------------------------------------------------------------
+  //
+  // One take at a time, and never a take and a replay at once. See record.js
+  // for what is in one and why the disk ends it.
+
+  App.prototype.startRecording = function (opts) {
+    var self = this;
+    this.stopPlaying();
+    this.stopRecording('user');
+    // Held while the snapshot is taken: state.save() encodes the RAM a turn
+    // later, so a machine that steps in between is saved from two cycles at
+    // once — and stamped with neither.
+    var was = this.running;
+    this.stop();
+    var rec = new AGAT.Recorder(this, opts);
+    return rec.start().then(function () {
+      self.recorder = rec;
+      if (was) self.start();
+      return rec;
+    });
+  };
+
+  // The take, or null where there was none. Kept as `recording`: a container
+  // carries one, and this is it.
+  App.prototype.stopRecording = function (why) {
+    if (!this.recorder) return null;
+    this.recording = this.recorder.stop(why || 'user');
+    this.recorder = null;
+    return this.recording;
+  };
+
+  // Play one back. The machine is restored to where the take began and the run
+  // loop feeds the inputs in; the doors are shut meanwhile, so nothing a person
+  // does reaches the machine until it is over. Rejects the way a container's
+  // state does — a recording of one machine does not play on another.
+  App.prototype.startPlaying = function (rec) {
+    var self = this;
+    this.stopRecording('machine');
+    rec = rec || this.recording;
+    if (!rec || !rec.state) {
+      return Promise.reject(new Error('nothing recorded'));
+    }
+    this.stop();
+    var p = new AGAT.Player(this, rec);
+    return p.start().then(function (s) {
+      self.player = p;
+      self.paused = false;
+      self.start();
+      return s;
+    });
+  };
+
+  // The machine goes on running live from wherever the replay had got to,
+  // which is what taking over will be when there is a control for it.
+  App.prototype.stopPlaying = function () {
+    var p = this.player;
+    this.player = null;
+    return p;
+  };
+
+  // Anything that changes the machine without being an input ends both. A take
+  // that cannot be played back is worse than a short one, and a replay whose
+  // machine has been reset underneath it is not a replay.
+  App.prototype.machineChanged = function () {
+    this.stopRecording('machine');
+    this.stopPlaying();
+  };
+
   // ---- run loop ------------------------------------------------------------
 
   App.prototype.start = function () {
@@ -1325,6 +1416,23 @@
 
   App.prototype.stop = function () { this.running = false; };
 
+  // The machine out to a cycle, stopping on the way at anything a replay has to
+  // put in. The frame loop turns elapsed time into a target; this turns a
+  // target into instructions, and it is the seam a speed control and a rewind
+  // will both want — neither of them changes what a cycle is.
+  App.prototype.runTo = function (target) {
+    var cpu = this.machine.cpu, p, stop;
+    while (cpu.cycles < target && !cpu.halted) {
+      p = this.player;
+      stop = p ? Math.min(target, p.nextCycle()) : target;
+      while (cpu.cycles < stop && !cpu.halted) cpu.step();
+      if (!p) break;
+      p.apply(cpu.cycles);
+      if (p.done()) { this.stopPlaying(); break; }
+    }
+    if (this.recorder && this.recorder.wrote()) this.stopRecording('write');
+  };
+
   // The machine held still. Nothing is saved and nothing is put back — the
   // frame loop simply stops being scheduled, so cpu.cycles stops advancing and
   // every timestamp hung off it stays where it was.
@@ -1336,12 +1444,14 @@
 
   App.prototype.reset = function () {
     this.paused = false;               // Reset and Boot mean "run this"
+    this.machineChanged();
     this.machine.reset();
     this.start();
   };
 
   App.prototype.boot = function (slot) {
     this.paused = false;
+    this.machineChanged();
     this.bootFrom(slot === undefined ? this.bootDrive() : slot);
     this.start();
   };
@@ -1390,7 +1500,7 @@
     m.speakerEdges.length = 0;
     var from = cpu.cycles;
     var target = from + Math.round(dt * 0.001 * CPU_HZ);
-    while (cpu.cycles < target && !cpu.halted) cpu.step();
+    this.runTo(target);
     this.speaker.play(m.speakerEdges, from, cpu.cycles);
 
     this.video.render(m);

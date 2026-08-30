@@ -759,6 +759,52 @@ exactly the failure this can have, and nothing cheaper catches it.
 
 ---
 
+## Recordings
+
+`record.js` is a session: the `state.js` snapshot the machine was in, and every
+input since, each stamped with the cycle it landed on.
+
+```
+k  code      the byte in the keyboard latch, $C000
+l  0 | 1     ЛАТ / РУС, which software reads at $C063
+m  ix iy     whole mouse counts, the host's pixels already spent
+b  mask      the two mouse buttons, bit 0 A and bit 1 B
+```
+
+Events are `[dcycles, kind, …]` — relative, because a recording is one thing
+after another and absolute stamps this long are mostly the same leading digits.
+Nothing about the host is in one: no scancode, no pixel, no millisecond.
+
+**This works because the machine is a function of its state and its inputs.**
+Nothing in `src/` reads a clock or a random number: the raster counter, both
+drives' byte clocks and the «Марсианка»'s step timer are all stamps on
+`cpu.cycles`. So a replay that puts the same bytes in the same registers on the
+same cycles is not an approximation of the session, it is the session.
+
+`App.runTo(target)` is the seam. The frame loop turns elapsed time into a cycle
+target and `runTo` turns a target into instructions, stopping at each event on
+the way — which is what makes the replay independent of how the browser happens
+to chop time up, and where a speed control and a rewind will both hook in.
+`Recorder` listens at the App's four input doors; `Player` injects at the
+machine and the card instead, so a replay cannot record itself and the doors
+stay shut while it runs.
+
+**A write ends a take.** The media are not in the snapshot — they come from the
+container's payload and its patches — so the disk a replay finds is the disk as
+it stands now, not as it stood when recording began, and a program that wrote a
+file and read it back would read the future. `Media.writes` counts marks rather
+than tracks, because a track written twice looks like a track written once.
+Anything that changes the machine without being an input — Reset, Boot, a disk
+in or out, a rebuild — ends a take and a replay both.
+
+`node tools/check.js record` records a session, plays it into a machine built
+from scratch in chunks that line up with nothing, and requires the two to agree
+on the clock, the screen and every byte of RAM. It also checks the cycle each
+input landed on against its stamp, and that is the assertion with teeth: a
+player that does not stop the run loop on its next event delivers rise-out's
+eight keys up to 92000 cycles late, and the game still ends on the same PC with
+the same RAM.
+
 ## Saves in the browser
 
 `store.js` is the emulator page keeping a program between sessions, and it adds
@@ -1193,6 +1239,8 @@ node tools/check.js keys   <.agc>   # the controls panel and the winnowed board
 node tools/check.js write  <image> --keys=…    # boot unlocked, say what was written
 node tools/check.js state  <image>  # save the machine mid-run, restore it into a
                                     # fresh one, and run both on
+node tools/check.js record          # record a session, play it back into a fresh
+                                    # machine, and require the two to agree
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
 node tools/shot.js <image> --mouse=nippel --click=R --hold=L --move=60,0
                                     # ...and drive a mouse over it

@@ -34,6 +34,9 @@
 //   node tools/check.js modules                  the pages vs tools/modules.js
 //   node tools/check.js pwa                      the manifest, the icons and the
 //                                                worker's precache list
+//   node tools/check.js record [image]           record a session, play it back
+//                                                into a fresh machine, and
+//                                                require the two to agree
 //   node tools/check.js state  <image> [cycles]  save the machine mid-run,
 //                                                restore it into a fresh one,
 //                                                and run both on: the two have
@@ -2036,6 +2039,196 @@ async function urlkeysCmd(roms) {
 // patches instead — so the media is copied across by hand here, which is what
 // the container does by another route and what leaves this measuring the state
 // machinery alone.
+// --- a session recorded and played back --------------------------------------
+//
+// The claim a recording makes is that the machine is a function of its state
+// and its inputs: put the same bytes in the same registers on the same cycles
+// and the same program runs. So record a session — keys at cycles nobody chose
+// for being round — play it back into a machine built from scratch, and require
+// the two to agree on the clock, the screen and every byte of RAM.
+//
+// The replay runs in chunks of a different size than the recording did, and the
+// cycle each input lands on is checked against the stamp it was recorded with.
+// Both halves are needed: the mistake worth catching is an input applied at the
+// end of whatever chunk it fell in rather than on its cycle, and a game that
+// polls the keyboard hides that for a long time.
+//
+// A third machine runs the same distance with no inputs at all. If it agreed
+// with the other two the keys would not be reaching the program and the whole
+// exercise would be measuring nothing.
+if (cmd === 'record') {
+  H.loadRoms(ctx).then(recordCmd).catch(die);
+  return;
+}
+
+async function recordCmd(roms) {
+  const A = ctx.AGAT;
+  const target = rest[0] || path.join(H.ROOT, 'examples', 'rise-out.agc');
+  const sniffed = await H.sniffFile(ctx, target);
+  const model = flags.model ? Number(flags.model) : (H.modelOf(sniffed) || 9);
+  // Long enough to be out of the boot and into the program: a recording made
+  // while a disk is still loading records nothing anybody typed.
+  const per = Number(flags.per) || 30e6;
+
+  // The App's own methods over a machine, with the frame loop left out: the
+  // recorder, the player and runTo are what is being tested, and rAF is not
+  // here. `machine` and `slots` are what state.js asks of an App.
+  const open = () => {
+    const m = H.makeMachine(ctx, roms, { model: model, agc: sniffed.agc });
+    const at = H.mountAll(ctx, m, sniffed);
+    m.reset();
+    m.bootSlot(at < 0 ? H.fddSlot(m) : at);
+    return Object.assign(Object.create(A.App.prototype), {
+      machine: m, slots: m.slots, running: true,
+      start() {}, stop() {}, onStatus() {},
+    });
+  };
+
+  // Where the keys go and what they are: offsets nobody would pick as a frame
+  // boundary, and the game's own controls.
+  const script = [
+    [0.37, '_'], [1.9, '→'], [2.13, '→'], [2.9, '↑'], [4.05, '←'],
+    [5.5, '_'], [6.61, '↓'], [7.02, '→'],
+  ];
+  const span = 9e6;
+
+  const a = open();
+  a.runTo(a.machine.cpu.cycles + per);         // up out of the boot and playing
+  await a.startRecording({ name: 'test' });
+  const from = a.machine.cpu.cycles;
+  for (const [at, key] of script) {
+    a.runTo(from + Math.round(at * 1e6));
+    a.key(H.keyCode(key));
+  }
+  a.runTo(from + span);
+  const rec = a.stopRecording();
+
+  // Played back into a machine that has never seen any of it, in chunks that
+  // line up with nothing.
+  const b = open();
+  await b.startPlaying(rec);
+  // Where each input actually lands. A program is a blunt instrument for this:
+  // rise-out polls the latch, so a key delivered late still reaches it on the
+  // same poll. Measured — a player that does not stop the run loop on its next
+  // event delivers these eight up to 92000 cycles late and the machine still
+  // ends on the same PC with the same RAM. The stamps are what catch it.
+  const landed = [];
+  const inject = b.player.inject;
+  b.player.inject = function (kind, x, y) {
+    landed.push(b.machine.cpu.cycles);
+    return inject.call(this, kind, x, y);
+  };
+  const chunks = [17000, 350000, 4321, 1200000, 99999];
+  for (let i = 0; b.machine.cpu.cycles < rec.ended && i < 4000; i++) {
+    b.runTo(Math.min(rec.ended, b.machine.cpu.cycles + chunks[i % chunks.length]));
+  }
+
+  // And the same distance with nothing typed at all.
+  const c = open();
+  c.runTo(c.machine.cpu.cycles + per + span);
+
+  const regs = (app) => {
+    const m = app.machine;
+    return [m.cpu.cycles, m.cpu.pc, m.cpu.a, m.cpu.x, m.cpu.y, m.cpu.s, m.cpu.p,
+            m.rasterLine, m.kbdLatch];
+  };
+  // The screen as a number, because a game is in graphics and dumpText only
+  // reads the text page: every pixel the video controller would put out.
+  const video = new A.Video(model === 7 ? roms.font7 : roms.font9,
+                            A.monitorPalette(), { m0: model === 7 ? 0x80 : 0x40 });
+  const shot = (app) => {
+    video.render(app.machine);
+    let h = 2166136261;
+    for (let i = 0; i < video.idx.length; i++) {
+      h = Math.imul(h ^ video.idx[i], 16777619);
+    }
+    return (h >>> 0).toString(16);
+  };
+  const ramDiff = (x, y) => {
+    for (let i = 0; i < x.machine.ram.length; i++) {
+      if (x.machine.ram[i] !== y.machine.ram[i]) return i;
+    }
+    return -1;
+  };
+
+  let bad = 0;
+  const same = (what, x, y) => {
+    if (JSON.stringify(x) === JSON.stringify(y)) return;
+    bad++;
+    console.log('DIFFERS    ' + what + '\n  recorded ' + JSON.stringify(x) +
+                '\n  replayed ' + JSON.stringify(y));
+  };
+  const check = (what, ok) => {
+    if (ok) return;
+    bad++;
+    console.log('FAILED     ' + what);
+  };
+
+  console.log('image      ' + path.basename(target) + '  (' + sniffed.kind + ')');
+  console.log('recorded   ' + rec.events.length + ' events over ' +
+              ((rec.ended - rec.cycles) / 1.02e6).toFixed(1) + ' s, stopped: ' +
+              rec.stopped);
+  console.log('snapshot   ' + Math.round(JSON.stringify(rec.state).length / 1024) +
+              'K at ' + hex(rec.state.cpu.pc));
+
+  // The stamps the recording carries, as absolute cycles, against where the
+  // replay put them. Late by up to an instruction is the honest answer — the
+  // run loop stops on the cycle and the 6502 was in the middle of something —
+  // and early is not an answer at all.
+  const want = [];
+  let at = rec.cycles;
+  for (const e of rec.events) { at += e[0]; want.push(at); }
+  const late = landed.map((c, i) => c - want[i]);
+  check('every input was played back', landed.length === want.length);
+  check('none of them early', late.every((n) => n >= 0));
+  check('none of them more than an instruction late, whatever the chunking',
+        late.every((n) => n <= 7));
+  console.log('landed     ' + late.length + ' inputs, ' +
+              Math.max(0, ...late) + ' cycles late at worst');
+
+  same('the clock and the registers', regs(a), regs(b));
+  same('the screen', shot(a), shot(b));
+  check('RAM, byte for byte', ramDiff(a, b) < 0);
+  check('the replay ran to the end of the recording', !b.player);
+  check('a session with no keys in it goes somewhere else',
+        shot(c) !== shot(a) || ramDiff(a, c) >= 0);
+
+  // The doors are shut while a replay runs: a key pressed then is a key the
+  // machine never sees, or a take-over nobody asked for.
+  const d = open();
+  await d.startPlaying(rec);
+  const latch = d.machine.kbdLatch;
+  d.key(0x41);
+  d.mouseButtons(3);
+  check('a key pressed during a replay does not reach the machine',
+        d.machine.kbdLatch === latch);
+
+  // And a write ends a take, because the disk a replay would find is the disk
+  // as it stands now and not as it stood when this began.
+  const e = open();
+  await e.startRecording();
+  e.runTo(e.machine.cpu.cycles + 10000);
+  const media = e.machine.cards[H.fddSlot(e.machine)]
+    ? e.machine.cards[H.fddSlot(e.machine)].mediaAt(0) : null;
+  const disk = media || (function () {
+    for (let n = 0; n < 8; n++) {
+      const card = e.machine.cards[n];
+      if (card && card.mediaAt && card.mediaAt(0)) return card.mediaAt(0);
+    }
+    return null;
+  })();
+  check('a disk to write to', !!disk);
+  if (disk) {
+    disk.markWritten(0);
+    e.runTo(e.machine.cpu.cycles + 10000);
+    check('a write ends the take', e.recorder === null &&
+          e.recording.stopped === 'write');
+  }
+
+  console.log(bad ? 'DIVERGED' : 'OK - in step');
+  process.exit(bad ? 1 : 0);
+}
+
 if (cmd === 'state') {
   H.loadRoms(ctx).then(stateCmd).catch(die);
   return;
