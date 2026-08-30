@@ -822,6 +822,9 @@
       this.title = this.author = this.date = this.url = '';
       this.notes = this.info = this.hint = this.fromAgc = this.agcBoot = '';
       this.agcState = null;
+      // The take goes with them: it is a session with *that* program, and its
+      // snapshot would put the old RAM back over the new disk.
+      this.recording = null;
       AGAT.keyboard.setRemap(null);
       AGAT.keyboard.setControls(null);
     }
@@ -982,6 +985,7 @@
     this.agcMonitor = c.machine.monitor || '';
     this.agcBoot = c.machine.boot || '';
     this.agcState = c.state || null;
+    this.recording = null;             // a take belongs to the program it is of
     this.monitor = over.monitor || this.agcMonitor || AGAT.MONITOR_DEFAULT;
     this.overCards = 'cards' in over ? over.cards : null;
     this.build();

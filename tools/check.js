@@ -2225,6 +2225,24 @@ async function recordCmd(roms) {
           e.recording.stopped === 'write');
   }
 
+  // A take belongs to the program it is of. Through a real App, because it is
+  // the load path that has to drop it and nothing shorter stands for that.
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({ createImageData: () => ({ data: [] }),
+                         putImageData: () => {} }),
+  };
+  ctx.requestAnimationFrame = () => {};
+  const bytes = (f) => ctx.Uint8Array.from(
+    fs.readFileSync(path.join(H.ROOT, 'examples', f)));
+  const page = new A.App({ canvas, model: 7, onStatus() {} });
+  page.roms = roms;
+  page.build();
+  await page.load(bytes('rise-out.agc'), 'rise-out.agc');
+  page.recording = rec;
+  await page.load(bytes('snake.agc'), 'snake.agc');
+  check('another program clears the take', page.recording === null);
+
   console.log(bad ? 'DIVERGED' : 'OK - in step');
   process.exit(bad ? 1 : 0);
 }
