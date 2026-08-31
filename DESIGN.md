@@ -873,6 +873,13 @@ replaced. That last clause is `App.sinceTake`, which counts inputs
 and machine changes that went in outside a take: standing inside the take is not
 enough, the machine has to have got there by the take's own doing.
 
+**Where it is picked up is `App.takeCycle`** — the cycle *on the take* the
+machine stands on, which is the clock only while a replay is driving it. A
+take-over is a moment and Record is a click some seconds later; those seconds
+run live, so the take is cut where the replay stopped, `App.takeAt`. They are
+kept rather than closed up: nothing went in, so a replay of the longer take
+reproduces them by running the same distance with nothing going in.
+
 **Autoplay** is a field on the take, so it travels in the container: a demo that
 starts by itself is a property of the recording, not of this browser. The page
 plays it after a load, which is where the boot decision is too — a tool opening

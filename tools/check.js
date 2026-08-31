@@ -2470,6 +2470,39 @@ async function recuiCmd(roms) {
      [asked, !!app.recorder], [['Discard and override the entire recording?'], true]);
   stopRec('user');
 
+  // ---- taken over, and then thought about ---------------------------------
+  // A take-over is a moment and Record is a click some seconds later, and the
+  // machine runs live in between. Those seconds are not part of the take, so
+  // where it gets picked up is where the replay stopped and not where the
+  // clock has got to — the take is cut at the one and the events after it are
+  // gone, whatever the clock says.
+  await recRecord();
+  for (let i = 0; i < 6; i++) { app.runTo(m.cpu.cycles + 1e6); app.key(0xa0 + i); }
+  app.runTo(m.cpu.cycles + 1e6);
+  stopRec('user');
+  const whole = app.recording.events.length;
+
+  await recPlay();
+  app.runTo(m.cpu.cycles + 1e6);        // a fifth of the way in
+  recTakeOver();
+  const tail = Math.round(app.tailOfTake() * 100);
+  // Long enough to leave the take behind entirely: the clock is what used to
+  // decide, and past the end it would have kept every event and asked nothing.
+  app.runTo(app.recording.ended + 5e6);
+  eq('a machine taken over and left running is still where it was taken over',
+     [app.canExtend(), Math.round(app.tailOfTake() * 100)], [true, tail]);
+  asked = [];
+  await recRecord();
+  eq('so Record still asks about the tail, and drops it',
+     [asked.length, /remaining \d+%/.test(asked[0]), app.recorder.events.length < whole],
+     [1, true, true]);
+  // The seconds it spent running on are inside the take now, and they are the
+  // take's own: nothing went in, so a replay reproduces them by running the
+  // same distance with nothing going in.
+  eq('and the join is stamped where the clock is, not where the take was cut',
+     app.recorder.last, m.cpu.cycles);
+  stopRec('user');
+
   // ---- autoplay ------------------------------------------------------------
   recAutoEl.checked = true;
   const blurs = recAutoEl.blurs;

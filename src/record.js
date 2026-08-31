@@ -88,18 +88,28 @@
     });
   };
 
-  // A take picked up again, from the cycle the machine is on. Everything it
-  // recorded after this cycle is dropped, and what happens from here is
-  // recorded over it — which is sound because the machine got here by playing
-  // those same events back, so the state this continues from is the state the
-  // kept half produces.
+  // A take picked up again, at the cycle `cut` — how far into it the machine
+  // has actually been played, which the caller knows and the clock does not.
+  // Everything the take recorded after that is dropped, and what happens from
+  // here is recorded over it, which is sound because the machine got that far
+  // by playing those same events back: the state this continues from is the
+  // state the kept half produces.
+  //
+  // The clock is usually past the cut, and the gap is kept rather than closed.
+  // A replay taken over at 12% and left running for five seconds is a machine
+  // that ran those five seconds off the take's own events and nothing else, so
+  // a replay of the longer take reproduces them by running the same five
+  // seconds with nothing going in. Cutting at the clock instead would keep the
+  // 88% the machine never saw and record the new inputs after them, and the
+  // take would no longer play back as the session that made it.
   //
   // The snapshot and the wall clock are the take's own: this is the same
   // recording, longer. What marks the join is an `x` event carrying the
   // moment, which nothing reads yet and which is the only trace in the file
   // that the take was made in more than one sitting.
-  Recorder.prototype.extend = function (take) {
-    var now = this.app.machine.cpu.cycles, at = take.cycles, i, e;
+  Recorder.prototype.extend = function (take, cut) {
+    var at = take.cycles, i, e;
+    if (cut === undefined) cut = this.app.machine.cpu.cycles;
     this.state = take.state;
     this.name = take.name || this.name;
     this.wall = take.wall;
@@ -108,7 +118,7 @@
     this.events = [];
     for (i = 0; i < take.events.length; i++) {
       e = take.events[i];
-      if (at + e[0] > now) break;
+      if (at + e[0] > cut) break;
       at += e[0];
       this.events.push(e);
     }
