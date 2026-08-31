@@ -2301,7 +2301,7 @@ async function recuiCmd(roms) {
   // 23% means nothing without the length it is 23% of.
   eq('the panel offers to take over from a replay that is still running',
      [app.paused, recTakeEl.disabled,
-      /^\d+:\d\d, \d+ inputs ▶ \d+%, \d+:\d\d$/.test(recFactsEl.textContent)],
+      /^\d+:\d\d, \d+ inputs ▶ \d+:\d\d \d+%$/.test(recFactsEl.textContent)],
      [false, false, true]);
   // Play is live while one is running, and starts the take again from the top:
   // a replay is the take read out, and reading it out again costs it nothing.

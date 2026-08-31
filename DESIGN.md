@@ -828,7 +828,7 @@ control should not paint two answers.
 Record and Play leave it up: it is where a take is finished again, and where
 what is being made or played is described while it happens. Its line is the
 take — `0:32, 23 inputs` — with the replay's position added to it rather than
-over it, `▶ 23%, 0:07`, because a percentage says nothing without the length it
+over it, `▶ 0:07 23%`, because a percentage says nothing without the length it
 is a percentage of. Every stretch of machine time on the page is printed by
 `AGAT.howLong`, the saves list's own formatter: minutes and seconds, and hours
 where there are any.

@@ -1748,9 +1748,12 @@
     var line = recLength(t);
     if (t.stopped === 'write') line += ' — stopped by a disk write';
     else if (t.stopped === 'machine') line += ' — stopped by a reset';
+    // The clock first and the percentage after it: both grow a character now
+    // and then, and at the end of the line that moves nothing that comes
+    // before it.
     if (app.player) {
-      line += ' ▶ ' + Math.round(app.player.at() * 100) + '%, ' +
-              AGAT.howLong(app.machine.cpu.cycles - t.cycles);
+      line += ' ▶ ' + AGAT.howLong(app.machine.cpu.cycles - t.cycles) +
+              ' ' + Math.round(app.player.at() * 100) + '%';
     }
     return line;
   }
