@@ -551,6 +551,63 @@
       });
   }
 
+  // ---- writing the text ------------------------------------------------------
+  //
+  // One event to a line, which JSON.stringify cannot be asked for: it spends
+  // four lines on `[370002, "k", 160]`, so a recording of a few thousand inputs
+  // becomes a file nobody can read at four times the bytes it needs. Every
+  // other list in a container is already one thing per line — a base64 block,
+  // a patch record — and this is that rule applied to the one list that is
+  // written by the thousand.
+  //
+  // Done by standing a marker where each `events` list goes, stringifying, and
+  // dropping the rendered lines in. Every container the page or the tools
+  // writes goes through here, `reorder` included, or a save would put back the
+  // four-line form the moment a file had its own field order.
+  var MARK = '\u0001events';
+
+  function containerText(o) {
+    var takes = o.recordings, marks = [], i, copy, k;
+    if (takes && takes.length) {
+      o.recordings = [];
+      for (i = 0; i < takes.length; i++) {
+        copy = {};
+        for (k in takes[i]) copy[k] = takes[i][k];
+        copy.events = MARK + marks.length;
+        marks.push(takes[i].events || []);
+        o.recordings.push(copy);
+      }
+    }
+    var text = JSON.stringify(o, null, 2);
+    for (i = 0; i < marks.length; i++) text = fillEvents(text, i, marks[i]);
+    return text + '\n';
+  }
+
+  // The marker sits where a value goes, so what it is indented by is what the
+  // rendered list has to line up with — read off the text rather than counted
+  // out here, because `recordings` is a list of objects and the depth of an
+  // `events` inside one is not something this should be spelling out twice.
+  function fillEvents(text, n, events) {
+    var want = JSON.stringify(MARK + n);
+    var at = text.indexOf(want);
+    if (at < 0) return text;
+    var bol = text.lastIndexOf('\n', at) + 1;
+    var pad = text.slice(bol, text.indexOf('"', bol));
+    var lines = [], i;
+    // Spelled out rather than JSON.stringify'd whole, for the space after each
+    // comma: these are read by eye as often as by a reader.
+    for (i = 0; i < events.length; i++) {
+      lines.push('[' + events[i].map(function (v) {
+        return JSON.stringify(v);
+      }).join(', ') + ']');
+    }
+    return text.slice(0, at) +
+      (lines.length
+        ? '[\n' + pad + '  ' + lines.join(',\n' + pad + '  ') + '\n' + pad + ']'
+        : '[]') +
+      text.slice(at + want.length);
+  }
+
   // The writer both `tools/agc.js` and the page's Save button go through, so
   // there is one definition of what a container looks like. Fields are added in
   // the documented order because JSON.stringify keeps insertion order, and a
@@ -589,7 +646,7 @@
     for (i = 0; i < list.length; i++) todo.push(buildMedium(list[i], spec));
     return Promise.all(todo).then(function (media) {
       o.media = media;
-      return JSON.stringify(o, null, 2) + '\n';
+      return containerText(o);
     });
   }
 
@@ -645,7 +702,7 @@
     }
     var out = {};
     for (i = 0; i < seq.length; i++) out[seq[i]] = o[seq[i]];
-    return JSON.stringify(out, null, 2) + '\n';
+    return containerText(out);
   }
 
   // A container's `machine.slots` as a machine takes it: kilobytes to bytes.

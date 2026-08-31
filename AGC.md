@@ -586,7 +586,9 @@ reads a clock.
 
 An event is `[dcycles, kind, …]` — the cycles since the one before it, relative
 because a recording is one thing after another and absolute stamps this long
-are mostly the same leading digits. The kinds are what the machine can see:
+are mostly the same leading digits. They are written one to a line, whatever the
+indentation around them: a take of a few thousand inputs is unreadable and four
+times the size with each event spread over four lines. The kinds are what the machine can see:
 
 | kind | |
 |---|---|

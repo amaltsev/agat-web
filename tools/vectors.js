@@ -2523,6 +2523,36 @@ async function agcTests() {
                                      medium('small.dsk', 143360)], 'fdd140')),
          6);
 
+      // A take, and the one thing about it that is this writer's rather than
+      // record.js's: one event to a line. JSON.stringify spends four lines on
+      // each, which a recording of a few thousand inputs cannot afford — and a
+      // container that already has a field order of its own goes back out
+      // through reorder, which must not undo it.
+      const take = {
+        version: 1, name: 't', wall: 0, cycles: 100, ended: 200,
+        stopped: 'user', state: null,
+        events: [[10, 'k', 193], [90, 'm', 3, -1]],
+      };
+      const withTake = await A.agc.build({
+        title: 'take', model: 7, ram: 64, recordings: [take],
+        media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
+      });
+      eq('a recording is written one event to a line',
+         withTake.split('\n').filter((l) => /^\s*\[/.test(l)).map((l) => l.trim()),
+         ['[10, "k", 193],', '[90, "m", 3, -1]']);
+      eq('and stays that way through a reorder',
+         A.agc.reorder(withTake, ['agc', 'media', 'title', 'machine', 'recordings'])
+           .split('\n').filter((l) => /^\s*\[/.test(l)).map((l) => l.trim()),
+         ['[10, "k", 193],', '[90, "m", 3, -1]']);
+      const tookBack = await A.agc.parse(
+        ctx.Uint8Array.from(Buffer.from(withTake)), 'take.agc');
+      eq('a take survives the round trip', tookBack.recordings[0].events, take.events);
+      eq('a container with no take carries no field',
+         'recordings' in JSON.parse(await A.agc.build({
+           title: 'none', model: 7, ram: 64, recordings: [],
+           media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
+         })), false);
+
       const plain = await A.agc.build({
         title: 'plain', model: 7, ram: 64,
         media: [{ name: 'x.dsk', bytes: new ctx.Uint8Array(143360) }],
