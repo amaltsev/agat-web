@@ -19,15 +19,11 @@
   the questions in tmp/quick-save-open-questions.md: what a ring belongs to,
   how it is evicted, which pause snapshots, whether loading snapshots first,
   and splitting `written` so a save can quiet the leave dialogs.
-* Actions recorder, replayable in the emulator. `src/record.js` and
-  `App.runTo` are in — a take is the snapshot plus every input stamped with
-  its cycle, a write or a machine change ends one, and `check.js record`
-  proves a replay lands each input on the cycle it was recorded on. What is
-  left:
-  - The recording into the container, one per container: an AGC field, the
-    reader, the writer, `edit-agc.html` and AGC.md together, or the editor
-    drops it on the next round trip. Sizing wants a rule — a take carries its
-    own gzipped RAM.
+* Actions recorder, replayable in the emulator. `src/record.js`, `App.runTo`
+  and the container's `recordings` are in — a take is the snapshot plus every
+  input stamped with its cycle, a write or a machine change ends one, and
+  `check.js record` proves a replay lands each input on the cycle it was
+  recorded on, including one read back out of a container. What is left:
   - The panel. On load a recording shows in a block like the controls do;
     clicking it loads the state and plays. "Record"? "Time Machine"? Its
     stub-document test goes beside `dosui` and `agcui`.
@@ -37,7 +33,14 @@
   - Speed control, and then rewind: `runTo` is the seam for both. Rewind
     wants keyframes — re-simulation runs about 15x real time, so a snapshot
     every 30 s of machine time puts a 10-second step under a second.
-  - A write inside a take, which means carrying the medium's bytes as of its
-    start and keeping a replay's writes out of the patches that get saved.
+  - The disk a take assumes. A write after a take was made, saved into the
+    container, leaves the take starting from a disk it never saw — it still
+    plays, it may not play the same. Left alone deliberately until it is seen
+    to bite; then a digest of the disk in the take, so a mismatch is said
+    rather than guessed at, and after that the take carrying its own diff from
+    the payload, which is `writeBack`'s machinery at record time and belongs
+    with the merge-on-save item above.
+  - A write *inside* a take, which is the same diff plus keeping a replay's
+    writes out of the patches that get saved.
 * Printer support - a lot more details on https://gsqsoft.atlassian.net/browse/AGT-8
 * In "Load" saves overview, wall clock is not enough - should be a date.

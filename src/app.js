@@ -985,7 +985,9 @@
     this.agcMonitor = c.machine.monitor || '';
     this.agcBoot = c.machine.boot || '';
     this.agcState = c.state || null;
-    this.recording = null;             // a take belongs to the program it is of
+    // A take belongs to the program it is of, so the container's own is what
+    // the page holds. One at a time here; the file carries a list.
+    this.recording = (c.recordings && c.recordings[0]) || null;
     this.monitor = over.monitor || this.agcMonitor || AGAT.MONITOR_DEFAULT;
     this.overCards = 'cards' in over ? over.cards : null;
     this.build();
@@ -1304,6 +1306,11 @@
   App.prototype.agcSpec = function (media, state) {
     return AGAT.agc.build({
       state: state,
+      // Whatever take the session holds — made here, or carried in by the
+      // container and not played over. Unlike a snapshot it is not a person's
+      // session left in the middle of somebody else's program: it exists
+      // because somebody deliberately recorded it, so it is not asked about.
+      recordings: this.recording ? [this.recording] : [],
       title: this.title || (media.length ? media[0].name : ''),
       author: this.author,
       date: this.date,

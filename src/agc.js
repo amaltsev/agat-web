@@ -439,6 +439,11 @@
       // business, and a container that carries one this reader does not
       // understand is still a container and still boots.
       state: c.state || null,
+      // The takes, if the file carries any, handed on packed exactly as state
+      // is and for the same reason: what is inside one is record.js's business.
+      // A list because a container is one program and a program can be played
+      // more than once; the page makes and plays one at a time.
+      recordings: c.recordings instanceof Array ? c.recordings : [],
     };
     return { fields: out, media: c.media || [] };
   }
@@ -580,6 +585,7 @@
     // Last of all, and only when asked for: a snapshot is bulk nobody reads,
     // and everything above it is what somebody opening the file came for.
     if (spec.state) o.state = spec.state;
+    if (spec.recordings && spec.recordings.length) o.recordings = spec.recordings;
     for (i = 0; i < list.length; i++) todo.push(buildMedium(list[i], spec));
     return Promise.all(todo).then(function (media) {
       o.media = media;
@@ -607,6 +613,7 @@
       model: m.model, ram: m.ram, monitor: m.monitor, boot: m.boot,
       slots: m.slots,
       keys: c.keys, controls: c.controls, state: c.state,
+      recordings: c.recordings,
       media: (c.media || []).map(function (md) {
         return { name: md.name, bytes: md.bytes, patches: md.patches,
                  mount: md.mount, writable: md.writable };

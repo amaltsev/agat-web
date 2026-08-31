@@ -2225,6 +2225,34 @@ async function recordCmd(roms) {
           e.recording.stopped === 'write');
   }
 
+  // Out through the container and back. A take is only useful if it survives
+  // being written to a file, so the one that plays here is the one a save
+  // wrote and a load read — packed snapshot, relative stamps and all.
+  const text = await A.agc.build({
+    title: 'a take', model: model, ram: a.machine.ramSize >> 10,
+    recordings: [rec],
+    media: [{ name: 'disk', bytes: (sniffed.agc ? sniffed.agc.media[0].bytes
+                                                : sniffed.payload) }],
+  });
+  const back = await A.agc.parse(Buffer.from(text, 'utf8'), 'take.agc');
+  check('the container carries the take', (back.recordings || []).length === 1);
+  const f = open();
+  await f.startPlaying(back.recordings[0]);
+  while (f.machine.cpu.cycles < rec.ended && f.player) {
+    f.runTo(Math.min(rec.ended, f.machine.cpu.cycles + 250000));
+  }
+  // The editor's path over the same file: respec is what carries a field no
+  // editor touches, and a take is now one of those.
+  const edited = await A.agc.parse(Buffer.from(await A.agc.build(
+    Object.assign(A.agc.respec(back), { title: 'renamed' })), 'utf8'), 'edited.agc');
+  check('an edit carries the take through',
+        (edited.recordings || []).length === 1 &&
+        edited.recordings[0].events.length === rec.events.length);
+
+  same('a take read back out of a container', regs(a), regs(f));
+  check('...down to the RAM', ramDiff(a, f) < 0);
+  console.log('container  ' + Math.round(text.length / 1024) + 'K with the take in it');
+
   // A take belongs to the program it is of. Through a real App, because it is
   // the load path that has to drop it and nothing shorter stands for that.
   const canvas = {
@@ -2242,6 +2270,15 @@ async function recordCmd(roms) {
   page.recording = rec;
   await page.load(bytes('snake.agc'), 'snake.agc');
   check('another program clears the take', page.recording === null);
+
+  // And the page's own two ends of it: a container arrives carrying a take, and
+  // Save writes back the one the session holds.
+  await page.load(ctx.Uint8Array.from(Buffer.from(text, 'utf8')), 'take.agc');
+  check('a container brings its take in',
+        !!page.recording && page.recording.events.length === rec.events.length);
+  const saved = await A.agc.parse(
+    Buffer.from(await page.toAgc(), 'utf8'), 'saved.agc');
+  check('and Save writes it back out', (saved.recordings || []).length === 1);
 
   console.log(bad ? 'DIVERGED' : 'OK - in step');
   process.exit(bad ? 1 : 0);

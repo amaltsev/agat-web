@@ -797,13 +797,22 @@ than tracks, because a track written twice looks like a track written once.
 Anything that changes the machine without being an input — Reset, Boot, a disk
 in or out, a rebuild — ends a take and a replay both.
 
+A take goes into the container as `recordings`, carried packed the way a `state`
+block is — `agc.js` reads and writes the list, `respec` carries it through an
+edit, and `edit-agc.html` says one is there without touching it. The file holds a
+list and the page holds one: a container is one program, and its 600K of disk is
+not something several takes should each carry a copy of. A take is written
+whenever the session has one, without asking — unlike a snapshot it is not
+somebody left in the middle of somebody else's program.
+
 `node tools/check.js record` records a session, plays it into a machine built
 from scratch in chunks that line up with nothing, and requires the two to agree
 on the clock, the screen and every byte of RAM. It also checks the cycle each
 input landed on against its stamp, and that is the assertion with teeth: a
 player that does not stop the run loop on its next event delivers rise-out's
 eight keys up to 92000 cycles late, and the game still ends on the same PC with
-the same RAM.
+the same RAM. The container path is checked by playing back the take a save
+wrote and a load read, through the editor's `respec` as well.
 
 ## Saves in the browser
 

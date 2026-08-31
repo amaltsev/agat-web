@@ -194,7 +194,7 @@
       version: A.agc.VERSION, name: '', order: [],
       title: '', author: '', date: '', url: '', notes: '', info: '', hint: '',
       machine: { model: 0, ram: 0, monitor: '', boot: '', slots: null },
-      keys: {}, controls: {}, state: null,
+      keys: {}, controls: {}, state: null, recordings: [],
       media: [newMedium(file, bytes)],
     };
   }
@@ -493,6 +493,12 @@
   // that silently carries a megabyte of it should say the megabyte is there.
   function drawState(into) {
     if (doc.state) note(row(into, 'state'), 'the machine as it stood, kept as it is');
+    var takes = doc.recordings || [];
+    if (takes.length) {
+      note(row(into, takes.length > 1 ? 'recordings' : 'recording'),
+           takes.length + ' recorded ' + (takes.length > 1 ? 'sessions' : 'session') +
+           ', kept as they are');
+    }
   }
 
   // Where a disk may be put, which is also where a machine may be told to boot

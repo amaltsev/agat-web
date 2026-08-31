@@ -238,8 +238,8 @@ function slotSpecs(was) {
 // container for `make`, so one function decides both.
 //
 // src/agc.js's `respec` is what carries a field through unchanged, which is
-// every field no flag names — and `controls` and a `state` snapshot, which no
-// flag names at all.
+// every field no flag names — and `controls`, a `state` snapshot and any
+// recordings, which no flag names at all.
 function spec(was) {
   const s = A.agc.respec(was);
   for (const name of ['title', 'author', 'date', 'url', 'notes', 'info', 'hint']) {
@@ -280,7 +280,7 @@ function spec(was) {
 const EMPTY = {
   title: '', author: '', date: '', url: '', notes: '', info: '', hint: '',
   machine: { model: 0, ram: 0, monitor: '', boot: '', slots: null },
-  keys: {}, controls: {}, state: null, media: [],
+  keys: {}, controls: {}, state: null, recordings: [], media: [],
 };
 
 async function read(p) {
@@ -579,6 +579,12 @@ function info(c) {
     console.log(line);
   });
   say('state', c.state ? 'the machine as it stood' : '');
+  (c.recordings || []).forEach(function (r) {
+    const secs = ((r.ended - r.cycles) / 1.02e6).toFixed(1);
+    say('recording', (r.name ? r.name + ': ' : '') +
+        (r.events || []).length + ' inputs over ' + secs + ' s' +
+        (r.stopped && r.stopped !== 'user' ? ', stopped by a ' + r.stopped : ''));
+  });
 }
 
 // One field. A value with line breaks in it — a --notes of several paragraphs —

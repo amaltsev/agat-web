@@ -552,6 +552,60 @@ Saving one is a checkbox on **Save**'s file, and it is off unless the container
 being saved arrived with a state already. A save into the browser always carries
 one — see [Making one](#from-the-emulator).
 
+### `recordings` — sessions played back
+
+A `state` says where somebody had got to. A recording says what they did next:
+the same snapshot, and every input since, each stamped with the cycle it landed
+on. Playing one back into the snapshot runs the same program the same way,
+because the machine is a function of its state and its inputs and nothing in it
+reads a clock.
+
+```json
+"recordings": [ {
+  "version": 1,
+  "name": "level 1",
+  "wall": 1756530000000,
+  "cycles": 91234567,
+  "ended": 100234567,
+  "stopped": "user",
+  "state": { "…": "a state block, exactly as above" },
+  "events": [ [370000, "k", 160], [1900000, "k", 149], [230000, "m", 3, -1] ]
+} ]
+```
+
+| field | |
+|---|---|
+| `version` | the recording's own format version — `1`, and not `agc`, for the reason `state`'s is |
+| `name` | what to call it where more than one is offered |
+| `wall` | when it was recorded, in milliseconds since the epoch — for the person, never for the machine |
+| `cycles` | the master clock where it begins, the same scale `state` uses |
+| `ended` | and where it stops |
+| `stopped` | `user`, `write` or `machine` — why it stops, which is worth saying for a take that ends mid-sentence |
+| `state` | the machine it begins on, as `state` above |
+| `events` | the inputs, in order |
+
+An event is `[dcycles, kind, …]` — the cycles since the one before it, relative
+because a recording is one thing after another and absolute stamps this long
+are mostly the same leading digits. The kinds are what the machine can see:
+
+| kind | |
+|---|---|
+| `k` `code` | the byte in the keyboard latch, `$C000` |
+| `l` `0`\|`1` | ЛАТ / РУС, which software reads at `$C063` |
+| `m` `ix` `iy` | whole mouse counts, the host's pixels already spent |
+| `b` `mask` | the two mouse buttons, bit 0 A and bit 1 B |
+
+Nothing about the host is in one: no scancode, no pixel, no millisecond. A
+reader that meets a kind it does not know should skip that event rather than
+refuse the recording.
+
+**A recording assumes the disk it was made on.** The media are not in the
+snapshot, so a take stops at the first write — and a disk written *after* one
+was made, then saved, leaves the take starting from a disk it never saw. It
+still plays; it may not play the same. A list, though the page makes and plays
+one at a time: a container is one program, and the disk in it is 600K that
+several takes should not each carry a copy of.
+
 ---
 
 ## Making one
@@ -580,6 +634,11 @@ with the program. A container without one is something to hand to somebody; one
 with a state is where a particular person was. The box starts ticked for a
 container that already came with a state and clear for one that did not,
 including every bare image.
+
+A [recording](#recordings--sessions-played-back) made in this session travels
+with the container and is not asked about: unlike a snapshot it is not somebody
+left in the middle of somebody else's program, it exists because it was
+deliberately made.
 
 Nothing else is asked, including about compression, which is decided per
 payload, per patch and per snapshot by whether it pays.
