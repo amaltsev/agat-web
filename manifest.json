@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "АГАТ Web Emulator",
-  "short_name": "АГАТ",
+  "name": "АГАТ/Agat Web Emulator",
+  "short_name": "АГАТ/Agat",
   "description": "A browser emulator for Agat-7 and Agat-9",
   "start_url": "./",
   "scope": "./",
