@@ -224,8 +224,15 @@
         c = this.app.mouseCard();
         if (c) c.setBtn(a);
         break;
-      default: break;                   // a kind from a later version
+      default: return;                  // a kind from a later version
     }
+    // The page hears what went in. Nothing here came through the App's doors,
+    // so nothing hung off them has seen it: the drawn keyboard would stay dark
+    // through a replay and its ЛАТ/РУС would sit on whichever half the machine
+    // was in when the replay started, which is the wrong grays and the wrong
+    // legend on every cap. A report and not a door — the recorder does not
+    // listen to it, so a replay still cannot record itself.
+    if (this.app.onPlayed) this.app.onPlayed(kind, a, b);
   };
 
   // Every event played and the machine run out to where the recording ended.

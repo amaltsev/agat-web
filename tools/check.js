@@ -2188,6 +2188,16 @@ async function recuiCmd(roms) {
   const recFactsEl = el(), recWhenEl = el(), loadOptsEl = el(), loadEl = el();
   let said = [], closed = [], asked = [], answer = true;
   const say = (m, bad) => { said.push((bad ? '! ' : '') + m); };
+  // What a replay draws on. A board of its own is keyview.js's business and is
+  // tested there; what this has to see is that the page hands it the take's
+  // keys at all, and that the rest of the page follows the take too.
+  // The buttons are not in this: rise-out's machine has no mouse card, so a
+  // take made on it has nothing to press. What they do with one is mouse.js's
+  // `btn`, which syncMouseButtons reads rather than counts.
+  let flashed = [], layouts = [];
+  const kbView = { flash: (c) => flashed.push(c) };
+  const syncLayout = () => { layouts.push(m.cyrillic); };
+  const syncMouseButtons = () => {};
   const unstick = () => {};
   const closeSaveOpts = () => { closed.push('save'); };
   const closeFiles = () => { closed.push('files'); };
@@ -2224,6 +2234,8 @@ async function recuiCmd(roms) {
   eval(grab('drawRec'));
   eval(grab('recFacts'));
   eval(grab('put'));
+  eval(grab('playedInput'));
+  app.onPlayed = playedInput;          // as the App's own options hand it over
 
   // ---- the panel, with nothing recorded ------------------------------------
   recClick();
@@ -2287,6 +2299,22 @@ async function recuiCmd(roms) {
   stopRec('user');
   eq('and the take is now the longer one', app.recording.events.length, 3);
   eq('which says when it was added to', /last added to /.test(recWhenEl.textContent), true);
+
+  // ---- what the page draws while one runs ----------------------------------
+  // A take with one of each in it, played into the page: a replay reaches the
+  // machine without touching a control, so everything drawn from a control has
+  // to be told. The keys are the visible half — a board that stays dark
+  // through a replay is a keyboard the take appears not to be using.
+  await recRecord();
+  app.key(0xc1);
+  app.setLayout(true);
+  app.runTo(m.cpu.cycles + 1e6);
+  stopRec('user');
+  const typed = app.recording.events.filter((e) => e[1] === 'k').map((e) => e[2]);
+  await recPlay();
+  for (let i = 0; i < 400 && app.player; i++) app.runTo(m.cpu.cycles + 333331);
+  eq('a replay flashes every key it types, and the layout follows the take',
+     [flashed, layouts, m.cyrillic], [typed, [true], true]);
 
   // ---- played back ---------------------------------------------------------
   said = [];

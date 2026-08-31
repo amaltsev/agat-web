@@ -4,7 +4,8 @@
 // transcribed from a photograph of its Клавиатура —
 // https://www.agatcomp.ru/agat/Hardware/Key_Joy/KeyClassic/kbd15.jpg — and the
 // PC board is the set of scancodes `keyboard.js` maps, which is where your
-// fingers actually are. A host keypress lights a cap on either.
+// fingers actually are. A host keypress lights a cap on either, and a replay's
+// keys flash on the code-indexed boards as they go in.
 //
 // What the photograph settles, and what the whole file rests on:
 //
@@ -484,7 +485,8 @@
     el.appendChild(bot);
 
     var cap = { def: def, el: el, top: top, bot: bot, w: w,
-                gone: false, hide: false, sends: 0, kept: NONE };
+                gone: false, hide: false, sends: 0, kept: NONE,
+                dn: false, hit: 0 };
     this.caps.push(cap);
     el.__cap = cap;
     this.index(cap);
@@ -707,6 +709,11 @@
       // program: every legend the container named, and the cap may be standing
       // in for a code it does not carry at all.
       if (cap.sends) cap.el.title = this.reads(cap);
+      // Held under a finger, or flashing from a replay. Kept across the
+      // re-class because neither is a property of the layout: a key does not
+      // come up because ЛАТ/РУС moved under it.
+      if (cap.dn) cls += ' down';
+      if (cap.hit) cls += ' hit';
       if (cap.el.className !== cls) cap.el.className = cls;
     }
     // Run on the winnowed board whether or not anything was winnowed: a
@@ -866,14 +873,14 @@
   KeyView.prototype.light = function (info, code, on) {
     var i, list, cap, key;
     if (!info) {
-      for (i = 0; i < this.caps.length; i++) rm(this.caps[i].el);
+      for (i = 0; i < this.caps.length; i++) up(this.caps[i]);
       this.down = {};
       return;
     }
     key = info.scan + (info.ext ? 256 : 0);
     if (!on) {
       list = this.down[key] || [];
-      for (i = 0; i < list.length; i++) rm(list[i].el);
+      for (i = 0; i < list.length; i++) up(list[i]);
       delete this.down[key];
       return;
     }
@@ -881,16 +888,68 @@
       cap = this.byScan[key];
       list = cap ? [cap] : [];
     } else {
-      list = this.byCode[code & 0x7f] || this.byCode[capCode(code)] || [];
+      list = this.capsFor(code);
     }
-    for (i = 0; i < list.length; i++) add(list[i].el);
+    for (i = 0; i < list.length; i++) down(list[i]);
     this.down[key] = list;
+  };
+
+  // Which caps a byte lights. None on the PC board: it is indexed by scancode,
+  // and a byte cannot be walked back to the key that made it — the layout
+  // decides, and УПР+Ш and Esc both send $9B.
+  KeyView.prototype.capsFor = function (code) {
+    if (this.view === 'pc') return [];
+    return this.byCode[code & 0x7f] || this.byCode[capCode(code)] || [];
+  };
+
+  // A key from a replay: no host key under it, and no release coming. A
+  // recording carries the byte that landed in the latch and nothing else
+  // (record.js), so this is a light of its own length rather than a cap held
+  // down. The length is in cycles, like every other stamp in the emulator — a
+  // replay held at Pause holds its light with it, and one played back at some
+  // other speed keeps it lit for the same machine-time either way.
+  var FLASH = Math.round(AGAT.CPU_HZ * 0.12);
+
+  KeyView.prototype.flash = function (code) {
+    var list = this.capsFor(code), until = this.clock() + FLASH, i;
+    for (i = 0; i < list.length; i++) {
+      list[i].hit = until;
+      add(list[i].el, 'hit');
+    }
+  };
+
+  // Flashes that have burned out. Driven from the page's own tick rather than
+  // set on a timer per flash: a light on the machine's clock has to be looked
+  // at to know it has ended, since the machine's clock calls nothing.
+  KeyView.prototype.fade = function () {
+    var now = this.clock(), i, cap;
+    for (i = 0; i < this.caps.length; i++) {
+      cap = this.caps[i];
+      // Burned out, or struck by a machine that is no longer there: a replay
+      // started again puts the clock back before the flash, and nothing
+      // afterwards would ever reach its end.
+      if (cap.hit && (now >= cap.hit || now < cap.hit - FLASH)) {
+        cap.hit = 0;
+        rm(cap.el, 'hit');
+      }
+    }
+  };
+
+  // The machine's clock, where there is a machine to have one: a board drawn
+  // over a stub — tools/check.js keys — has none, and nothing on it flashes.
+  KeyView.prototype.clock = function () {
+    var m = this.app && this.app.machine;
+    return m && m.cpu ? m.cpu.cycles : 0;
   };
 
   // classList.toggle's second argument is not universally honored, and these
   // run on every keystroke.
-  function add(el) { if (el.className.indexOf(' down') < 0) el.className += ' down'; }
-  function rm(el) { el.className = el.className.replace(' down', ''); }
+  function down(cap) { cap.dn = true; add(cap.el, 'down'); }
+  function up(cap) { cap.dn = false; rm(cap.el, 'down'); }
+  function add(el, cls) {
+    if (el.className.indexOf(' ' + cls) < 0) el.className += ' ' + cls;
+  }
+  function rm(el, cls) { el.className = el.className.replace(' ' + cls, ''); }
 
   // Clicking a cap types it. The code goes straight into the latch rather than
   // back through the scancode table: a cap knows its own byte, and several caps
@@ -911,7 +970,7 @@
     cap = el && el.__cap;
     if (!cap) return;
     d = cap.def;
-    add(cap.el);
+    down(cap);
 
     if (d.act === 'shift') { this.stick ^= 1; this.refresh(); return; }
     if (d.act === 'ctrl') { this.stick ^= 2; this.refresh(); return; }

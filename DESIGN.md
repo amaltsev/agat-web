@@ -789,6 +789,14 @@ to chop time up, and where a speed control and a rewind will both hook in.
 machine and the card instead, so a replay cannot record itself and the doors
 stay shut while it runs.
 
+Which leaves the page with nothing to draw from, so `Player` reports each input
+it injects to `App.onPlayed`. That is a report and not a door — the recorder
+does not listen to it — and it is what the page draws a replay from: the take's
+keys flash on the drawn keyboard, ЛАТ/РУС follows it, and the painted mouse
+buttons go down under it. A flash has no release to wait for, since a recording
+carries the byte and not the key, so `KeyView.flash` lights a cap for a length
+of its own on `cpu.cycles` and `KeyView.fade` puts it out.
+
 **A write ends a take.** The media are not in the snapshot — they come from the
 container's payload and its patches — so the disk a replay finds is the disk as
 it stands now, not as it stood when recording began, and a program that wrote a

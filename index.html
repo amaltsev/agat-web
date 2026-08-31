@@ -188,7 +188,7 @@
      page's accent blue on a keycap would read as a button rather than a key. */
   .kb-cap.red { background: #d4453a; color: #fff; }
   .kb-cap:hover { outline: 1px solid var(--accent); }
-  .kb-cap.down, .kb-cap.on { background: var(--accent); color: #10131a; }
+  .kb-cap.down, .kb-cap.on, .kb-cap.hit { background: var(--accent); color: #10131a; }
   .kb-cap.dead { opacity: .4; cursor: default; }
   .kb-word { font-size: .82em; padding: 0 .2em; }
   .kb-half, .kb-sends { font-size: 1.05em; }
@@ -777,6 +777,11 @@
   var saveOptsEl = document.getElementById('saveopts');
   var saveStateBox = document.getElementById('savestate');
   var saveNoteEl = document.getElementById('savenote');
+  // The two painted mouse buttons, up here with the rest: syncMachineUI runs
+  // while the page is still being wired and reaches them long before the
+  // handlers below are hung on them.
+  var mbtnEls = [document.getElementById('mbtnA'),    // button A, bit 0
+                 document.getElementById('mbtnB')];
   var keyboardEl = document.getElementById('keyboard');
   var controlsEl = document.getElementById('controls');
   var infoEl = document.getElementById('info');
@@ -1039,11 +1044,25 @@
     ramSize: Number(ramSel.value),
     monitor: monitorSel.value,
     cards: menuCards(),
-    onKey: function (v, info) { if (kbView) kbView.light(info, v, true); },
+    // Not while a replay is running: the doors are shut, so a key pressed at it
+    // reaches nothing — and a lit cap now means the take pressed it.
+    onKey: function (v, info) { if (kbView && !app.player) kbView.light(info, v, true); },
     onKeyUp: function (info) { if (kbView) kbView.light(info, 0, false); },
     onMods: function (m) { if (kbView) kbView.setMods(m); },
+    onPlayed: playedInput,
   });
   app.speaker.setMuted(muteEl.checked);
+
+  // A replay's own inputs. They reach the machine without passing anything on
+  // the page — the doors are shut, and record.js reports them instead — so
+  // this is the whole of what a replay draws: the keys flash on the board,
+  // ЛАТ/РУС follows the take into whichever half it typed in, and the painted
+  // mouse buttons go down under it.
+  function playedInput(kind, a) {
+    if (kind === 'k') { if (kbView) kbView.flash(a); }
+    else if (kind === 'l') syncLayout();
+    else if (kind === 'b') syncMouseButtons();
+  }
 
   // The machine the App settled on, back into the controls and the tab. Worth
   // doing after a load as well as after a menu choice: a container names its
@@ -1858,8 +1877,8 @@
   // nothing on a real phone.
   function mouseBtn(el, bit) {
     function up() {
-      el.classList.remove('down');
       app.mouseButton(bit, false);
+      syncMouseButtons();
     }
     el.addEventListener('pointerdown', function (e) {
       var c = app.mouseCard();
@@ -1868,23 +1887,36 @@
       // Capture, so the release is heard even after the finger has wandered
       // off the button — a button that stays down is a mouse gone mad.
       if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
-      el.classList.add('down');
       app.mouseButton(bit, true);
+      syncMouseButtons();
     });
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
     el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   }
-  mouseBtn(document.getElementById('mbtnA'), 0);   // button A, bit 0
-  mouseBtn(document.getElementById('mbtnB'), 1);
+  mouseBtn(mbtnEls[0], 0);
+  mouseBtn(mbtnEls[1], 1);
 
-  // Only where there is a touchscreen and a card to press: a pointer with real
-  // buttons has no use for painted ones.
+  // Shown where there is a touchscreen and a card to press — a pointer with
+  // real buttons has no use for painted ones — and while a replay is running
+  // on any machine at all, where they are the only place the take's buttons
+  // can be seen going down.
+  //
+  // Lit from the card rather than from the press, because the press is not the
+  // only thing that moves them: a replay puts the same bits in the same
+  // register, and a replay started again clears them without telling anybody.
+  // The pointer handlers call this too, so a finger is answered on the spot
+  // rather than at the next tick.
   function syncMouseButtons() {
-    var show = (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) &&
-               !!app.mouseCard();
-    document.getElementById('mbtnA').hidden = !show;
-    document.getElementById('mbtnB').hidden = !show;
+    var c = app.mouseCard();
+    var show = !!c && (navigator.maxTouchPoints > 0 || 'ontouchstart' in window ||
+                       !!app.player);
+    var i, held;
+    for (i = 0; i < mbtnEls.length; i++) {
+      held = show && (c.btn & (1 << i)) ? 'mbtn down' : 'mbtn';
+      if (mbtnEls[i].hidden !== !show) mbtnEls[i].hidden = !show;
+      if (mbtnEls[i].className !== held) mbtnEls[i].className = held;
+    }
   }
 
 
@@ -2427,7 +2459,9 @@
     }
     // $C000 changes on a keypress and is cleared by the program that reads it,
     // so the readout has to be polled rather than pushed.
-    if (kbView) kbView.sync();
+    if (kbView) { kbView.fade(); kbView.sync(); }
+    // The replay's mouse, and the buttons appearing at all while one runs.
+    syncMouseButtons();
   }
 
   // A handle for the browser console: agat.machine, agat.video, agat.drives.

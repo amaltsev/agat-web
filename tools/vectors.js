@@ -451,6 +451,76 @@ function eq(what, got, want) {
   eq('and a host key goes through the App as well', machine.kbdLatch, 0xc2);
 }
 
+// --- and the way back out ---------------------------------------------------
+// A replay does not use the doors: it puts its bytes into the machine and the
+// card directly, since the doors are what a recorder listens to. So it reports
+// what it put in, and the page draws from that — the boards light, ЛАТ/РУС
+// follows the take, the mouse buttons go down under it.
+{
+  const machine = new A.Machine({ model: 7 });
+  const card = new A.MouseNippel();
+  machine.cards[4] = card;
+  const seen = [];
+  const app = Object.assign(Object.create(A.App.prototype), {
+    machine: machine,
+    onPlayed: (kind, a, b) => seen.push(kind + ' ' + a + (b === undefined ? '' : ' ' + b)),
+  });
+  const at = machine.cpu.cycles;
+  const player = new A.Player(app, {
+    cycles: at, ended: at + 100,
+    events: [[10, 'k', 0xc1], [5, 'l', 1], [5, 'm', 3, -2], [5, 'b', 1],
+             [5, 'b', 0], [5, 'x', 1750000000000]],
+  });
+  player.apply(at + 25);
+  eq('a replay reaches the machine, the register and the card',
+     [machine.kbdLatch, machine.cyrillic, card.btn], [0xc1, true, 1]);
+  // A button has both its edges in the take — `b` carries the whole mask every
+  // time either one moves — so what draws them follows the events and has
+  // nothing to guess at. The keyboard is the one that has to: a `k` is a byte
+  // in the latch, and no release was ever written down.
+  player.apply(at + 100);
+  eq('and a release is an event of its own', card.btn, 0);
+  // The `x` join is not an input: nothing was put anywhere, so there is nothing
+  // to draw and nothing to report.
+  eq('and it reports every input it put in, and only those',
+     seen, ['k 193', 'l 1', 'm 3 -2', 'b 1', 'b 0']);
+
+  // The board a replay lights. A recording has the byte that landed in the
+  // latch and no release at all, so the cap is lit for a length of its own,
+  // measured on the machine's clock like everything else.
+  const el = () => ({
+    children: [], style: {}, className: '', textContent: '', title: '',
+    appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+    parentNode: null,
+    addEventListener() {}, removeEventListener() {},
+    set innerHTML(v) { this.children = []; },
+    get innerHTML() { return ''; },
+  });
+  const had = ctx.document;
+  ctx.document = { createElement: el, addEventListener() {}, removeEventListener() {} };
+
+  const view = new A.KeyView(el(), app, { view: 'agat' });
+  const lit = (code) => view.capsFor(code).map((c) => / hit\b/.test(c.el.className));
+  view.flash(0xc1);
+  eq('a replayed key lights the cap that sent it', lit(0x41), [true]);
+  view.setLayout(true);
+  eq('and the layout the take switched does not put it out', lit(0x41), [true]);
+  machine.cpu.cycles += A.CPU_HZ;
+  view.fade();
+  eq('a tenth of a second on, it is out', lit(0x41), [false]);
+
+  view.flash(0xc1);
+  machine.cpu.cycles = at;             // the take started again from the top
+  view.fade();
+  eq('and a replay run again does not leave the last one burning', lit(0x41), [false]);
+
+  const pc = new A.KeyView(el(), app, { view: 'pc' });
+  pc.flash(0xc1);
+  eq('the PC board is not lit by a byte: it is indexed by the key that made one',
+     pc.capsFor(0xc1).length, 0);
+  ctx.document = had;
+}
+
 // --- the info card ----------------------------------------------------------
 // drawInfo against a stub DOM, for the same reason the capture test is here:
 // what a container gets to put on the page is worth checking without one. The

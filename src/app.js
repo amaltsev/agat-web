@@ -127,6 +127,10 @@
     this.onKey = opts.onKey || function () {};
     this.onKeyUp = opts.onKeyUp || function () {};
     this.onMods = opts.onMods || function () {};
+    // What a replay put into the machine, in the same four kinds record.js
+    // writes down. The three above are a person's own keys; this one is the
+    // take's, and it is the only way the page learns of them.
+    this.onPlayed = opts.onPlayed || function () {};
     this.frame = this.frame.bind(this);
   }
 
