@@ -878,6 +878,15 @@ starts by itself is a property of the recording, not of this browser. The page
 plays it after a load, which is where the boot decision is too — a tool opening
 the same container wants the program, not the demo.
 
+It opens a board with it, and `demoKbd` is which one: the keys of the take's
+first hundred events, and the first control group whose codes cover every one of
+them — so a take of arrows and Space opens on Play rather than on a card of
+every cheat the game has. A key no group accounts for means no group is the
+take's, and a take that presses nothing names none either; both are the whole
+set, and a container with no controls to cut by gets the machine's own board. It
+is a default and stands with the handheld one rather than over it: an address
+that names a board, or a menu already touched, keeps what it says.
+
 A save in the browser that carries a take says so where it would otherwise say
 how far into the program it is: `▶ 1:35` instead of `4:10`. One field either
 way — the column is a column — and of the two numbers the recording is the one
@@ -1141,7 +1150,8 @@ The winnowing is redone on every `refresh()`, since a key declared as-is is a
 different cap in ЛАТ than in РУС. With no container loaded there is nothing to
 winnow by and every cap it has is drawn; the menu carries the option only while
 something names keys or controls, and on a handheld a container that names them
-opens with it. The entry ships in the static markup, so an address naming it is
+opens with it, as does a container that plays itself — on the group its take is
+typed on. The entry ships in the static markup, so an address naming it is
 answered before any container is — and `syncKbd` hands the board back to
 `wantKbd` when it takes the entry out, or a bookmarked `kbd=used` would be spent
 on a menu that has not got the file yet. `node tools/check.js keys <file.agc>` draws the same board in a

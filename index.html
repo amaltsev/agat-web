@@ -1187,10 +1187,14 @@
     // The address has to stop naming a container the moment something else is
     // loaded, or a bookmark taken afterwards reopens the wrong program.
     saveUrl();
-    // A container whose take says so plays it as it opens. Here rather than in
-    // the App: it is what this page does with a container, the way the boot is,
-    // and a tool opening the same file wants the program and not the demo.
-    if (app.recording && app.recording.autoplay) recPlay();
+    // A container whose take says so plays it as it opens, on the board that
+    // take is being typed on. Here rather than in the App: it is what this page
+    // does with a container, the way the boot is, and a tool opening the same
+    // file wants the program and not the demo.
+    if (app.recording && app.recording.autoplay) {
+      openDemoKbd(app.recording);
+      recPlay();
+    }
   }
 
   function loadFiles(files) {
@@ -1524,6 +1528,46 @@
     var os = kbdSel.options, i;
     for (i = 0; i < os.length; i++) if (os[i].value === v) return true;
     return false;
+  }
+
+  // Which board a demo opens on. A container that plays itself is showing
+  // somebody the program, and the board beside it should be the one the take is
+  // being typed on: the first control group whose codes cover every key in the
+  // recording, so a take of nothing but arrows and Space opens on Play rather
+  // than on a card of every cheat the game has. A key no group accounts for
+  // means no group is the take's, and a take that presses nothing at all names
+  // no group either; both are the whole set. With no controls to cut by there is
+  // nothing to choose and it is the machine's own board.
+  //
+  // The first hundred events are enough: a take is one part of a program, and
+  // reading the whole of a long one to learn what its first minute is doing
+  // would only let a stray key at the end move the board.
+  function demoKbd(rec) {
+    var evs = (rec && rec.events) || [], seen = [], gs, codes, ok, i, j;
+    for (i = 0; i < evs.length && i < 100; i++) {
+      if (evs[i][1] === 'k') seen.push(evs[i][2] & 0x7f);
+    }
+    gs = AGAT.keyboard.controlGroups();
+    if (!gs) return 'agat';
+    for (i = 0; seen.length && i < gs.length; i++) {
+      codes = AGAT.keyboard.controlCodes(gs[i].name);
+      ok = true;
+      for (j = 0; j < seen.length; j++) if (!codes[seen[j]]) { ok = false; break; }
+      if (ok) return 'used:' + gs[i].name;
+    }
+    return 'used';
+  }
+
+  // And opening it, on the way into the replay. It is a default and stands with
+  // the handheld one rather than over it: an address that names a board, or a
+  // menu that has been touched, keeps what it says.
+  function openDemoKbd(rec) {
+    if (kbdChosen) return;
+    var want = demoKbd(rec);
+    if (want === kbdSel.value || !hasKbdOption(want)) return;
+    kbdSel.value = want;
+    applyKbd();
+    saveUrl();
   }
 
   // Whether the section is open is chrome rather than machine state, so it does

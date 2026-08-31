@@ -572,6 +572,8 @@ function kbdmenuCmd(loaded) {
   eval(grab('buildKbdOptions'));
   eval(grab('syncKbd'));
   eval(grab('hasKbdOption'));
+  eval(grab('demoKbd'));
+  eval(grab('openDemoKbd'));
 
   // The page as it opens: the four static options, and the address read before
   // any container is.
@@ -713,6 +715,53 @@ function kbdmenuCmd(loaded) {
   applied = [];
   panel.el.fire('click', { target: panel.groups[0].el });
   eq('a tap after five reloads still fires once', applied, ['used:Play']);
+
+  // The board a container that plays itself opens on, which is picked from the
+  // keys the take presses rather than from anything the file says.
+  const take = (...codes) => ({ events: codes.map((c) => [0, 'k', c]) });
+  unload();
+  reset('');
+  load('rise-out.agc');
+  syncKbd(true);
+  applied = []; saved = 0;
+  eq('arrows and Space are the game being played',
+     demoKbd(take(0x99, 0x9a, 0x88, 0x95, 0x20)), 'used:Play');
+  eq('and a take that presses РЕД is the menu', demoKbd(take(0x99, 0x9b)), 'used:Menu');
+  eq('a key no group accounts for is the whole container',
+     demoKbd(take(0x99, 0x41)), 'used');
+  eq('and so is a take that presses nothing at all',
+     demoKbd({ events: [[0, 'm', 1, 0]] }), 'used');
+
+  const long = { events: [] };
+  for (let i = 0; i < 100; i++) long.events.push([0, 'k', 0x99]);
+  long.events.push([0, 'k', 0x41]);
+  eq('only the first hundred events are read', demoKbd(long), 'used:Play');
+
+  openDemoKbd(take(0x99, 0x9b));
+  eq('a demo opens the board its take is on, and the address follows',
+     [kbdSel.value, applied, saved], ['used:Menu', ['used:Menu'], 1]);
+  eq('and the panel marks the group', marks(),
+     ['ctl-group', 'ctl-group', 'ctl-group on']);
+
+  applied = [];
+  openDemoKbd(take(0x99, 0x9b));
+  eq('a second demo on the board it already wants leaves it alone', applied, []);
+
+  reset('pc');
+  syncKbd(true);
+  applied = [];
+  openDemoKbd(take(0x99, 0x9b));
+  eq('a board the address names stands over the demo',
+     [kbdSel.value, applied], ['pc', []]);
+
+  unload();
+  A.keyboard.setRemap({ Space: null });
+  reset('');
+  syncKbd(true);
+  applied = [];
+  openDemoKbd(take(0x20));
+  eq("a demo with no controls to cut by opens the machine's own board",
+     [kbdSel.value, applied], ['agat', ['agat']]);
 
   console.log(pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);

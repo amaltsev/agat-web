@@ -581,7 +581,7 @@ reads a clock.
 | `name` | what to call it where more than one is offered |
 | `wall` | when it was recorded, in milliseconds since the epoch — for the person, never for the machine |
 | `edited` | when it was last added to, where it has been. A take can be picked up again from where it ends, or from the middle of a replay, and then it is one recording made in two sittings |
-| `autoplay` | play it as the container opens. A demo container says so here; absent means no |
+| `autoplay` | play it as the container opens, on the keyboard the take's own keys are on. A demo container says so here; absent means no |
 | `cycles` | the master clock where it begins, the same scale `state` uses |
 | `ended` | and where it stops |
 | `stopped` | `user`, `write` or `machine` — why it stops, which is worth saying for a take that ends mid-sentence |
