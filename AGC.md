@@ -565,6 +565,8 @@ reads a clock.
   "version": 1,
   "name": "level 1",
   "wall": 1756530000000,
+  "edited": 1756617000000,
+  "autoplay": true,
   "cycles": 91234567,
   "ended": 100234567,
   "stopped": "user",
@@ -578,6 +580,8 @@ reads a clock.
 | `version` | the recording's own format version — `1`, and not `agc`, for the reason `state`'s is |
 | `name` | what to call it where more than one is offered |
 | `wall` | when it was recorded, in milliseconds since the epoch — for the person, never for the machine |
+| `edited` | when it was last added to, where it has been. A take can be picked up again from where it ends, or from the middle of a replay, and then it is one recording made in two sittings |
+| `autoplay` | play it as the container opens. A demo container says so here; absent means no |
 | `cycles` | the master clock where it begins, the same scale `state` uses |
 | `ended` | and where it stops |
 | `stopped` | `user`, `write` or `machine` — why it stops, which is worth saying for a take that ends mid-sentence |
@@ -596,10 +600,16 @@ times the size with each event spread over four lines. The kinds are what the ma
 | `l` `0`\|`1` | ЛАТ / РУС, which software reads at `$C063` |
 | `m` `ix` `iy` | whole mouse counts, the host's pixels already spent |
 | `b` `mask` | the two mouse buttons, bit 0 A and bit 1 B |
+| `x` `wall` | not an input at all: the take was picked up again here, and this is the moment by the clock on the wall. Nothing reads it yet; it is what a file has to say about how it was made |
 
 Nothing about the host is in one: no scancode, no pixel, no millisecond. A
 reader that meets a kind it does not know should skip that event rather than
 refuse the recording.
+
+**Picking a take up again keeps its snapshot.** What is dropped is every event
+past the cycle the machine is standing on, and what follows is recorded over it
+— sound because the machine got to that cycle by playing those same events back.
+The join is the `x` event, and `edited` says when.
 
 **A recording assumes the disk it was made on.** The media are not in the
 snapshot, so a take stops at the first write — and a disk written *after* one

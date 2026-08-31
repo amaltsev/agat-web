@@ -80,10 +80,17 @@
     width: 12px; height: 12px; vertical-align: -1px; fill: currentColor;
   }
   #gear.on, #save.on, #pause.on, #rec.on { border-color: var(--accent); }
-  /* A take being made. Red, as the drive lamps are and for the same reason:
-     the machine is being recorded, and the page is saying so rather than
-     offering something. */
-  #rec.lit { color: #ff8078; border-color: #6a2a24; }
+  /* What the recorder is doing, as a lamp on the button rather than as the
+     button's own color: the border is already saying whether the panel is
+     open, and one control should not be saying two things with one paint.
+     Dark like an unlit lamp when there is nothing to say. */
+  #rec i {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    margin-right: 5px; vertical-align: 1px; background: var(--dim);
+  }
+  #rec i.rec { background: #ff5f56; }        /* a take being made */
+  #rec i.play { background: var(--ok); }     /* one being played */
+  #rec i.have { background: #4fd0d8; }       /* one waiting to be played */
   /* Something has been written to a disk and is in memory only. Red, as the
      drive lamps are: this is the drives saying it, not the page. */
   #save.lit { color: #ff8078; border-color: #6a2a24; }
@@ -300,6 +307,9 @@
      line has one row to fit in. */
   #status .held { color: var(--ok); }
   #status .quiet { color: var(--warn); }
+  /* A take being made. The same red the drive lamps and Save use for "this is
+     happening in memory and nowhere else". */
+  #status .rec { color: #ff8078; }
   .help {
     width: min(94vw, var(--page)); margin-top: 16px; color: var(--dim);
     font-size: 12.5px; border-top: 1px solid var(--edge); padding-top: 12px;
@@ -386,7 +396,7 @@
   <span class="grp">
     <button id="load" title="Open a file, or a program saved in this browser" aria-expanded="false">Load</button>
     <button id="save" title="Save the machine settings, media and disk writes — to a file, or into this browser" aria-expanded="false">Save</button>
-    <button id="rec" title="Record what you do, and play it back" aria-expanded="false">Rec</button>
+    <button id="rec" title="Record what you do, and play it back" aria-expanded="false"><i id="reclamp"></i>Replay</button>
     <button id="gear" title="The machine, its memory sizes, the mouse, the monitor and the volume" aria-expanded="false">⚙</button>
   </span>
   <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg></button>
@@ -444,19 +454,24 @@
      mouse count since, each on the cycle it landed on. Playing one back runs
      the same program the same way.
 
-     The panel does not hold the machine — recording and playing are both the
-     machine running — and both buttons close it, because what is being
-     recorded is happening on the screen behind it. The Rec button in the bar
-     is then the way back out: lit while a take is being made or played, and a
-     click on it stops that. -->
+     The machine runs on behind it: what this is about is a program being
+     played, and stopping the program to ask about it is the wrong way round.
+     Take over is the only way to the controls while a replay runs, and Pause
+     is there for anybody who wants the machine to stand still first. -->
 <div id="recopts" class="panel" hidden>
   <div class="row">
     <span class="key">Recording</span>
     <button id="recstart" title="Record what you do from here">⏺ Record</button>
     <button id="recplay" title="Play the recording back from where it began">▶ Play</button>
+    <button id="rectake" title="Stop the replay and drive the machine yourself from here">Take over</button>
     <button id="recclose" class="sp">Close</button>
   </div>
   <div class="row"><span class="key"></span><span class="note" id="recfacts"></span></div>
+  <div class="row"><span class="key"></span><span class="note" id="recwhen"></span></div>
+  <div class="row">
+    <span class="key"></span>
+    <label title="Play the recording as soon as this container is opened"><input type="checkbox" id="recauto"> Autoplay at start</label>
+  </div>
 </div>
 
 <!-- One drive: which disk is in it, and what can be done to that disk. Not
@@ -755,6 +770,10 @@
   var recStartEl = document.getElementById('recstart');
   var recPlayEl = document.getElementById('recplay');
   var recFactsEl = document.getElementById('recfacts');
+  var recWhenEl = document.getElementById('recwhen');
+  var recTakeEl = document.getElementById('rectake');
+  var recAutoEl = document.getElementById('recauto');
+  var recLampEl = document.getElementById('reclamp');
   var saveOptsEl = document.getElementById('saveopts');
   var saveStateBox = document.getElementById('savestate');
   var saveNoteEl = document.getElementById('savenote');
@@ -1133,6 +1152,7 @@
     // something true of the program before.
     held = false;
     closeSaveOpts();
+    closeRec();
     // And a file arriving is an instruction to run it, however the machine came
     // to be standing still — the panel's hold, or the Pause button.
     app.setPaused(false);
@@ -1148,6 +1168,10 @@
     // The address has to stop naming a container the moment something else is
     // loaded, or a bookmark taken afterwards reopens the wrong program.
     saveUrl();
+    // A container whose take says so plays it as it opens. Here rather than in
+    // the App: it is what this page does with a container, the way the boot is,
+    // and a tool opening the same file wants the program and not the demo.
+    if (app.recording && app.recording.autoplay) recPlay();
   }
 
   function loadFiles(files) {
@@ -1234,6 +1258,7 @@
     // rather than stacked, which also hands the hold back.
     closeSaveOpts();
     closeFiles();
+    closeRec();
     loadOptsEl.hidden = false;
     loadEl.setAttribute('aria-expanded', 'true');
     // Redrawn on the way in rather than left as it was found: a save made since
@@ -1515,6 +1540,7 @@
     if (!saveOptsEl.hidden) { closeSaveOpts(); return; }
     if (!app.agcName()) { say('nothing loaded to save', true); return; }
     closeFiles();
+    closeRec();
     closeLoad();
     saveStateBox.checked = !!app.agcState;
     saveNoteEl.textContent = app.agcState
@@ -1531,115 +1557,6 @@
 
   document.getElementById('savecancel').addEventListener('click', closeSaveOpts);
 
-  // ---- recording -------------------------------------------------------------
-  //
-  // Three verbs and one button in the bar. Idle, the button opens the panel;
-  // while a take is being made or played it is what stops that, because the
-  // panel is not up — both of its buttons close it, since what is being
-  // recorded is on the screen behind it.
-
-  recEl.addEventListener('click', recClick);
-
-  // The bar button, which is three buttons depending on what the machine is
-  // doing. Named, as the panel's two are, because the page's tests drive these
-  // by name — an anonymous listener is a control nothing can reach.
-  function recClick() {
-    if (app.recorder) { stopRec('user'); return; }
-    if (app.player) { stopPlay(); return; }
-    if (!recOptsEl.hidden) { closeRec(); return; }
-    // Like Load and unlike Save: nothing here is a view of one moment, so the
-    // panel takes no hold and closes the two that do.
-    closeSaveOpts();
-    closeFiles();
-    loadOptsEl.hidden = true;
-    loadEl.setAttribute('aria-expanded', 'false');
-    recOptsEl.hidden = false;
-    recEl.setAttribute('aria-expanded', 'true');
-    drawRec();
-  }
-
-  document.getElementById('recclose').addEventListener('click', closeRec);
-
-  function closeRec() {
-    if (recOptsEl.hidden) return;
-    recOptsEl.hidden = true;
-    recEl.setAttribute('aria-expanded', 'false');
-  }
-
-  recStartEl.addEventListener('click', recRecord);
-  recPlayEl.addEventListener('click', recPlay);
-
-  // Both close the panel: what is being recorded, or played back, is happening
-  // on the screen the panel is over. The promise is returned so a test can
-  // wait for a snapshot that is written a turn later; nothing on the page does.
-  function recRecord() {
-    if (app.recorder) { stopRec('user'); return null; }
-    closeRec();
-    unstick();
-    return app.startRecording().then(function () {
-      say('recording — press Rec again to stop');
-    }, function (e) { say(e.message, true); });
-  }
-
-  function recPlay() {
-    if (app.player) { stopPlay(); return null; }
-    closeRec();
-    unstick();
-    return app.startPlaying().then(function (s) {
-      say('playing back — ' + s + ', Rec to take over');
-    }, function (e) { say(e.message, true); });
-  }
-
-  function stopRec(why) {
-    var take = app.stopRecording(why);
-    if (take) say('recorded ' + recLength(take));
-    drawRec();
-  }
-
-  // Taking over is stopping the replay: the machine goes on running from where
-  // it had got to, which is what a person who reaches for the keyboard means.
-  function stopPlay() {
-    app.stopPlaying();
-    say('taken over');
-    drawRec();
-  }
-
-  // Red while a take is being made, lit while one is playing or the panel is up.
-  // Drawn from the App rather than set where the buttons are, because a take
-  // can end on its own — a disk write, a Reset — and the button has to stop
-  // saying it is recording within the tick.
-  function syncRec() {
-    var taking = app.recorder ? 'lit'
-               : app.player || !recOptsEl.hidden ? 'on' : '';
-    if (recEl.className !== taking) recEl.className = taking;
-    var doing = app.recorder ? 'Stop recording'
-              : app.player ? 'Take over from the recording'
-              : 'Record what you do, and play it back';
-    if (recEl.title !== doing) recEl.title = doing;
-    if (!recOptsEl.hidden) drawRec();
-  }
-
-  function recLength(take) {
-    var secs = (take.ended - take.cycles) / AGAT.CPU_HZ;
-    return secs.toFixed(1) + ' s, ' + take.events.length +
-           (take.events.length === 1 ? ' input' : ' inputs');
-  }
-
-  // What the panel says about the take it has: how long, how much, and where
-  // it came from, since a container's own take is somebody else's session.
-  function drawRec() {
-    var take = app.recording;
-    recStartEl.textContent = app.recorder ? '■ Stop' : '⏺ Record';
-    recPlayEl.textContent = app.player ? '■ Stop' : '▶ Play';
-    recPlayEl.disabled = !take && !app.player;
-    recFactsEl.textContent = app.recorder ? 'recording'
-      : take ? recLength(take) + (take.stopped === 'write'
-                                  ? ' — stopped by a disk write'
-                                  : take.stopped === 'machine'
-                                  ? ' — stopped by a reset' : '')
-      : 'nothing recorded yet';
-  }
-
   function closeSaveOpts() {
     saveOptsEl.hidden = true;
     releaseMachine();
@@ -1650,8 +1567,8 @@
   // already paused stays paused when the panel closes, which is the one case
   // where releasing it outright would undo something they asked for.
   //
-  // One flag for both panels that take it, which is why opening either closes
-  // the other: two holds and one flag would leave the machine stopped when the
+  // One flag for every panel that takes it, which is why opening one closes the
+  // others: two holds and one flag would leave the machine stopped when the
   // second one let go.
   var held = false;
 
@@ -1663,6 +1580,188 @@
   function releaseMachine() {
     if (held) app.setPaused(false);
     held = false;
+  }
+
+  // ---- recording -------------------------------------------------------------
+  //
+  // Three verbs and one button in the bar. Idle, the button opens the panel;
+  // while a take is being made or played it is what stops that, because the
+  // panel is not up — both of its buttons close it, since what is being
+  // recorded is on the screen behind it.
+
+  recEl.addEventListener('click', recClick);
+  document.getElementById('recclose').addEventListener('click', closeRec);
+  recStartEl.addEventListener('click', recRecord);
+  recPlayEl.addEventListener('click', recPlay);
+  recTakeEl.addEventListener('click', recTakeOver);
+  recAutoEl.addEventListener('change', recAuto);
+
+  // The bar button opens the panel and shuts it, and does nothing else: what
+  // the recorder is doing is on the lamp inside it, not in what it does when
+  // clicked. Named, as everything in here is, because the page's tests drive
+  // these by name — an anonymous listener is a control nothing can reach.
+  function recClick() {
+    if (!recOptsEl.hidden) { closeRec(); return; }
+    closeSaveOpts();
+    closeFiles();
+    loadOptsEl.hidden = true;
+    loadEl.setAttribute('aria-expanded', 'false');
+    recOptsEl.hidden = false;
+    recEl.setAttribute('aria-expanded', 'true');
+    drawRec();
+  }
+
+  // The machine runs on behind this panel, unlike Save's and the disk panel's:
+  // what it is about is a program being played, and stopping the program to
+  // ask about it is the wrong way round. Pause is a button of its own for
+  // anybody who wants the answer to stop moving first.
+  function closeRec() {
+    if (recOptsEl.hidden) return;
+    recOptsEl.hidden = true;
+    recEl.setAttribute('aria-expanded', 'false');
+  }
+
+  // Record, in the three cases it has. The machine standing exactly where the
+  // take ends is the take's own continuation and needs no question; standing
+  // anywhere else inside it — mid-replay, or taken over — picking it up throws
+  // the rest away; and anywhere else entirely, there is nothing to continue and
+  // the take is replaced.
+  //
+  // The panel stays up: it is where the take is stopped again, and where what
+  // is being made is described while it is being made.
+  //
+  // The promise is returned so a test can wait for a snapshot that is written a
+  // turn later; nothing on the page does.
+  function recRecord() {
+    if (app.recorder) { stopRec('user'); return null; }
+    var extend = app.canExtend(), tail = Math.round(app.tailOfTake() * 100);
+    if (extend && tail &&
+        !confirm('Discard and override the remaining ' + tail + '%?')) return null;
+    if (!extend && app.recording &&
+        !confirm('Discard and override the entire recording?')) return null;
+    unstick();
+    return app.startRecording({ extend: extend }).then(function () {
+      say(extend ? 'recording again, over the rest of the take'
+                 : 'recording — the Replay panel finishes it');
+      drawRec();
+    }, function (e) { say(e.message, true); });
+  }
+
+  // Pressed while one is already running, this starts the take again from its
+  // beginning — the snapshot goes back in and the events run from the top.
+  // There is nothing to protect against there: a replay is the take read out,
+  // and reading it out again costs the take nothing.
+  function recPlay() {
+    unstick();
+    return app.startPlaying().then(function (s) {
+      say('playing back — ' + s);
+      drawRec();
+    }, function (e) { say(e.message, true); });
+  }
+
+  // The only way to the controls while a replay is running: the doors are shut
+  // until this is pressed or the take runs out. The panel stays up, because the
+  // machine is held with it and where to go on from is the thing being decided.
+  function recTakeOver() {
+    if (!app.player) return;
+    stopPlay();
+  }
+
+  // The checkbox is the take's own field, so it travels in the container: a
+  // demo that starts by itself is a property of the recording and not of this
+  // browser. It reaches whichever take there is — the one being made answers
+  // for itself until it is stopped.
+  function recAuto() {
+    var take = app.recorder || app.recording;
+    if (take) take.autoplay = !!recAutoEl.checked;
+    // Focus off it again: an <input> is where keys stop reaching the machine —
+    // typingInto in keyboard.js — so a checkbox left holding focus is a
+    // keyboard that has gone dead over a program that is still running.
+    recAutoEl.blur();
+    drawRec();
+  }
+
+  function stopRec(why) {
+    var take = app.stopRecording(why);
+    if (take) say('recorded ' + recLength(take));
+    drawRec();
+  }
+
+  function stopPlay() {
+    app.stopPlaying();
+    say('taken over');
+    drawRec();
+  }
+
+  // The lamp: red while a take is being made, green while one is playing, cyan
+  // for one sitting there waiting, and dark for none. Drawn from the App ten
+  // times a second rather than set where the buttons are, because a take also
+  // ends on its own — a disk write, a Reset — and the lamp has to stop saying
+  // it is recording.
+  function syncRec() {
+    var lamp = app.recorder ? 'rec' : app.player ? 'play'
+             : app.recording ? 'have' : '';
+    if (recLampEl.className !== lamp) recLampEl.className = lamp;
+    var open = recOptsEl.hidden ? '' : 'on';
+    if (recEl.className !== open) recEl.className = open;
+    if (!recOptsEl.hidden) drawRec();
+  }
+
+  function recLength(take) {
+    return AGAT.howLong(take.ended - take.cycles) + ', ' + take.events.length +
+           (take.events.length === 1 ? ' input' : ' inputs');
+  }
+
+  // What the panel says about the take it has: how long it is, how much is in
+  // it, what stopped it, and when it was made — a container's take is somebody
+  // else's session, and when they recorded it is most of what is known about
+  // them. A take being made says only that it is being made: its length is on
+  // the status line, counting.
+  function drawRec() {
+    var take = app.recorder || app.recording;
+    put(recStartEl, 'textContent', app.recorder ? '■ Finish' : '⏺ Record');
+    put(recStartEl, 'title', app.recorder ? 'Finish the recording'
+      : app.canExtend() ? 'Record from here, over the rest of the take'
+      : 'Record what you do from here');
+    put(recPlayEl, 'textContent', app.player ? '↻ Play' : '▶ Play');
+    put(recPlayEl, 'title', app.player
+      ? 'Start the recording again from the beginning'
+      : 'Play the recording back from where it began');
+    put(recPlayEl, 'disabled', !app.recording || !!app.recorder);
+    put(recTakeEl, 'disabled', !app.player);
+    put(recAutoEl, 'checked', !!(take && take.autoplay));
+    put(recAutoEl, 'disabled', !take);
+    put(recFactsEl, 'textContent', recFacts());
+    put(recWhenEl, 'textContent', !take || !take.wall ? ''
+      : 'recorded ' + AGAT.when(take.wall) +
+        (take.edited ? ', last added to ' + AGAT.when(take.edited) : ''));
+  }
+
+  // The take in one line: what it is, and — while it is playing — where the
+  // replay has got to in it. The take's own description stays put and the
+  // progress is added to it, because the length is what says whether 23% is
+  // most of the way or barely started.
+  function recFacts() {
+    var t = app.recording;
+    if (app.recorder) return 'recording';
+    if (!t) return 'nothing recorded yet';
+    var line = recLength(t);
+    if (t.stopped === 'write') line += ' — stopped by a disk write';
+    else if (t.stopped === 'machine') line += ' — stopped by a reset';
+    if (app.player) {
+      line += ' ▶ ' + Math.round(app.player.at() * 100) + '%, ' +
+              AGAT.howLong(app.machine.cpu.cycles - t.cycles);
+    }
+    return line;
+  }
+
+  // Written only where it changed. This panel is redrawn ten times a second
+  // while it is up, and a textContent assigned every tick is a node the
+  // browser lays out again for nothing and an element that flashes in devtools
+  // for somebody watching it. The drive lamps guard the same way, one field at
+  // a time; there are enough fields here to be worth a name.
+  function put(el, prop, v) {
+    if (el[prop] !== v) el[prop] = v;
   }
 
   document.getElementById('savefile').addEventListener('click', function () {
@@ -1708,12 +1807,14 @@
       // something; the answer is not waited on, because a store that is only
       // best-effort is still the store.
       AGAT.Store.persist();
+      var take = app.take();
       return store.put({
         name: name,
         title: about.title || name,
         model: app.model,
         ram: app.ramSize >> 10,
         cycles: app.machine.cpu.cycles,
+        take: take ? take.ended - take.cycles : 0,
         text: text,
       });
     }).then(function (meta) {
@@ -1992,6 +2093,7 @@
       return;
     }
     if (!saveOptsEl.hidden) closeSaveOpts();
+    closeRec();
     // Held while the panel is up, for the same reason Save holds: what is
     // being looked at should stop long enough to look at. It does not make
     // editing safe under a booted DOS — that keeps its own copy of the catalog

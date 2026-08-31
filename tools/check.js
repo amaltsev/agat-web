@@ -34,7 +34,7 @@
 //   node tools/check.js modules                  the pages vs tools/modules.js
 //   node tools/check.js pwa                      the manifest, the icons and the
 //                                                worker's precache list
-//   node tools/check.js recui                    the Rec panel, over a stub
+//   node tools/check.js recui                    the Replay panel, over a stub
 //                                                document and a real machine
 //   node tools/check.js record [image]           record a session, play it back
 //                                                into a fresh machine, and
@@ -72,6 +72,68 @@ const hex = (n, w) => '$' + (n >>> 0).toString(16).toUpperCase().padStart(w || 4
 const die = (e) => { console.error(e.message || e); process.exit(1); };
 
 // --- subcommands that need no machine ---------------------------------------
+
+// The names a page's inline script calls but never declares. Regex over the
+// source rather than a parse: what is wanted is one class of mistake — a
+// function that was renamed or deleted with a caller left behind — and that
+// shows up as a bare `name(` with no `function name(` or `var name =` anywhere
+// in the script.
+//
+// Everything the browser and the emulator bring is known here rather than
+// discovered, which is the price of not parsing. A name added to the platform
+// list is a name this stops watching, so add sparingly.
+const PLATFORM = new Set([
+  'alert', 'atob', 'btoa', 'confirm', 'clearTimeout', 'clearInterval',
+  'decodeURIComponent', 'encodeURIComponent', 'fetch', 'isFinite', 'isNaN',
+  'parseFloat', 'parseInt', 'prompt', 'requestAnimationFrame', 'setInterval',
+  'setTimeout', 'structuredClone',
+  // constructors, called with `new` and matched the same way
+  'Array', 'Blob', 'Boolean', 'Date', 'Error', 'File', 'FileReader', 'Image',
+  'Map', 'Number', 'Object', 'Promise', 'RegExp', 'Set', 'String',
+  'TextDecoder', 'TextEncoder', 'Uint8Array', 'URL', 'Worker',
+  // and the emulator's own global, which is a module and not this page
+  'AGAT',
+]);
+
+function undefinedCalls(html) {
+  const bodies = [];
+  const re = /<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g;
+  let m;
+  while ((m = re.exec(html))) bodies.push(m[1]);
+  const src = bodies.join('\n');
+  // Comments and strings out first: a `name(` inside a sentence about the code
+  // is not a call, and neither is one inside a title= or a status line.
+  const code = src
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+    .replace(/'(\\.|[^'\\])*'/g, "''")
+    .replace(/"(\\.|[^"\\])*"/g, '""')
+    .replace(/`(\\.|[^`\\])*`/g, '``');
+  const has = new Set();
+  let d;
+  const decl = /\b(?:function|var|let|const|class)\s+([A-Za-z_$][\w$]*)/g;
+  while ((d = decl.exec(code))) has.add(d[1]);
+  // A name given to a value counts as declared: `foo = function () {}` and
+  // `foo: function ()` are both how this page names things.
+  const named = /([A-Za-z_$][\w$]*)\s*[:=]\s*(?:function\b|\([^)]*\)\s*=>)/g;
+  while ((d = named.exec(code))) has.add(d[1]);
+  // Parameters, which a call inside the same function reaches by name.
+  const params = /function[^(]*\(([^)]*)\)/g;
+  while ((d = params.exec(code))) {
+    d[1].split(',').forEach((v) => { if (v.trim()) has.add(v.trim()); });
+  }
+  const out = new Set();
+  // A bare call: not `.name(`, not `function name(`, not `new name(` — those
+  // last two are handled by what is already collected.
+  const call = /(^|[^\w$.])([A-Za-z_$][\w$]*)\s*\(/g;
+  while ((d = call.exec(code))) {
+    const name = d[2];
+    if (has.has(name) || PLATFORM.has(name)) continue;
+    if (/^(if|for|while|switch|catch|return|typeof|new|function|else|do|in|of|delete|void|await|throw)$/.test(name)) continue;
+    out.add(name);
+  }
+  return [...out].sort();
+}
 
 if (cmd === 'modules') {
   const scripts = (page) => {
@@ -114,6 +176,25 @@ if (cmd === 'modules') {
     const has = /<link rel="stylesheet" href="agat.css">/.test(scripts(page).html);
     console.log(page + ' : agat.css ' + (has ? 'linked' : 'MISSING'));
     if (!has) bad = true;
+  }
+
+  // Every name a page's own script calls, against the names it declares.
+  //
+  // This is here because of how the page is tested: kbdmenu, urlkeys, dosui,
+  // saveui and recui lift functions out of index.html and run them against
+  // stubs they build themselves — so a function the page deletes but still
+  // references is a function those tests *supply*, and every one of them goes
+  // green while the real page throws on the way up and wires nothing. One
+  // edit deleted closeSaveOpts, holdMachine and releaseMachine and the whole
+  // suite passed; the page was dead at the Load button.
+  //
+  // Names only, and calls only: not a scope check and not a linter. What it
+  // catches is the gap between a page that says a name and a page that has one.
+  for (const page of ['index.html', 'edit-dos.html', 'edit-agc.html']) {
+    const gone = undefinedCalls(scripts(page).html);
+    console.log(page + ' : ' + (gone.length ? 'CALLS NOTHING DEFINES — ' + gone.join(' ')
+                                            : 'every name it calls, it defines'));
+    if (gone.length) bad = true;
   }
   process.exit(bad ? 1 : 0);
 }
@@ -1680,6 +1761,22 @@ async function saveuiCmd() {
   eq('minutes do not', await inAt(250 * HZ), '4:10');
   eq('and the hour shows up when there is one', await inAt(3700 * HZ), '1:01:40');
 
+  // A save carrying a recording says how long the recording is instead. The
+  // column is one field wide and the two numbers are both about time, so the
+  // ▶ is what tells them apart at a glance.
+  const withTake = async (take) => {
+    const one = A.Store.memory();
+    await one.put({ name: 'x', title: 'x', model: 7, ram: 64,
+                    cycles: 250 * HZ, take: take, text: '{}' });
+    const seen = new A.SaveList(el('div'), {});
+    await seen.mount(one);
+    return byClass(seen.el, 'save-in')[0].textContent;
+  };
+  eq('a save with a recording in it says how long that is',
+     await withTake(95 * HZ), '▶ 1:35');
+  eq('and one without still says how far into the program it is',
+     await withTake(0), '4:10');
+
   // ---- loading one --------------------------------------------------------
   byClass(rows(host)[1], 'save-name')[0].fire('click');
   eq('clicking the name hands back that row and not the one above it',
@@ -2030,18 +2127,7 @@ async function urlkeysCmd(roms) {
   process.exit(fail ? 1 : 0);
 }
 
-// A snapshot is only worth anything if the machine it restores goes on running
-// the same program the same way, and two machines that agree at the moment of
-// the restore and disagree a second later is exactly the failure this can have.
-// So: boot one, run it, save it, restore into a second, and then run *both* the
-// same distance again and require them to still agree — on the clock, on the
-// screen, and on every byte of RAM.
-//
-// The disk is not in a snapshot — a container carries what was written to it as
-// patches instead — so the media is copied across by hand here, which is what
-// the container does by another route and what leaves this measuring the state
-// machinery alone.
-// --- the Rec panel -----------------------------------------------------------
+// --- the Replay panel --------------------------------------------------------
 //
 // The page's own functions, lifted by name and clicked on, over a stub document
 // and a real machine: the panel is three verbs and a line of prose about a
@@ -2066,10 +2152,24 @@ async function recuiCmd(roms) {
     throw new Error(name + ' does not close');
   };
 
-  const el = () => ({
-    className: '', title: '', textContent: '', hidden: true, disabled: false,
-    attrs: {}, setAttribute(k, v) { this.attrs[k] = v; },
-  });
+  // Counts what is written to it as well as holding it: this panel is redrawn
+  // ten times a second while it is up, and an assignment that changes nothing
+  // is still an assignment — a node the browser lays out again and an element
+  // that flashes in devtools while somebody is trying to read it.
+  const el = () => {
+    const o = { writes: 0, blurs: 0, attrs: {}, blur() { this.blurs++; },
+                setAttribute(k, v) { this.attrs[k] = v; } };
+    const held = { className: '', title: '', textContent: '', hidden: true,
+                   disabled: false, checked: false };
+    Object.keys(held).forEach((k) => {
+      Object.defineProperty(o, k, {
+        get() { return held[k]; },
+        set(v) { held[k] = v; o.writes++; },
+        enumerable: true,
+      });
+    });
+    return o;
+  };
   global.AGAT = A;                   // the page's own global, for CPU_HZ
 
   let pass = 0, fail = 0;
@@ -2080,27 +2180,34 @@ async function recuiCmd(roms) {
     console.log('FAIL ' + what + '\n  got  ' + g + '\n  want ' + w);
   };
 
-  // The page's variables the panel touches, and the four calls it makes that
-  // are somebody else's. Everything here is what index.html has under the same
+  // The page's variables the panel touches, and the calls it makes that are
+  // somebody else's. Everything here is what index.html has under the same
   // name: a control this leaves out is a control the test cannot see.
   const recEl = el(), recOptsEl = el(), recStartEl = el(), recPlayEl = el();
-  const recFactsEl = el(), loadOptsEl = el(), loadEl = el();
-  let said = [], closed = [];
+  const recTakeEl = el(), recAutoEl = el(), recLampEl = el();
+  const recFactsEl = el(), recWhenEl = el(), loadOptsEl = el(), loadEl = el();
+  let said = [], closed = [], asked = [], answer = true;
   const say = (m, bad) => { said.push((bad ? '! ' : '') + m); };
   const unstick = () => {};
   const closeSaveOpts = () => { closed.push('save'); };
   const closeFiles = () => { closed.push('files'); };
+  ctx.confirm = global.confirm = (q) => { asked.push(q); return answer; };
 
   // A machine to record: rise-out out of the boot, driven through the App's
-  // own methods with the frame loop left out.
+  // own methods with the frame loop left out. A stub App would pass here while
+  // the page did the other thing — every button reads something only a machine
+  // can answer.
   const sniffed = await H.sniffFile(ctx, path.join(H.ROOT, 'examples', 'rise-out.agc'));
   const m = H.makeMachine(ctx, roms, { model: 7, agc: sniffed.agc });
   const at = H.mountAll(ctx, m, sniffed);
   m.reset();
   m.bootSlot(at < 0 ? H.fddSlot(m) : at);
+  // paused and setPaused are the App's own; running is what start/stop would
+  // have set, and the frame loop is this test's to drive through runTo.
   const app = Object.assign(Object.create(A.App.prototype), {
-    machine: m, slots: m.slots, running: true,
-    start() {}, stop() {}, onStatus() {},
+    machine: m, slots: m.slots, ramSize: m.ramSize, running: true, paused: false,
+    start() { this.running = !this.paused; }, stop() { this.running = false; },
+    onStatus() {},
   });
   app.runTo(m.cpu.cycles + 30e6);
 
@@ -2108,76 +2215,208 @@ async function recuiCmd(roms) {
   eval(grab('closeRec'));
   eval(grab('recRecord'));
   eval(grab('recPlay'));
+  eval(grab('recTakeOver'));
+  eval(grab('recAuto'));
   eval(grab('stopRec'));
   eval(grab('stopPlay'));
   eval(grab('syncRec'));
   eval(grab('recLength'));
   eval(grab('drawRec'));
+  eval(grab('recFacts'));
+  eval(grab('put'));
 
-  // ---- opening it, with nothing recorded ----------------------------------
+  // ---- the panel, with nothing recorded ------------------------------------
   recClick();
-  eq('the panel opens, and closes the two that hold the machine',
-     [recOptsEl.hidden, recEl.attrs['aria-expanded'], closed],
-     [false, 'true', ['save', 'files']]);
-  eq('with nothing to say and nothing to play',
-     [recFactsEl.textContent, recPlayEl.disabled],
-     ['nothing recorded yet', true]);
+  eq('the panel opens over a machine that goes on running, and closes the two that hold',
+     [recOptsEl.hidden, recEl.attrs['aria-expanded'], app.paused, closed],
+     [false, 'true', false, ['save', 'files']]);
+  eq('with nothing to say, nothing to play, nothing to take over from',
+     [recFactsEl.textContent, recPlayEl.disabled, recTakeEl.disabled,
+      recWhenEl.textContent, recAutoEl.disabled],
+     ['nothing recorded yet', true, true, '', true]);
   syncRec();
-  eq('and the button lit for the panel being up', recEl.className, 'on');
+  eq('and a dark lamp on a button that is only a button',
+     [recLampEl.className, recEl.className], ['', 'on']);
+  const panel = [recStartEl, recPlayEl, recTakeEl, recAutoEl, recFactsEl,
+                 recWhenEl, recLampEl, recEl];
+  const writes = () => panel.map((e) => e.writes);
+  const quiet = writes();
+  syncRec();
+  syncRec();
+  eq('and two more ticks of it write nothing to the page', writes(), quiet);
   recClick();
-  eq('a second click shuts it', [recOptsEl.hidden, recEl.attrs['aria-expanded']],
-     [true, 'false']);
+  eq('a second click shuts it', [recOptsEl.hidden, app.paused], [true, false]);
 
-  // ---- a take ------------------------------------------------------------
+  // ---- a take --------------------------------------------------------------
   recClick();
   await recRecord();
-  eq('Record closes the panel and says so',
-     [recOptsEl.hidden, !!app.recorder, said], [true, true, ['recording — press Rec again to stop']]);
+  eq('Record leaves the panel up — it is where the take is finished — and says so',
+     [recOptsEl.hidden, app.paused, !!app.recorder, said.length], [false, false, true, 1]);
   syncRec();
-  eq('and the button goes red, and offers to stop',
-     [recEl.className, recEl.title], ['lit', 'Stop recording']);
+  eq('the lamp goes red', recLampEl.className, 'rec');
 
   const from = m.cpu.cycles;
   app.runTo(from + 1e6);
   app.key(0xa0);
   app.runTo(from + 3e6);
   said = [];
-  recClick();
-  eq('the button stops the take, and says how much of one it is',
-     [!!app.recorder, said], [false, ['recorded 2.9 s, 1 input']]);
-  eq('which the panel then has to offer', [app.recording.events.length,
-     app.recording.stopped], [1, 'user']);
+  eq('the panel offers to finish while a take is being made',
+     [recStartEl.textContent, recStartEl.title], ['■ Finish', 'Finish the recording']);
+  recRecord();
+  eq('the panel stops the take, and says how much of one it is',
+     [!!app.recorder, said], [false, ['recorded 0:03, 1 input']]);
+  eq('which is a take with its inputs and the moment it was made',
+     [app.recording.events.length, app.recording.stopped, app.recording.wall > 0],
+     [1, 'user', true]);
   syncRec();
-  eq('the button goes plain again', [recEl.className, recEl.title],
-     ['', 'Record what you do, and play it back']);
+  eq('the lamp goes cyan for a take there is', recLampEl.className, 'have');
+  eq('and the panel now has something to play, and something to say about it',
+     [recFactsEl.textContent, recPlayEl.disabled,
+      /^recorded /.test(recWhenEl.textContent), recAutoEl.disabled],
+     ['0:03, 1 input', false, true, false]);
 
-  recClick();
-  eq('and the panel now has something to play',
-     [recFactsEl.textContent, recPlayEl.disabled], ['2.9 s, 1 input', false]);
+  // ---- picked up where it ends, in silence ---------------------------------
+  asked = [];
+  await recRecord();
+  eq('Record where the take ends continues it, and asks nothing',
+     [asked, !!app.recorder, app.recorder.events.length], [[], true, 2]);
+  eq('the join is written into the stream, with the moment on it',
+     [app.recorder.events[1][1], app.recorder.events[1][2] > 0], ['x', true]);
+  app.runTo(m.cpu.cycles + 1e6);
+  app.key(0xa0);
+  stopRec('user');
+  eq('and the take is now the longer one', app.recording.events.length, 3);
+  eq('which says when it was added to', /last added to /.test(recWhenEl.textContent), true);
 
-  // ---- playing it back ----------------------------------------------------
+  // ---- played back ---------------------------------------------------------
   said = [];
   await recPlay();
-  eq('Play closes the panel and starts the replay',
-     [recOptsEl.hidden, !!app.player, said.length], [true, true, 1]);
+  eq('Play starts the replay and stays up with it',
+     [recOptsEl.hidden, !!app.player, app.paused, said.length], [false, true, false, 1]);
   syncRec();
-  eq('the button offers to take over', [recEl.className, recEl.title],
-     ['on', 'Take over from the recording']);
+  eq('the lamp goes green', recLampEl.className, 'play');
+  app.runTo(m.cpu.cycles + 2e6);
+  drawRec();
+  // The take's own line stays, and where the replay has got to is added to it:
+  // 23% means nothing without the length it is 23% of.
+  eq('the panel offers to take over from a replay that is still running',
+     [app.paused, recTakeEl.disabled,
+      /^\d+:\d\d, \d+ inputs ▶ \d+%, \d+:\d\d$/.test(recFactsEl.textContent)],
+     [false, false, true]);
+  // Play is live while one is running, and starts the take again from the top:
+  // a replay is the take read out, and reading it out again costs it nothing.
+  eq('Play is still offered, as a way to start it again',
+     [recPlayEl.disabled, recPlayEl.textContent], [false, '↻ Play']);
+  await recPlay();
+  eq('and it does start again from the take\'s first cycle',
+     [m.cpu.cycles, !!app.player], [app.recording.cycles, true]);
+  app.runTo(m.cpu.cycles + 2e6);
   said = [];
-  recClick();
-  eq('and taking over is stopping the replay', [!!app.player, said], [false, ['taken over']]);
+  recTakeOver();
+  eq('Take over stops the replay and says so', [!!app.player, said], [false, ['taken over']]);
 
-  // ---- what a take that ended by itself says ------------------------------
+  // ---- picked up in the middle, which throws the rest away -----------------
+  // A take that arrived in a container is the case that matters here: opening
+  // one builds a machine and fills drives, and every one of those is a machine
+  // change the take knows nothing about. Playing it puts the take's own
+  // machine back, which is what makes the replay a place to record from.
+  app.sinceTake = 5;                   // as a container's load leaves it
+  await recPlay();
+  app.runTo(m.cpu.cycles + 1e6);
+  eq('a replay stands on the take, whatever the machine did before it',
+     app.canExtend(), true);
+
+  asked = [];
+  answer = false;
+  await recRecord();
+  eq('Record mid-take asks before throwing the rest away, and takes no for an answer',
+     [asked.length, /remaining \d+%/.test(asked[0]), !!app.recorder], [1, true, false]);
+  answer = true;
+  asked = [];
+  const was = app.recording.events.length;
+  await recRecord();
+  eq('and on yes it picks the take up there, the tail gone',
+     [asked.length, !!app.recorder, app.recorder.events.length < was + 1], [1, true, true]);
+  stopRec('user');
+
+  // ---- and one played all the way out --------------------------------------
+  // The end of a replay is where the take ends, not where the frame it ended
+  // in ends: the machine is held on that exact cycle, and Record there is the
+  // take's own continuation with nothing to throw away and nothing to ask.
+  // A take whose last input is well before its end, which is the ordinary
+  // shape of one: play, then stop a few seconds later. A take that stops on
+  // its own last event runs out exactly where the event lands however the run
+  // loop is written, and proves nothing about where a replay stops.
+  await recRecord();
+  app.key(0xa0);
+  app.runTo(m.cpu.cycles + 2e6);
+  stopRec('user');
+
+  await recPlay();
+  // In chunks that land nowhere near the end of it: a run that stopped where
+  // the frame stopped would hold the machine a chunk's worth past the take,
+  // and with round numbers that overshoot is invisible.
+  for (let i = 0; i < 200 && app.player; i++) app.runTo(m.cpu.cycles + 333331);
+  eq('a replay runs out on the take\'s own last cycle, and holds there',
+     [m.cpu.cycles - app.recording.ended, app.paused, !!app.player],
+     [0, true, false]);
+  asked = [];
+  await recRecord();
+  eq('and Record there continues it without a question',
+     [asked, !!app.recorder, app.recorder.cycles], [[], true, app.recording.cycles]);
+  stopRec('user');
+
+  // Let go of the pause and the machine runs on by itself. Nothing has been
+  // typed at it, so it is still the take's machine and the take can still be
+  // picked up — the clock being past the end is not what decides.
+  app.setPaused(false);
+  app.runTo(m.cpu.cycles + 1234567);
+  eq('a machine let run on past the take is still on it', app.canExtend(), true);
+  asked = [];
+  await recRecord();
+  eq('and Record there asks nothing either', [asked, !!app.recorder], [[], true]);
+  stopRec('user');
+
+  // ---- and a machine that has wandered off the take ------------------------
+  // Standing inside the take is not enough: the machine has to have got there
+  // by the take's own doing. One key of your own and everything after it is a
+  // different session, whatever the clock says.
+  await recPlay();
+  app.runTo(m.cpu.cycles + 1e6);
+  recTakeOver();
+  eq('taken over mid-take, the machine is still on it', app.canExtend(), true);
+  app.key(0xc1);
+  eq('and one key of your own is enough to be off it', app.canExtend(), false);
+  asked = [];
+  await recRecord();
+  eq('so Record asks about the whole thing',
+     [asked, !!app.recorder], [['Discard and override the entire recording?'], true]);
+  stopRec('user');
+
+  // ---- autoplay ------------------------------------------------------------
+  recAutoEl.checked = true;
+  const blurs = recAutoEl.blurs;
+  recAuto();
+  eq('the checkbox is the take\'s own field, so it travels with the container',
+     app.recording.autoplay, true);
+  // An <input> holding focus is where keys stop reaching the machine, and the
+  // machine behind this panel is running.
+  eq('and it does not keep the focus', recAutoEl.blurs, blurs + 1);
+  recAutoEl.checked = false;
+  recAuto();
+  eq('and clears again', !!app.recording.autoplay, false);
+
+  // ---- what a take that ended by itself says -------------------------------
   app.recording.stopped = 'write';
-  recClick();
+  drawRec();
   eq('a take cut short by a disk write says which',
-     recFactsEl.textContent, '2.9 s, 1 input — stopped by a disk write');
+     /— stopped by a disk write$/.test(recFactsEl.textContent), true);
   app.recording.stopped = 'machine';
   drawRec();
-  eq('and one cut short by a reset', recFactsEl.textContent,
-     '2.9 s, 1 input — stopped by a reset');
+  eq('and one cut short by a reset',
+     /— stopped by a reset$/.test(recFactsEl.textContent), true);
 
-  // ---- nothing to play ----------------------------------------------------
+  // ---- nothing to play -----------------------------------------------------
   app.recording = null;
   said = [];
   await recPlay();
@@ -2227,9 +2466,22 @@ async function recordCmd(roms) {
     m.reset();
     m.bootSlot(at < 0 ? H.fddSlot(m) : at);
     return Object.assign(Object.create(A.App.prototype), {
-      machine: m, slots: m.slots, running: true,
+      machine: m, slots: m.slots, ramSize: m.ramSize, running: true,
       start() {}, stop() {}, onStatus() {},
     });
+  };
+
+  let bad = 0;
+  const same = (what, x, y) => {
+    if (JSON.stringify(x) === JSON.stringify(y)) return;
+    bad++;
+    console.log('DIFFERS    ' + what + '\n  recorded ' + JSON.stringify(x) +
+                '\n  replayed ' + JSON.stringify(y));
+  };
+  const check = (what, ok) => {
+    if (ok) return;
+    bad++;
+    console.log('FAILED     ' + what);
   };
 
   // Where the keys go and what they are: offsets nobody would pick as a frame
@@ -2244,6 +2496,12 @@ async function recordCmd(roms) {
   a.runTo(a.machine.cpu.cycles + per);         // up out of the boot and playing
   await a.startRecording({ name: 'test' });
   const from = a.machine.cpu.cycles;
+  // The status line is the only thing that says a take is being made: it is
+  // repainted twice a second off describe(), so anything said once at the
+  // button is gone before it can be read.
+  a.runTo(from + 2.04e6);
+  const line = (app) => app.describe().map((b) => b.text || b);
+  check('the line says a take is being made', line(a).pop() === '● rec 0:02');
   for (const [at, key] of script) {
     a.runTo(from + Math.round(at * 1e6));
     a.key(H.keyCode(key));
@@ -2267,9 +2525,14 @@ async function recordCmd(roms) {
     return inject.call(this, kind, x, y);
   };
   const chunks = [17000, 350000, 4321, 1200000, 99999];
+  let midway = '';
   for (let i = 0; b.machine.cpu.cycles < rec.ended && i < 4000; i++) {
     b.runTo(Math.min(rec.ended, b.machine.cpu.cycles + chunks[i % chunks.length]));
+    if (!midway && b.player && b.player.at() > 0.4) midway = line(b).pop();
   }
+  check('and says how far into a replay it is', /^▶ 4\d%$/.test(midway));
+  check('a replay that runs out leaves the machine held, as Pause would',
+        b.paused === true && b.player === null);
 
   // And the same distance with nothing typed at all.
   const c = open();
@@ -2297,19 +2560,6 @@ async function recordCmd(roms) {
       if (x.machine.ram[i] !== y.machine.ram[i]) return i;
     }
     return -1;
-  };
-
-  let bad = 0;
-  const same = (what, x, y) => {
-    if (JSON.stringify(x) === JSON.stringify(y)) return;
-    bad++;
-    console.log('DIFFERS    ' + what + '\n  recorded ' + JSON.stringify(x) +
-                '\n  replayed ' + JSON.stringify(y));
-  };
-  const check = (what, ok) => {
-    if (ok) return;
-    bad++;
-    console.log('FAILED     ' + what);
   };
 
   console.log('image      ' + path.basename(target) + '  (' + sniffed.kind + ')');
@@ -2428,10 +2678,31 @@ async function recordCmd(roms) {
     Buffer.from(await page.toAgc(), 'utf8'), 'saved.agc');
   check('and Save writes it back out', (saved.recordings || []).length === 1);
 
+  // Saving in the middle of a take writes the take as it stands. Writing the
+  // one before it instead would look like the button had failed.
+  await page.startRecording();
+  page.runTo(page.machine.cpu.cycles + 100000);
+  page.key(0xc1);
+  const mid = await A.agc.parse(
+    Buffer.from(await page.toAgc(), 'utf8'), 'mid.agc');
+  check('a save made mid-take writes the take so far',
+        (mid.recordings || []).length === 1 && mid.recordings[0].events.length === 1);
+
   console.log(bad ? 'DIVERGED' : 'OK - in step');
   process.exit(bad ? 1 : 0);
 }
 
+// A snapshot is only worth anything if the machine it restores goes on running
+// the same program the same way, and two machines that agree at the moment of
+// the restore and disagree a second later is exactly the failure this can have.
+// So: boot one, run it, save it, restore into a second, and then run *both* the
+// same distance again and require them to still agree — on the clock, on the
+// screen, and on every byte of RAM.
+//
+// The disk is not in a snapshot — a container carries what was written to it as
+// patches instead — so the media is copied across by hand here, which is what
+// the container does by another route and what leaves this measuring the state
+// machinery alone.
 if (cmd === 'state') {
   H.loadRoms(ctx).then(stateCmd).catch(die);
   return;

@@ -33,6 +33,11 @@
     this.recorder = null;
     this.player = null;
     this.recording = null;
+    // Whether the machine is still standing on the take's own timeline: how
+    // many inputs and machine changes have gone in that the take does not
+    // account for. Zero means it can be picked up again — everything the
+    // machine has done since it stopped, it did because the take said so.
+    this.sinceTake = 0;
     this.model = opts.model === 9 ? 9 : 7;     // the commoner machine, and the
     var profile = AGAT.Machine.PROFILES[this.model];  // one most native
     this.ramSize = this.model === 9                   // software expects
@@ -158,6 +163,7 @@
     if (this.player) return;              // a replay owns the machine
     this.machine.keyDown(code);
     if (this.recorder) this.recorder.add('k', code | 0x80);
+    else this.sinceTake++;
   };
 
   // ЛАТ / РУС, which software reads at $C063 and the host keyboard reads to
@@ -165,6 +171,7 @@
   App.prototype.setLayout = function (rus) {
     if (this.player) return this.machine.cyrillic;
     if (this.recorder) this.recorder.add('l', rus ? 1 : 0);
+    else this.sinceTake++;
     return this.machine.setLayout(rus);
   };
 
@@ -183,6 +190,8 @@
     // mostly zeroes, and zeroes the machine never saw.
     if (this.recorder && (step[0] || step[1])) {
       this.recorder.add('m', step[0], step[1]);
+    } else if (!this.recorder && (step[0] || step[1])) {
+      this.sinceTake++;
     }
     return step;
   };
@@ -200,6 +209,7 @@
     if (!c || this.player) return;
     c.setBtn(mask);
     if (this.recorder) this.recorder.add('b', c.btn);
+    else this.sinceTake++;
   };
 
   // The mouse card, if one is fitted. All three answer move() and carry the
@@ -1310,7 +1320,11 @@
       // container and not played over. Unlike a snapshot it is not a person's
       // session left in the middle of somebody else's program: it exists
       // because somebody deliberately recorded it, so it is not asked about.
-      recordings: this.recording ? [this.recording] : [],
+      //
+      // A take still being made goes in as it stands, which is what somebody
+      // saving mid-recording means: the alternative is writing the take before
+      // it, which is a different session and looks like the button failed.
+      recordings: this.take() ? [this.take()] : [],
       title: this.title || (media.length ? media[0].name : ''),
       author: this.author,
       date: this.date,
@@ -1350,21 +1364,60 @@
   // One take at a time, and never a take and a replay at once. See record.js
   // for what is in one and why the disk ends it.
 
+  // Whether the take this session holds can be picked up where the machine is
+  // standing, rather than thrown away for a new one. Two things have to hold:
+  // the clock is somewhere inside the take, and nothing the take does not
+  // account for has reached the machine since — a key, a mouse count, a Reset.
+  // Both are needed. A machine that replayed to 40% and was taken over is on
+  // the take's timeline until the first key goes in, and one key is enough to
+  // make everything after it a different session.
+  App.prototype.canExtend = function () {
+    var t = this.recording, now = this.machine.cpu.cycles;
+    if (!t || this.recorder || this.sinceTake) return false;
+    // Past the end counts: a machine let run on after a replay is still the
+    // take's machine so long as nothing has been typed at it, and picking the
+    // take up there adds the cycles it spent alone to the end of it. What is
+    // never enough is the clock — see sinceTake.
+    return now >= t.cycles;
+  };
+
+  // How much of the take is past the machine — what picking it up here would
+  // throw away, as a fraction. 0 at the end of it, which is the case that
+  // discards nothing and is not worth asking about.
+  App.prototype.tailOfTake = function () {
+    var t = this.recording, now = this.machine.cpu.cycles;
+    if (!t || t.ended <= t.cycles) return 0;
+    var left = (t.ended - now) / (t.ended - t.cycles);
+    return left < 0 ? 0 : left > 1 ? 1 : left;
+  };
+
+  // Start one, or pick up the one that is there. `opts.extend` asks for the
+  // second and falls back to the first, because whether a take can be extended
+  // is the App's answer and not the caller's — see canExtend.
   App.prototype.startRecording = function (opts) {
-    var self = this;
+    var self = this, take = this.recording;
+    var extend = !!(opts && opts.extend) && this.canExtend();
     this.stopPlaying();
     this.stopRecording('user');
     // Held while the snapshot is taken: state.save() encodes the RAM a turn
     // later, so a machine that steps in between is saved from two cycles at
-    // once — and stamped with neither.
+    // once — and stamped with neither. Extending takes no snapshot: the take's
+    // own is still the one it starts from.
     var was = this.running;
     this.stop();
     var rec = new AGAT.Recorder(this, opts);
-    return rec.start().then(function () {
+    return (extend ? rec.extend(take) : rec.start()).then(function () {
       self.recorder = rec;
+      self.sinceTake = 0;
       if (was) self.start();
       return rec;
     });
+  };
+
+  // The take this session holds: the one being made, as far as it has got, or
+  // the last one finished.
+  App.prototype.take = function () {
+    return this.recorder ? this.recorder.data() : this.recording;
   };
 
   // The take, or null where there was none. Kept as `recording`: a container
@@ -1373,6 +1426,9 @@
     if (!this.recorder) return null;
     this.recording = this.recorder.stop(why || 'user');
     this.recorder = null;
+    // The machine is standing at the end of what was just recorded, which is
+    // the one place a take can be picked up again without asking anything.
+    this.sinceTake = 0;
     return this.recording;
   };
 
@@ -1391,6 +1447,10 @@
     var p = new AGAT.Player(this, rec);
     return p.start().then(function (s) {
       self.player = p;
+      // The restore has just put the take's own machine back, so whatever the
+      // machine did before — the load that built it, a reset, a session of
+      // somebody else's — is not between it and the take any more.
+      self.sinceTake = 0;
       self.paused = false;
       self.start();
       return s;
@@ -1402,6 +1462,10 @@
   App.prototype.stopPlaying = function () {
     var p = this.player;
     this.player = null;
+    // Wherever it stopped, the machine got there by playing the take: it is
+    // still standing on the take's timeline, and picking it up here is the
+    // take's own continuation with its tail thrown away.
+    if (p) this.sinceTake = 0;
     return p;
   };
 
@@ -1411,6 +1475,9 @@
   App.prototype.machineChanged = function () {
     this.stopRecording('machine');
     this.stopPlaying();
+    // A machine that has been reset, or had a disk changed under it, is not
+    // the machine the take left running, whatever the clock says.
+    this.sinceTake++;
   };
 
   // ---- run loop ------------------------------------------------------------
@@ -1435,11 +1502,27 @@
     var cpu = this.machine.cpu, p, stop;
     while (cpu.cycles < target && !cpu.halted) {
       p = this.player;
-      stop = p ? Math.min(target, p.nextCycle()) : target;
+      // The take's own end is a stop as much as an event is: a replay that ran
+      // to the end of the frame it finished in would hold the machine a
+      // frame's worth past the recording, and where it stopped would depend on
+      // how the browser chopped up the time — which is the one thing a replay
+      // is not allowed to depend on.
+      stop = p ? Math.min(target, p.nextCycle(), Math.max(p.end, cpu.cycles + 1))
+               : target;
       while (cpu.cycles < stop && !cpu.halted) cpu.step();
       if (!p) break;
       p.apply(cpu.cycles);
-      if (p.done()) { this.stopPlaying(); break; }
+      // A replay that runs out is held where it ends, as though Pause had been
+      // pressed: the recording is over and what follows it is nobody's — a
+      // machine that ran on would be a machine somebody has to catch. Taking
+      // over is the other exit and does not pause, because that is a person
+      // already at the keyboard.
+      if (p.done()) {
+        this.stopPlaying();
+        this.setPaused(true);
+        this.onStatus('replay ended — Resume to go on from here');
+        break;
+      }
     }
     if (this.recorder && this.recorder.wrote()) this.stopRecording('write');
   };
@@ -1589,7 +1672,34 @@
                         'at all, it wants another one.' : ''),
       });
     }
+    // A take being made or played, last on the line and only while it is
+    // happening. Here rather than said once when the button is pressed: the
+    // page repaints this line twice a second, so anything said once is gone
+    // before it has been read — and both of these outlast the click by
+    // minutes. Seconds of machine time, which is what a recording is measured
+    // in, and what a replay's own clock is running on.
+    if (this.recorder) {
+      bits.push({
+        text: '● rec ' + AGAT.howLong(this.recorded()),
+        cls: 'rec',
+        title: 'Recording what you do. Rec stops it.',
+      });
+    } else if (this.player) {
+      bits.push({
+        text: '▶ ' + Math.round(this.player.at() * 100) + '%',
+        cls: 'held',
+        title: 'Playing a recording back; the keyboard and mouse are its own. ' +
+               'Rec takes over.',
+      });
+    }
     return bits;
+  };
+
+  // How long the take being made is so far, in cycles — the unit every
+  // duration on this page is measured in and formatted from.
+  App.prototype.recorded = function () {
+    if (!this.recorder) return 0;
+    return this.machine.cpu.cycles - this.recorder.cycles;
   };
 
   AGAT.MODE_NAMES = {

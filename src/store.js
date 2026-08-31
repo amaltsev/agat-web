@@ -58,6 +58,7 @@
       model: rec.model,
       ram: rec.ram,                      // base RAM in KB
       cycles: rec.cycles || 0,           // the machine's own clock, at the save
+      take: rec.take || 0,               // and the recording in it, in cycles
       size: rec.text.length,
       saved: rec.saved || Date.now(),
     };
@@ -253,11 +254,13 @@
     return s;
   }
 
-  // How far into the program the save is, off the machine's own clock rather
-  // than the wall's — a paused machine and an afternoon away from the desk both
-  // stop it, which is what makes it the number that tells two saves of one
-  // program apart. Minutes and seconds, and hours when there are any.
-  function elapsed(cycles) {
+  // A stretch of machine time, as minutes and seconds — and hours where there
+  // are any. Every duration on this page goes through here: how far into the
+  // program a save is, how long a recording runs, how far a replay has got.
+  // Machine time rather than the wall's, always: a paused machine and an
+  // afternoon away from the desk both stop it, which is what makes it the
+  // number that tells two saves of one program apart.
+  function howLong(cycles) {
     var t = Math.round(cycles / AGAT.CPU_HZ);
     var s = t % 60, m = Math.floor(t / 60) % 60, h = Math.floor(t / 3600);
     function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -320,7 +323,11 @@
     el.appendChild(open);
     // How far in, then when it was taken: the first tells two saves of one
     // program apart and the second tells one program's saves from another's.
-    el.appendChild(span('save-in', elapsed(r.cycles)));
+    // A save carrying a recording says how long *that* is instead, under a ▶:
+    // the column is one field wide, and of the two numbers the recording is
+    // the one somebody is looking for.
+    el.appendChild(span('save-in', r.take ? '▶ ' + howLong(r.take)
+                                          : howLong(r.cycles)));
     el.appendChild(span('save-when', when(r.saved)));
     el.appendChild(span('save-what', what));
     var del = document.createElement('button');
@@ -356,5 +363,9 @@
     open: open, memory: function () { return new MemStore(); },
     usage: usage, persist: persist,
   };
+  // The one way a moment is written on this page, wherever it is written: the
+  // saves list, and the Rec panel saying when a take was made.
+  AGAT.when = when;
+  AGAT.howLong = howLong;
   AGAT.SaveList = SaveList;
 })(typeof globalThis !== 'undefined' && (globalThis.AGAT = globalThis.AGAT || {}));

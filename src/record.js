@@ -26,6 +26,8 @@
 //   l  0 | 1      ЛАТ / РУС, which software reads at $C063
 //   m  ix iy      whole mouse counts, the host's pixels already spent
 //   b  mask       the two mouse buttons, bit 0 A and bit 1 B
+//   x  wall       nothing reached the machine: the take was picked up again
+//                 here, and this is when by the clock on the wall
 //
 // Each event is `[dcycles, kind, ...]`, the cycles since the one before it —
 // relative because a recording is a list of things that happened one after
@@ -62,6 +64,8 @@
     this.state = null;
     this.events = [];
     this.wall = 0;                     // when this was recorded, for the person
+    this.edited = 0;                   // and when it was last added to
+    this.autoplay = false;
     this.cycles = 0;                   // and for the machine: where it began
     this.last = 0;                     // the cycle the last event landed on
     this.ended = 0;
@@ -82,6 +86,37 @@
       self.state = st;
       return self;
     });
+  };
+
+  // A take picked up again, from the cycle the machine is on. Everything it
+  // recorded after this cycle is dropped, and what happens from here is
+  // recorded over it — which is sound because the machine got here by playing
+  // those same events back, so the state this continues from is the state the
+  // kept half produces.
+  //
+  // The snapshot and the wall clock are the take's own: this is the same
+  // recording, longer. What marks the join is an `x` event carrying the
+  // moment, which nothing reads yet and which is the only trace in the file
+  // that the take was made in more than one sitting.
+  Recorder.prototype.extend = function (take) {
+    var now = this.app.machine.cpu.cycles, at = take.cycles, i, e;
+    this.state = take.state;
+    this.name = take.name || this.name;
+    this.wall = take.wall;
+    this.autoplay = !!take.autoplay;
+    this.cycles = take.cycles;
+    this.events = [];
+    for (i = 0; i < take.events.length; i++) {
+      e = take.events[i];
+      if (at + e[0] > now) break;
+      at += e[0];
+      this.events.push(e);
+    }
+    this.last = at;
+    this.edited = Date.now();
+    this.writes = writeCount(this.app.machine);
+    this.add('x', this.edited);
+    return Promise.resolve(this);
   };
 
   // One input, at the cycle the machine is on. Called from the App's four
@@ -111,7 +146,7 @@
   };
 
   Recorder.prototype.data = function () {
-    return {
+    var out = {
       version: VERSION,
       name: this.name,
       wall: this.wall,
@@ -121,6 +156,12 @@
       state: this.state,
       events: this.events,
     };
+    // Both only where they are something: a take made in one sitting has no
+    // edit to report, and one nobody has asked to start by itself says so by
+    // not saying anything.
+    if (this.edited) out.edited = this.edited;
+    if (this.autoplay) out.autoplay = true;
+    return out;
   };
 
   // ---- playing it back ------------------------------------------------------

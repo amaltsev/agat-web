@@ -39,13 +39,13 @@ terms interspersed freely where they are the thing's own name (ЭмПЗУ, ЛА�
 
 ```sh
 node tools/vectors.js          # pure-function tests, ~1s
-node tools/check.js modules    # the pages vs the module list
+node tools/check.js modules    # the pages vs the module list, and every name they call
 node tools/check.js kbdmenu    # the page's keyboard menu, load order and all
 node tools/check.js urlkeys    # the page's address, around the whole loop
 node tools/check.js dosui      # the file manager, over a stub document
 node tools/check.js agcui      # the container editor, over no document at all
 node tools/check.js saveui     # the saves in the browser, over a memory store
-node tools/check.js recui      # the Rec panel, over a stub document
+node tools/check.js recui      # the Replay panel, over a stub document
 node tools/check.js record     # a recorded session, played back into a fresh machine
 node tools/check.js pwa        # the manifest, its icons, the offline shell
 node tools/check.js dosnew     # a disk formatted here, given to a real DOS; slow

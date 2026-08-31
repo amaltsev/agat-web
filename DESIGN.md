@@ -805,13 +805,75 @@ not something several takes should each carry a copy of. A take is written
 whenever the session has one, without asking — unlike a snapshot it is not
 somebody left in the middle of somebody else's program.
 
-**The panel** is `Rec` in the bar, beside Load and Save. It holds three verbs
-and a line about the take — how long, how many inputs, and what stopped it —
-and it takes no hold on the machine, because recording and playing are both the
-machine running. Both of its buttons close it: what is being recorded is on the
-screen behind it. The bar button is then the way back — plain it opens the
-panel, red it stops the take being made, lit it takes over from the replay,
-which is what stopping a replay is.
+**What it is doing is on the status line**, not in a message: the page repaints
+that line from `App.describe()` twice a second, so anything said once at the
+button is gone before it can be read, while a take lasts minutes. `● rec 3.4 s`
+in the drives' red while one is being made, `▶ 42%` while one is playing.
+
+**A replay that runs out leaves the machine held** on the take's own last
+cycle — `runTo` stops at the end of the recording as it stops at each event,
+so where it comes to rest does not depend on how the browser chopped the time
+up — as though Pause had been pressed. The recording is over and what follows
+it is nobody's, so a machine that ran on would be one somebody has to catch. Taking over is the other exit
+and does not pause: that is a person already at the keyboard.
+
+**The panel** is `Replay` in the bar, beside Load and Save: Record, Play, Take over
+and an Autoplay checkbox, over two lines saying how long the take is, what
+stopped it, and when it was made and last added to. The button itself only
+opens and closes the panel; what the recorder is *doing* is a lamp inside it —
+red recording, green replaying, cyan for a take sitting there, dark for none —
+because the button's border already says whether its panel is open, and one
+control should not paint two answers.
+
+Record and Play leave it up: it is where a take is finished again, and where
+what is being made or played is described while it happens. Its line is the
+take — `0:32, 23 inputs` — with the replay's position added to it rather than
+over it, `▶ 23%, 0:07`, because a percentage says nothing without the length it
+is a percentage of. Every stretch of machine time on the page is printed by
+`AGAT.howLong`, the saves list's own formatter: minutes and seconds, and hours
+where there are any.
+
+It is redrawn ten times a second with the drive lamps, and writes only what
+changed: an assignment that assigns what is already there still lays the node
+out again, and flashes in devtools for whoever is reading it.
+
+The panel **does not hold the machine**, unlike Save's and the disk panel's:
+what it is about is a program being played, and stopping the program to ask
+about it is the wrong way round. So a replay goes on running behind it and Take
+over lands where it is pressed rather than where the panel was read; Pause is a
+button of its own for anybody who wants the answer to stand still first. It
+still closes those two panels when it opens, because they overlap on the page.
+
+The Autoplay checkbox **gives the focus back** when it is clicked. An `<input>`
+is where keys stop reaching the machine — `typingInto` in `keyboard.js` — so a
+checkbox left holding focus over a running program is a keyboard that has gone
+dead for no reason anybody can see.
+
+**Take over** is the only way to the controls while a replay runs — the doors
+are shut until it is pressed or the take runs out. **Play** stays live while one
+is running and turns its arrow round, `↻ Play`: it puts the snapshot back and starts the take
+from the top, which costs the take nothing.
+
+**Record has three cases**, and `App.canExtend` is which one. The machine
+standing exactly where the take ends is that take's own continuation and is
+picked up in silence. Standing anywhere else *inside* it — mid-replay, or taken
+over — picking it up throws the rest away, and says how much. Past its end
+counts as its own continuation too: a machine let run on with nothing typed at
+it is still the take's machine. What ends all of that is any input the take
+does not account for, and then there is nothing to continue and the take is
+replaced. That last clause is `App.sinceTake`, which counts inputs
+and machine changes that went in outside a take: standing inside the take is not
+enough, the machine has to have got there by the take's own doing.
+
+**Autoplay** is a field on the take, so it travels in the container: a demo that
+starts by itself is a property of the recording, not of this browser. The page
+plays it after a load, which is where the boot decision is too — a tool opening
+the same container wants the program, not the demo.
+
+A save in the browser that carries a take says so where it would otherwise say
+how far into the program it is: `▶ 1:35` instead of `4:10`. One field either
+way — the column is a column — and of the two numbers the recording is the one
+somebody is looking for.
 
 `node tools/check.js recui` drives those by name over a stub document and a real
 machine, the way `kbdmenu` and `urlkeys` drive theirs; a stub App would pass
@@ -1246,7 +1308,8 @@ Everything runs headlessly against the shipping source.
 ```sh
 node tools/cputest.js               # Klaus Dormann 6502 functional test
 node tools/vectors.js               # pure-function tests, about a second
-node tools/check.js modules         # the pages vs tools/modules.js
+node tools/check.js modules         # the pages vs tools/modules.js, and every
+                                    # name a page calls against what it defines
 node tools/check.js kbdmenu         # the page's keyboard menu, load order and all
 node tools/check.js urlkeys         # the page's address, around the whole loop
 node tools/check.js dosui           # the file manager, over a stub document
@@ -1260,7 +1323,7 @@ node tools/check.js keys   <.agc>   # the controls panel and the winnowed board
 node tools/check.js write  <image> --keys=…    # boot unlocked, say what was written
 node tools/check.js state  <image>  # save the machine mid-run, restore it into a
                                     # fresh one, and run both on
-node tools/check.js recui           # the Rec panel, over a stub document
+node tools/check.js recui           # the Replay panel, over a stub document
 node tools/check.js record          # record a session, play it back into a fresh
                                     # machine, and require the two to agree
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
@@ -1315,6 +1378,15 @@ and the container it names — which is exactly what a browser makes tedious to
 reach and easy to get wrong. `urlkeys` runs the real loop: a fragment into the
 menus, the menus into a machine, a real `.agc` loaded into it, and the machine
 back out as a fragment.
+
+**A page that calls what it no longer defines passes every one of them.** These
+tests supply the page's variables and its neighbours' functions, so a function
+deleted with a caller left behind is a function the test provides: the suite
+goes green while the real page throws on the way up and wires nothing. It has
+happened — one edit took `closeSaveOpts`, `holdMachine` and `releaseMachine` out
+of index.html, every command passed, and the Load button did nothing in the
+browser. `check.js modules` now reads each page's own script and lists any name
+it calls and never declares, which is that mistake exactly and no more than it.
 
 **The stub scope is the maintenance cost, and it is easy to underpay.** Lifting
 the page's functions means re-declaring every page variable they touch and
