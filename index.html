@@ -79,7 +79,11 @@
   #pause svg {
     width: 12px; height: 12px; vertical-align: -1px; fill: currentColor;
   }
-  #gear.on, #save.on, #pause.on { border-color: var(--accent); }
+  #gear.on, #save.on, #pause.on, #rec.on { border-color: var(--accent); }
+  /* A take being made. Red, as the drive lamps are and for the same reason:
+     the machine is being recorded, and the page is saying so rather than
+     offering something. */
+  #rec.lit { color: #ff8078; border-color: #6a2a24; }
   /* Something has been written to a disk and is in memory only. Red, as the
      drive lamps are: this is the drives saying it, not the page. */
   #save.lit { color: #ff8078; border-color: #6a2a24; }
@@ -382,6 +386,7 @@
   <span class="grp">
     <button id="load" title="Open a file, or a program saved in this browser" aria-expanded="false">Load</button>
     <button id="save" title="Save the machine settings, media and disk writes — to a file, or into this browser" aria-expanded="false">Save</button>
+    <button id="rec" title="Record what you do, and play it back" aria-expanded="false">Rec</button>
     <button id="gear" title="The machine, its memory sizes, the mouse, the monitor and the volume" aria-expanded="false">⚙</button>
   </span>
   <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg></button>
@@ -433,6 +438,25 @@
     <label title="Include full machine state — so the container reopens where it was left"><input type="checkbox" id="savestate"> machine state, in the file</label>
     <span class="note" id="savenote"></span>
   </div>
+</div>
+
+<!-- A recording: the machine as it stood when it started, and every key and
+     mouse count since, each on the cycle it landed on. Playing one back runs
+     the same program the same way.
+
+     The panel does not hold the machine — recording and playing are both the
+     machine running — and both buttons close it, because what is being
+     recorded is happening on the screen behind it. The Rec button in the bar
+     is then the way back out: lit while a take is being made or played, and a
+     click on it stops that. -->
+<div id="recopts" class="panel" hidden>
+  <div class="row">
+    <span class="key">Recording</span>
+    <button id="recstart" title="Record what you do from here">⏺ Record</button>
+    <button id="recplay" title="Play the recording back from where it began">▶ Play</button>
+    <button id="recclose" class="sp">Close</button>
+  </div>
+  <div class="row"><span class="key"></span><span class="note" id="recfacts"></span></div>
 </div>
 
 <!-- One drive: which disk is in it, and what can be done to that disk. Not
@@ -726,6 +750,11 @@
   var pauseEl = document.getElementById('pause');
   var HOLD_FACE = '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg>';
   var PLAY_FACE = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.6 1 11.2 6 2.6 11z"/></svg>';
+  var recEl = document.getElementById('rec');
+  var recOptsEl = document.getElementById('recopts');
+  var recStartEl = document.getElementById('recstart');
+  var recPlayEl = document.getElementById('recplay');
+  var recFactsEl = document.getElementById('recfacts');
   var saveOptsEl = document.getElementById('saveopts');
   var saveStateBox = document.getElementById('savestate');
   var saveNoteEl = document.getElementById('savenote');
@@ -1502,6 +1531,115 @@
 
   document.getElementById('savecancel').addEventListener('click', closeSaveOpts);
 
+  // ---- recording -------------------------------------------------------------
+  //
+  // Three verbs and one button in the bar. Idle, the button opens the panel;
+  // while a take is being made or played it is what stops that, because the
+  // panel is not up — both of its buttons close it, since what is being
+  // recorded is on the screen behind it.
+
+  recEl.addEventListener('click', recClick);
+
+  // The bar button, which is three buttons depending on what the machine is
+  // doing. Named, as the panel's two are, because the page's tests drive these
+  // by name — an anonymous listener is a control nothing can reach.
+  function recClick() {
+    if (app.recorder) { stopRec('user'); return; }
+    if (app.player) { stopPlay(); return; }
+    if (!recOptsEl.hidden) { closeRec(); return; }
+    // Like Load and unlike Save: nothing here is a view of one moment, so the
+    // panel takes no hold and closes the two that do.
+    closeSaveOpts();
+    closeFiles();
+    loadOptsEl.hidden = true;
+    loadEl.setAttribute('aria-expanded', 'false');
+    recOptsEl.hidden = false;
+    recEl.setAttribute('aria-expanded', 'true');
+    drawRec();
+  }
+
+  document.getElementById('recclose').addEventListener('click', closeRec);
+
+  function closeRec() {
+    if (recOptsEl.hidden) return;
+    recOptsEl.hidden = true;
+    recEl.setAttribute('aria-expanded', 'false');
+  }
+
+  recStartEl.addEventListener('click', recRecord);
+  recPlayEl.addEventListener('click', recPlay);
+
+  // Both close the panel: what is being recorded, or played back, is happening
+  // on the screen the panel is over. The promise is returned so a test can
+  // wait for a snapshot that is written a turn later; nothing on the page does.
+  function recRecord() {
+    if (app.recorder) { stopRec('user'); return null; }
+    closeRec();
+    unstick();
+    return app.startRecording().then(function () {
+      say('recording — press Rec again to stop');
+    }, function (e) { say(e.message, true); });
+  }
+
+  function recPlay() {
+    if (app.player) { stopPlay(); return null; }
+    closeRec();
+    unstick();
+    return app.startPlaying().then(function (s) {
+      say('playing back — ' + s + ', Rec to take over');
+    }, function (e) { say(e.message, true); });
+  }
+
+  function stopRec(why) {
+    var take = app.stopRecording(why);
+    if (take) say('recorded ' + recLength(take));
+    drawRec();
+  }
+
+  // Taking over is stopping the replay: the machine goes on running from where
+  // it had got to, which is what a person who reaches for the keyboard means.
+  function stopPlay() {
+    app.stopPlaying();
+    say('taken over');
+    drawRec();
+  }
+
+  // Red while a take is being made, lit while one is playing or the panel is up.
+  // Drawn from the App rather than set where the buttons are, because a take
+  // can end on its own — a disk write, a Reset — and the button has to stop
+  // saying it is recording within the tick.
+  function syncRec() {
+    var taking = app.recorder ? 'lit'
+               : app.player || !recOptsEl.hidden ? 'on' : '';
+    if (recEl.className !== taking) recEl.className = taking;
+    var doing = app.recorder ? 'Stop recording'
+              : app.player ? 'Take over from the recording'
+              : 'Record what you do, and play it back';
+    if (recEl.title !== doing) recEl.title = doing;
+    if (!recOptsEl.hidden) drawRec();
+  }
+
+  function recLength(take) {
+    var secs = (take.ended - take.cycles) / AGAT.CPU_HZ;
+    return secs.toFixed(1) + ' s, ' + take.events.length +
+           (take.events.length === 1 ? ' input' : ' inputs');
+  }
+
+  // What the panel says about the take it has: how long, how much, and where
+  // it came from, since a container's own take is somebody else's session.
+  function drawRec() {
+    var take = app.recording;
+    recStartEl.textContent = app.recorder ? '■ Stop' : '⏺ Record';
+    recPlayEl.textContent = app.player ? '■ Stop' : '▶ Play';
+    recPlayEl.disabled = !take && !app.player;
+    recFactsEl.textContent = app.recorder ? 'recording'
+      : take ? recLength(take) + (take.stopped === 'write'
+                                  ? ' — stopped by a disk write'
+                                  : take.stopped === 'machine'
+                                  ? ' — stopped by a reset' : '')
+      : 'nothing recorded yet';
+  }
+
   function closeSaveOpts() {
     saveOptsEl.hidden = true;
     releaseMachine();
@@ -2167,6 +2305,7 @@
     if (saveEl.className !== pending) saveEl.className = pending;
     var opening = loadOptsEl.hidden ? '' : 'on';
     if (loadEl.className !== opening) loadEl.className = opening;
+    syncRec();
     var held = app.paused ? 'on' : '';
     if (pauseEl.className !== held) pauseEl.className = held;
     // The face is what the click does, not what the machine is doing, and the

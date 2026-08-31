@@ -34,6 +34,8 @@
 //   node tools/check.js modules                  the pages vs tools/modules.js
 //   node tools/check.js pwa                      the manifest, the icons and the
 //                                                worker's precache list
+//   node tools/check.js recui                    the Rec panel, over a stub
+//                                                document and a real machine
 //   node tools/check.js record [image]           record a session, play it back
 //                                                into a fresh machine, and
 //                                                require the two to agree
@@ -2039,6 +2041,152 @@ async function urlkeysCmd(roms) {
 // patches instead — so the media is copied across by hand here, which is what
 // the container does by another route and what leaves this measuring the state
 // machinery alone.
+// --- the Rec panel -----------------------------------------------------------
+//
+// The page's own functions, lifted by name and clicked on, over a stub document
+// and a real machine: the panel is three verbs and a line of prose about a
+// take, and every one of them reads something off the App that only a machine
+// can supply. A stub App would pass while the page did the other thing.
+if (cmd === 'recui') {
+  H.loadRoms(ctx).then(recuiCmd).catch(die);
+  return;
+}
+
+async function recuiCmd(roms) {
+  const A = ctx.AGAT;
+  const page = fs.readFileSync(path.join(H.ROOT, 'index.html'), 'utf8');
+  const grab = (name) => {
+    const at = page.indexOf('function ' + name + '(');
+    if (at < 0) throw new Error('index.html has no function ' + name);
+    let depth = 0;
+    for (let j = page.indexOf('{', at); j < page.length; j++) {
+      if (page[j] === '{') depth++;
+      else if (page[j] === '}' && --depth === 0) return page.slice(at, j + 1);
+    }
+    throw new Error(name + ' does not close');
+  };
+
+  const el = () => ({
+    className: '', title: '', textContent: '', hidden: true, disabled: false,
+    attrs: {}, setAttribute(k, v) { this.attrs[k] = v; },
+  });
+  global.AGAT = A;                   // the page's own global, for CPU_HZ
+
+  let pass = 0, fail = 0;
+  const eq = (what, got, want) => {
+    const g = JSON.stringify(got), w = JSON.stringify(want);
+    if (g === w) { pass++; return; }
+    fail++;
+    console.log('FAIL ' + what + '\n  got  ' + g + '\n  want ' + w);
+  };
+
+  // The page's variables the panel touches, and the four calls it makes that
+  // are somebody else's. Everything here is what index.html has under the same
+  // name: a control this leaves out is a control the test cannot see.
+  const recEl = el(), recOptsEl = el(), recStartEl = el(), recPlayEl = el();
+  const recFactsEl = el(), loadOptsEl = el(), loadEl = el();
+  let said = [], closed = [];
+  const say = (m, bad) => { said.push((bad ? '! ' : '') + m); };
+  const unstick = () => {};
+  const closeSaveOpts = () => { closed.push('save'); };
+  const closeFiles = () => { closed.push('files'); };
+
+  // A machine to record: rise-out out of the boot, driven through the App's
+  // own methods with the frame loop left out.
+  const sniffed = await H.sniffFile(ctx, path.join(H.ROOT, 'examples', 'rise-out.agc'));
+  const m = H.makeMachine(ctx, roms, { model: 7, agc: sniffed.agc });
+  const at = H.mountAll(ctx, m, sniffed);
+  m.reset();
+  m.bootSlot(at < 0 ? H.fddSlot(m) : at);
+  const app = Object.assign(Object.create(A.App.prototype), {
+    machine: m, slots: m.slots, running: true,
+    start() {}, stop() {}, onStatus() {},
+  });
+  app.runTo(m.cpu.cycles + 30e6);
+
+  eval(grab('recClick'));
+  eval(grab('closeRec'));
+  eval(grab('recRecord'));
+  eval(grab('recPlay'));
+  eval(grab('stopRec'));
+  eval(grab('stopPlay'));
+  eval(grab('syncRec'));
+  eval(grab('recLength'));
+  eval(grab('drawRec'));
+
+  // ---- opening it, with nothing recorded ----------------------------------
+  recClick();
+  eq('the panel opens, and closes the two that hold the machine',
+     [recOptsEl.hidden, recEl.attrs['aria-expanded'], closed],
+     [false, 'true', ['save', 'files']]);
+  eq('with nothing to say and nothing to play',
+     [recFactsEl.textContent, recPlayEl.disabled],
+     ['nothing recorded yet', true]);
+  syncRec();
+  eq('and the button lit for the panel being up', recEl.className, 'on');
+  recClick();
+  eq('a second click shuts it', [recOptsEl.hidden, recEl.attrs['aria-expanded']],
+     [true, 'false']);
+
+  // ---- a take ------------------------------------------------------------
+  recClick();
+  await recRecord();
+  eq('Record closes the panel and says so',
+     [recOptsEl.hidden, !!app.recorder, said], [true, true, ['recording — press Rec again to stop']]);
+  syncRec();
+  eq('and the button goes red, and offers to stop',
+     [recEl.className, recEl.title], ['lit', 'Stop recording']);
+
+  const from = m.cpu.cycles;
+  app.runTo(from + 1e6);
+  app.key(0xa0);
+  app.runTo(from + 3e6);
+  said = [];
+  recClick();
+  eq('the button stops the take, and says how much of one it is',
+     [!!app.recorder, said], [false, ['recorded 2.9 s, 1 input']]);
+  eq('which the panel then has to offer', [app.recording.events.length,
+     app.recording.stopped], [1, 'user']);
+  syncRec();
+  eq('the button goes plain again', [recEl.className, recEl.title],
+     ['', 'Record what you do, and play it back']);
+
+  recClick();
+  eq('and the panel now has something to play',
+     [recFactsEl.textContent, recPlayEl.disabled], ['2.9 s, 1 input', false]);
+
+  // ---- playing it back ----------------------------------------------------
+  said = [];
+  await recPlay();
+  eq('Play closes the panel and starts the replay',
+     [recOptsEl.hidden, !!app.player, said.length], [true, true, 1]);
+  syncRec();
+  eq('the button offers to take over', [recEl.className, recEl.title],
+     ['on', 'Take over from the recording']);
+  said = [];
+  recClick();
+  eq('and taking over is stopping the replay', [!!app.player, said], [false, ['taken over']]);
+
+  // ---- what a take that ended by itself says ------------------------------
+  app.recording.stopped = 'write';
+  recClick();
+  eq('a take cut short by a disk write says which',
+     recFactsEl.textContent, '2.9 s, 1 input — stopped by a disk write');
+  app.recording.stopped = 'machine';
+  drawRec();
+  eq('and one cut short by a reset', recFactsEl.textContent,
+     '2.9 s, 1 input — stopped by a reset');
+
+  // ---- nothing to play ----------------------------------------------------
+  app.recording = null;
+  said = [];
+  await recPlay();
+  eq('playing nothing is refused, in a sentence', said, ['! nothing recorded']);
+
+  console.log(pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+}
+
 // --- a session recorded and played back --------------------------------------
 //
 // The claim a recording makes is that the machine is a function of its state

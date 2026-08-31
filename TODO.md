@@ -24,12 +24,9 @@
   input stamped with its cycle, a write or a machine change ends one, and
   `check.js record` proves a replay lands each input on the cycle it was
   recorded on, including one read back out of a container. What is left:
-  - The panel. On load a recording shows in a block like the controls do;
-    clicking it loads the state and plays. "Record"? "Time Machine"? Its
-    stub-document test goes beside `dosui` and `agcui`.
-  - Take over mid-replay. `stopPlaying` already hands the machine back live,
-    so what is missing is the control and the rule for it — only from Pause,
-    or an explicit button, since the doors are shut while a replay runs.
+  - Naming a take, and offering it where a container's controls show. The
+    panel calls one by its length and what stopped it; a container that
+    carries one has a name for it and nothing on the page reads it yet.
   - Speed control, and then rewind: `runTo` is the seam for both. Rewind
     wants keyframes — re-simulation runs about 15x real time, so a snapshot
     every 30 s of machine time puts a 10-second step under a second.

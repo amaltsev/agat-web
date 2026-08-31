@@ -805,6 +805,18 @@ not something several takes should each carry a copy of. A take is written
 whenever the session has one, without asking — unlike a snapshot it is not
 somebody left in the middle of somebody else's program.
 
+**The panel** is `Rec` in the bar, beside Load and Save. It holds three verbs
+and a line about the take — how long, how many inputs, and what stopped it —
+and it takes no hold on the machine, because recording and playing are both the
+machine running. Both of its buttons close it: what is being recorded is on the
+screen behind it. The bar button is then the way back — plain it opens the
+panel, red it stops the take being made, lit it takes over from the replay,
+which is what stopping a replay is.
+
+`node tools/check.js recui` drives those by name over a stub document and a real
+machine, the way `kbdmenu` and `urlkeys` drive theirs; a stub App would pass
+while the page did the other thing.
+
 `node tools/check.js record` records a session, plays it into a machine built
 from scratch in chunks that line up with nothing, and requires the two to agree
 on the clock, the screen and every byte of RAM. It also checks the cycle each
@@ -1248,6 +1260,7 @@ node tools/check.js keys   <.agc>   # the controls panel and the winnowed board
 node tools/check.js write  <image> --keys=…    # boot unlocked, say what was written
 node tools/check.js state  <image>  # save the machine mid-run, restore it into a
                                     # fresh one, and run both on
+node tools/check.js recui           # the Rec panel, over a stub document
 node tools/check.js record          # record a session, play it back into a fresh
                                     # machine, and require the two to agree
 node tools/shot.js <image> [keys]   # boot, send keys, write a PNG
