@@ -72,11 +72,13 @@
      button changes. */
   #layout { min-width: 8ch; text-align: center; }
   #pause, #gear { min-width: 4ch; text-align: center; }
-  /* Drawn rather than set in a glyph: ⏸ and ▶ come from different Unicode
-     blocks, and the fonts that have both draw them at wildly different sizes.
-     12px inside a 21px line box, so the button is the height of its
+  /* Drawn rather than set in a glyph. ⏸ and ▶ come from different Unicode
+     blocks, and the fonts that have both draw them at wildly different sizes;
+     ⚙ is in the emoji block, where a color emoji font can claim it and hand
+     back a picture at picture size, in its own colors rather than the
+     button's. 12px inside a 21px line box, so the button is the height of its
      neighbours. */
-  #pause svg {
+  #pause svg, #gear svg, .help svg {
     width: 12px; height: 12px; vertical-align: -1px; fill: currentColor;
   }
   #gear.on, #save.on, #pause.on, #rec.on { border-color: var(--accent); }
@@ -397,7 +399,7 @@
     <button id="load" title="Open a file, or a program saved in this browser" aria-expanded="false">Load</button>
     <button id="save" title="Save the machine settings, media and disk writes — to a file, or into this browser" aria-expanded="false">Save</button>
     <button id="rec" title="Record what you do, and play it back" aria-expanded="false"><i id="reclamp"></i>Replay</button>
-    <button id="gear" title="The machine, its memory sizes, the mouse, the monitor and the volume" aria-expanded="false">⚙</button>
+    <button id="gear" title="The machine, its memory sizes, the mouse, the monitor and the volume" aria-label="Settings" aria-expanded="false"><svg viewBox="0 0 12 12" aria-hidden="true"><path fill-rule="evenodd" d="M5.19 0.26 L6.81 0.26 L7.14 1.75 L8.20 2.19 L9.49 1.37 L10.63 2.51 L9.81 3.80 L10.25 4.86 L11.74 5.19 L11.74 6.81 L10.25 7.14 L9.81 8.20 L10.63 9.49 L9.49 10.63 L8.20 9.81 L7.14 10.25 L6.81 11.74 L5.19 11.74 L4.86 10.25 L3.80 9.81 L2.51 10.63 L1.37 9.49 L2.19 8.20 L1.75 7.14 L0.26 6.81 L0.26 5.19 L1.75 4.86 L2.19 3.80 L1.37 2.51 L2.51 1.37 L3.80 2.19 L4.86 1.75ZM6 3.00A3.00 3.00 0 1 0 6 9.00A3.00 3.00 0 1 0 6 3.00Z"/></svg></button>
   </span>
   <button id="pause" title="Pause" aria-label="Pause"><svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1" width="2.6" height="10" rx=".5"/><rect x="7.4" y="1" width="2.6" height="10" rx=".5"/></svg></button>
   <span class="grp right">
@@ -461,7 +463,12 @@
 <div id="recopts" class="panel" hidden>
   <div class="row">
     <span class="key">Recording</span>
-    <button id="recstart" title="Record what you do from here">⏺ Record</button>
+    <!-- ● U+25CF and not ⏺ U+23FA: the record symbol proper is in the emoji
+         block, and Android draws it from the color emoji font — an orange
+         rounded square with a white dot, at emoji size, ignoring the button's
+         color. The plain circle is in no font's emoji set. The same holds for
+         ■ Finish below, which is U+25A0 rather than ⏹. -->
+    <button id="recstart" title="Record what you do from here">● Record</button>
     <button id="recplay" title="Play the recording back from where it began">▶ Play</button>
     <button id="rectake" title="Stop the replay and drive the machine yourself from here">Take over</button>
     <button id="recclose" class="sp">Close</button>
@@ -664,7 +671,7 @@
       its title, the machine it wants, the keys it is played with, the media
       it carries — is <a href="edit-agc.html">edit-agc.html</a>.
     </td></tr>
-    <tr><td><b>⚙</b></td><td>
+    <tr><td><b><svg viewBox="0 0 12 12" aria-hidden="true"><path fill-rule="evenodd" d="M5.19 0.26 L6.81 0.26 L7.14 1.75 L8.20 2.19 L9.49 1.37 L10.63 2.51 L9.81 3.80 L10.25 4.86 L11.74 5.19 L11.74 6.81 L10.25 7.14 L9.81 8.20 L10.63 9.49 L9.49 10.63 L8.20 9.81 L7.14 10.25 L6.81 11.74 L5.19 11.74 L4.86 10.25 L3.80 9.81 L2.51 10.63 L1.37 9.49 L2.19 8.20 L1.75 7.14 L0.26 6.81 L0.26 5.19 L1.75 4.86 L2.19 3.80 L1.37 2.51 L2.51 1.37 L3.80 2.19 L4.86 1.75ZM6 3.00A3.00 3.00 0 1 0 6 9.00A3.00 3.00 0 1 0 6 3.00Z"/></svg></b></td><td>
       Which Agat this is, its memory sizes, the mouse, the monitor, the
       volume and <b>mute</b>, with <b>Boot</b> and <b>Reset</b>.
     </td></tr>
@@ -1782,7 +1789,7 @@
   // the status line, counting.
   function drawRec() {
     var take = app.recorder || app.recording;
-    put(recStartEl, 'textContent', app.recorder ? '■ Finish' : '⏺ Record');
+    put(recStartEl, 'textContent', app.recorder ? '■ Finish' : '● Record');
     put(recStartEl, 'title', app.recorder ? 'Finish the recording'
       : app.canExtend() ? 'Record from here, over the rest of the take'
       : 'Record what you do from here');
